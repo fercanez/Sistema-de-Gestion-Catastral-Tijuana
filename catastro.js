@@ -1636,6 +1636,29 @@ async function cargarHistorial(clave) {
   }
 }
 
+async function abrirDocumentoExpediente(clave, nombreArchivo) {
+  if (!obtenerTokenInstitucional()) {
+    alert("Sesión expirada. Vuelva a iniciar sesión.");
+    return;
+  }
+  try {
+    const r = await fetch(
+      `${API}/documentos/${encodeURIComponent(clave)}/${encodeURIComponent(nombreArchivo)}`,
+      { headers: authHeaders() }
+    );
+    if (!r.ok) {
+      throw new Error(`HTTP ${r.status}`);
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+  } catch (err) {
+    console.error(err);
+    alert("No fue posible abrir el documento.");
+  }
+}
+
 async function cargarDocumentos(clave) {
   const contenedor = document.getElementById("sec-documentos");
   if (!contenedor || !clave) return;
@@ -1657,14 +1680,14 @@ async function cargarDocumentos(clave) {
 
     let html = "";
     documentos.forEach(doc => {
-      const urlDoc = `${API}/documentos/${clave}/${doc.nombre_archivo}`;
+      const nombreArchivo = doc.nombre_archivo || "";
       html += `
         <div class="timeline-item">
           <div class="timeline-fecha">${doc.tipo_documento || "DOCUMENTO"}</div>
-          <div class="timeline-user">${doc.nombre_archivo || ""}</div>
+          <div class="timeline-user">${nombreArchivo}</div>
           <div class="timeline-obs">${doc.descripcion || "Sin descripción"}</div>
           <div class="timeline-obs">Año: ${doc.anio || "Sin dato"}</div>
-          <button style="margin-top:5px; padding:4px;" onclick="window.open('${urlDoc}', '_blank')">Abrir documento</button>
+          <button style="margin-top:5px; padding:4px;" onclick="abrirDocumentoExpediente(${JSON.stringify(clave)}, ${JSON.stringify(nombreArchivo)})">Abrir documento</button>
         </div>
       `;
     });

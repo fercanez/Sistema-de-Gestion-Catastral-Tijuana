@@ -59,7 +59,7 @@ Se recomienda usar uno de estos estados para dar seguimiento:
 |---|---|---|---|---|---|
 | BT-001 | Seguridad | Revisar robustez y resguardo de `SECRET_KEY` | Alta | pendiente | Crítico para autenticación JWT |
 | BT-002 | Seguridad | Revisar expiración y política de tokens | Alta | pendiente | Confirmar tiempos y estrategia de sesión |
-| BT-003 | Seguridad | Formalizar matriz rol -> permiso -> endpoint | Alta | pendiente | Base para auditoría y control de acceso |
+| BT-003 | Seguridad | Formalizar matriz rol -> permiso -> endpoint | Alta | en progreso | Matriz en `docs/matriz-acl-endpoints.md`; CRIT ACL-C01–C05 corregidos en código (2026-06-01) |
 | BT-004 | Seguridad | Auditar endpoints sensibles de administración y movimientos | Alta | pendiente | Confirmar que todos validen rol y permiso |
 | BT-005 | Despliegue | Formalizar procedimiento estándar de despliegue | Alta | pendiente | Reducir cambios manuales no trazables |
 | BT-006 | Despliegue | Mantener fuente Git controlada para despliegues | Alta | pendiente | Evitar diferencias entre código fuente y producción |

@@ -4,7 +4,7 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from auth.dependencies import obtener_usuario_actual
+from auth.dependencies import obtener_usuario_actual, requerir_permiso, requerir_permiso_token_o_query
 from database import get_conn
 
 router = APIRouter(tags=["expediente"])
@@ -265,7 +265,10 @@ def historial_expediente(clave: str, usuario_actual: dict = Depends(obtener_usua
 
 
 @router.get("/expediente/{clave}/documentos")
-def documentos_expediente(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def documentos_expediente(
+    clave: str,
+    usuario_actual: dict = Depends(requerir_permiso("ver_documentos")),
+):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -302,7 +305,11 @@ def documentos_expediente(clave: str, usuario_actual: dict = Depends(obtener_usu
 
 
 @router.get("/documentos/{clave}/{archivo}")
-def abrir_documento(clave: str, archivo: str):
+def abrir_documento(
+    clave: str,
+    archivo: str,
+    usuario_actual: dict = Depends(requerir_permiso_token_o_query("ver_documentos")),
+):
     # Protección contra path traversal: la ruta final, ya resuelta (sin '..',
     # symlinks, etc.), debe quedar estrictamente dentro de la carpeta base.
     base_dir = os.path.realpath("/var/www/catastro/documentos")
@@ -413,7 +420,7 @@ def dashboard_cartografico(usuario_actual: dict = Depends(obtener_usuario_actual
 
 
 @router.get("/dashboard-fiscal")
-def dashboard_fiscal(usuario_actual: dict = Depends(obtener_usuario_actual)):
+def dashboard_fiscal(usuario_actual: dict = Depends(requerir_permiso("ver_fiscal"))):
     try:
         conn = get_conn()
         cur = conn.cursor()

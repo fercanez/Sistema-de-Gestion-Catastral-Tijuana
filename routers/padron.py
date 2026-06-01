@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_roles
+from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_roles, requerir_permiso_token_o_query
 from database import get_conn, asegurar_tabla_predio_condominio
 
 router = APIRouter(tags=["padron"])
@@ -1468,7 +1468,12 @@ async def importar_zonas_homogeneas_archivo(
 
 
 @router.get("/tiles/predios/{z}/{x}/{y}.pbf")
-def tile_predios(z: int, x: int, y: int):
+def tile_predios(
+    z: int,
+    x: int,
+    y: int,
+    usuario_actual: dict = Depends(requerir_permiso_token_o_query("consulta")),
+):
     try:
         conn = get_conn()
         cur = conn.cursor()

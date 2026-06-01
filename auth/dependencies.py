@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta
+from typing import Optional
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import Depends, HTTPException, Query, Security, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
@@ -11,6 +12,16 @@ from auth.acl import ACL_BACKEND, normalizar_rol, permisos_por_rol, usuario_tien
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
+oauth2_scheme_optional = OAuth2PasswordBearer(tokenUrl="login", auto_error=False)
+
+_ROLES_PRIORIDAD = (
+    "admin",
+    "supervisor",
+    "catastro",
+    "cartografia",
+    "fiscalizacion",
+    "consulta",
+)
 
 
 def obtener_roles_usuario(usuario_id, conn):
@@ -26,6 +37,17 @@ def obtener_roles_usuario(usuario_id, conn):
     )
     rows = cur.fetchall()
     return [r["nombre"] for r in rows]
+
+
+def resolver_rol_usuario(usuario_id: int, rol_fallback: str | None, conn) -> str:
+    """Rol efectivo: prioriza seguridad.usuario_roles; si no hay filas, usa usuarios.rol."""
+    roles = [normalizar_rol(r) for r in obtener_roles_usuario(usuario_id, conn)]
+    if roles:
+        for candidato in _ROLES_PRIORIDAD:
+            if candidato in roles:
+                return candidato
+        return roles[0]
+    return normalizar_rol(rol_fallback)
 
 
 def registrar_auditoria(usuario, accion, modulo="", detalle="", ip=""):
@@ -86,26 +108,25 @@ def registrar_auditoria_login(usuario: str, ip: str, exito: bool, mensaje: str):
             pass
 
 
-def obtener_usuario_actual(token: str = Depends(oauth2_scheme)):
+def _usuario_desde_payload(payload: dict) -> dict:
+    usuario = payload.get("sub")
+    if usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return {
+        "usuario": usuario,
+        "rol": payload.get("rol"),
+        "nombre": payload.get("nombre"),
+    }
+
+
+def _decodificar_token(token: str) -> dict:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        usuario = payload.get("sub")
-        rol = payload.get("rol")
-        nombre = payload.get("nombre")
-
-        if usuario is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token inválido",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        return {
-            "usuario": usuario,
-            "rol": rol,
-            "nombre": nombre,
-        }
-
+        return _usuario_desde_payload(payload)
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -114,9 +135,39 @@ def obtener_usuario_actual(token: str = Depends(oauth2_scheme)):
         )
 
 
+def resolver_token_acceso(
+    bearer: Optional[str] = Depends(oauth2_scheme_optional),
+    access_token: Optional[str] = Query(
+        None,
+        description="JWT alternativo (descargas y tiles cuando no hay cabecera Authorization)",
+    ),
+) -> str:
+    token = bearer
+    if not token and access_token:
+        token = access_token.strip()
+    if not token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="No autenticado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    return token
+
+
+def obtener_usuario_actual(token: str = Depends(oauth2_scheme)):
+    return _decodificar_token(token)
+
+
+def obtener_usuario_token_o_query(token: str = Depends(resolver_token_acceso)):
+    """Autenticación por Bearer o query ?access_token= (recursos binarios)."""
+    return _decodificar_token(token)
+
+
 def requerir_roles(*roles_permitidos):
+    roles_norm = {normalizar_rol(r) for r in roles_permitidos}
+
     def validador(usuario_actual: dict = Depends(obtener_usuario_actual)):
-        if usuario_actual.get("rol") not in roles_permitidos:
+        if normalizar_rol(usuario_actual.get("rol")) not in roles_norm:
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="No tiene permisos para esta operación",
@@ -126,48 +177,32 @@ def requerir_roles(*roles_permitidos):
 
 
 def require_role(roles_permitidos: list):
-    async def verifier(token: str = Security(oauth2_scheme)):
-        credentials_exception = HTTPException(status_code=401, detail="No autorizado")
+    """Compatibilidad: valida rol del JWT (misma fuente que login y requerir_roles)."""
+    roles_norm = {normalizar_rol(r) for r in roles_permitidos}
 
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            usuario = payload.get("sub")
-            if usuario is None:
-                raise credentials_exception
-        except JWTError:
-            raise credentials_exception
-
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, usuario
-            FROM seguridad.usuarios
-            WHERE usuario = %s
-            AND activo = TRUE
-            """,
-            (usuario,),
-        )
-        user = cur.fetchone()
-        if not user:
-            raise credentials_exception
-
-        usuario_id = user["id"]
-        roles = obtener_roles_usuario(usuario_id, conn)
-        cur.close()
-        conn.close()
-
-        autorizado = any(r in roles for r in roles_permitidos)
-        if not autorizado:
+    async def verifier(usuario_actual: dict = Depends(obtener_usuario_actual)):
+        rol = normalizar_rol(usuario_actual.get("rol"))
+        if rol not in roles_norm:
             raise HTTPException(status_code=403, detail="Permisos insuficientes")
-
-        return {"usuario": usuario, "roles": roles}
+        return {"usuario": usuario_actual.get("usuario"), "roles": [rol]}
 
     return verifier
 
 
 def requerir_permiso(permiso: str):
     def validador(usuario_actual: dict = Depends(obtener_usuario_actual)):
+        if not usuario_tiene_permiso(usuario_actual, permiso):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Permiso requerido: {permiso}",
+            )
+        return usuario_actual
+    return validador
+
+
+def requerir_permiso_token_o_query(permiso: str):
+    """Como requerir_permiso, pero acepta token en cabecera o ?access_token=."""
+    def validador(usuario_actual: dict = Depends(obtener_usuario_token_o_query)):
         if not usuario_tiene_permiso(usuario_actual, permiso):
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,

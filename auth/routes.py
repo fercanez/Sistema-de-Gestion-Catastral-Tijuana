@@ -7,8 +7,8 @@ from auth.dependencies import (
     crear_token_acceso,
     obtener_usuario_actual,
     registrar_auditoria_login,
-    requerir_roles,
-    require_role,
+    requerir_permiso,
+    resolver_rol_usuario,
     verificar_password,
 )
 from auth.models import LoginRequest
@@ -71,9 +71,11 @@ def login(datos: LoginRequest, request: Request):
         )
         conn.commit()
 
+        rol_efectivo = resolver_rol_usuario(row["id"], row["rol"], conn)
+
         token = crear_token_acceso({
             "sub": row["usuario"],
-            "rol": row["rol"],
+            "rol": rol_efectivo,
             "nombre": row["nombre_completo"],
         })
 
@@ -84,8 +86,8 @@ def login(datos: LoginRequest, request: Request):
             "token_type": "bearer",
             "usuario": row["usuario"],
             "nombre": row["nombre_completo"],
-            "rol": row["rol"],
-            "permisos": permisos_por_rol(row["rol"]),
+            "rol": rol_efectivo,
+            "permisos": permisos_por_rol(rol_efectivo),
             "expira_minutos": ACCESS_TOKEN_EXPIRE_MINUTES,
         }
 
@@ -119,7 +121,7 @@ def me(usuario_actual: dict = Depends(obtener_usuario_actual)):
 
 
 @router.get("/seguridad/usuarios")
-def listar_usuarios(usuario_actual: dict = Depends(requerir_roles("admin"))):
+def listar_usuarios(usuario_actual: dict = Depends(requerir_permiso("administrar_usuarios"))):
     conn = None
     cur = None
     try:
@@ -155,7 +157,7 @@ def listar_usuarios(usuario_actual: dict = Depends(requerir_roles("admin"))):
 @router.get("/seguridad/auditoria-login")
 def auditoria_login(
     limite: int = Query(100, ge=1, le=1000),
-    usuario_actual: dict = Depends(requerir_roles("admin")),
+    usuario_actual: dict = Depends(requerir_permiso("ver_auditoria")),
 ):
     conn = None
     cur = None
@@ -194,16 +196,20 @@ def auditoria_login(
 @router.get("/seguridad/permisos")
 def obtener_permisos_usuario(usuario_actual: dict = Depends(obtener_usuario_actual)):
     rol = normalizar_rol(usuario_actual.get("rol"))
-    return {
+    respuesta = {
         "usuario": usuario_actual.get("usuario"),
         "rol": rol,
         "permisos": permisos_por_rol(rol),
-        "matriz": {k: sorted(list(v)) for k, v in ACL_BACKEND.items()},
     }
+    if rol == "admin":
+        respuesta["matriz"] = {k: sorted(list(v)) for k, v in ACL_BACKEND.items()}
+    return respuesta
 
 
 @router.get("/admin/permisos")
-def obtener_matriz_permisos_admin(user=Depends(require_role(["admin"]))):
+def obtener_matriz_permisos_admin(
+    usuario_actual: dict = Depends(requerir_permiso("administrar_usuarios")),
+):
     return {"matriz": {k: sorted(list(v)) for k, v in ACL_BACKEND.items()}}
 
 

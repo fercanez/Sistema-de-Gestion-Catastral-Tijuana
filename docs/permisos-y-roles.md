@@ -11,7 +11,9 @@ Su objetivo es explicar:
 - qué controles de acceso aplica el backend
 - cómo interpretar la seguridad funcional del sistema
 
-No sustituye una matriz final exhaustiva rol -> endpoint -> acción, pero sí establece la base conceptual y operativa del modelo de acceso.
+No sustituye por sí solo la matriz exhaustiva rol → permiso → endpoint, pero sí establece la base conceptual y operativa del modelo de acceso.
+
+> **Auditoría realizada (2026-06-01):** ver [`docs/matriz-acl-endpoints.md`](matriz-acl-endpoints.md) para el inventario completo de endpoints, controles reales, brechas (GAP) y riesgos críticos (CRIT) identificados en código.
 
 ---
 

@@ -119,6 +119,13 @@ Descripción del modelo de seguridad:
 - autorización
 - roles detectados
 - permisos funcionales esperables
+
+### `docs/matriz-acl-endpoints.md`
+Auditoría endpoint por endpoint (BT-003):
+- matriz ACL declarada vs controles reales
+- inventario de 110 rutas con mecanismo de auth
+- hallazgos CRIT y GAP priorizados
+- mapa permiso → endpoints objetivo para corrección
 - recomendaciones
 
 ---
@@ -319,6 +326,7 @@ Orden recomendado:
 | Entender datos y entidades | `docs/modelo-de-datos.md` |
 | Revisar rutas de API | `docs/endpoints.md` |
 | Entender permisos y roles | `docs/permisos-y-roles.md` |
+| Auditar control de acceso por endpoint | `docs/matriz-acl-endpoints.md` |
 | Entender procesos del negocio | `docs/flujos-operativos.md` |
 | Operar el servidor | `docs/operacion-servidor.md` |
 | Desplegar cambios | `docs/despliegue.md` |
