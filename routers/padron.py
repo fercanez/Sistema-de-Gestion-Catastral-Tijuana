@@ -8,7 +8,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
-from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_roles, requerir_permiso_token_o_query
+from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_permiso_token_o_query
+
+_permiso_consulta = requerir_permiso("consulta")
+_permiso_editar_catastro = requerir_permiso("editar_catastro")
+_permiso_consulta_query = requerir_permiso_token_o_query("consulta")
 from database import get_conn, asegurar_tabla_predio_condominio
 
 router = APIRouter(tags=["padron"])
@@ -84,7 +88,7 @@ SQL_SELECT_PADRON_UNICO = """
 def buscar_padron(
     clave: str = Query(..., min_length=1),
     limite: int = Query(100, ge=1, le=5000),
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(_permiso_consulta)
 ):
     try:
         limite = min(max(limite, 1), 5000)
@@ -131,7 +135,7 @@ def busqueda_avanzada(
     calle: str = Query("", max_length=150),
     numero: str = Query("", max_length=50),
     limite: int = Query(100, ge=1, le=5000),
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(_permiso_consulta)
 ):
     try:
         limite = min(max(limite, 1), 5000)
@@ -195,7 +199,7 @@ def busqueda_avanzada(
 
 
 @router.get("/padron/{clave}/ficha")
-def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def ficha_padron(clave: str, usuario_actual: dict = Depends(_permiso_consulta)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -269,12 +273,12 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
 
 
 @router.get("/predios/{clave}/ficha")
-def ficha_predio_alias(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def ficha_predio_alias(clave: str, usuario_actual: dict = Depends(_permiso_consulta)):
     return ficha_padron(clave, usuario_actual)
 
 
 @router.get("/predios/{clave}/geojson")
-def geojson_predio(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def geojson_predio(clave: str, usuario_actual: dict = Depends(_permiso_consulta)):
     """Geometría del predio para mapa (Feature GeoJSON)."""
     try:
         conn = get_conn()
@@ -310,7 +314,7 @@ def geojson_predio(clave: str, usuario_actual: dict = Depends(obtener_usuario_ac
 def buscar_predios(
     clave: str = Query(..., min_length=1),
     limite: int = Query(100, ge=1, le=5000),
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(_permiso_consulta)
 ):
     return buscar_padron(clave=clave, limite=limite, usuario_actual=usuario_actual)
 
@@ -319,7 +323,7 @@ def buscar_predios(
 def predio_por_coordenada(
     lon: float = Query(...),
     lat: float = Query(...),
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(_permiso_consulta)
 ):
     try:
         conn = get_conn()
@@ -377,7 +381,7 @@ def predios_cercanos(
     lon: float = Query(...),
     lat: float = Query(...),
     radio: float = Query(50, ge=1, le=500),
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(_permiso_consulta)
 ):
     try:
         conn = get_conn()
@@ -432,7 +436,7 @@ def predios_cercanos(
 
 
 @router.get("/padron/catalogo/usos-tasa")
-def listar_usos_tasa(usuario_actual: dict = Depends(obtener_usuario_actual)):
+def listar_usos_tasa(usuario_actual: dict = Depends(_permiso_consulta)):
     """Catalogo de usos de suelo con tasa predial (catalogos.cat_tasas)."""
     try:
         conn = get_conn()
@@ -457,7 +461,7 @@ def listar_usos_tasa(usuario_actual: dict = Depends(obtener_usuario_actual)):
 def listar_zonas_homogeneas(
     anio: int = Query(2026, ge=2000, le=2100),
     q: str = Query("", max_length=120),
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Catalogo de zonas homogeneas (Subsector+Homoclave+Seccion) por anio fiscal."""
     try:
@@ -781,7 +785,7 @@ def _filas_zh_para_analisis(cur, anios):
 
 @router.get("/padron/analisis/zonas-homogeneas/filtros")
 def filtros_analisis_zonas_homogeneas(
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Valores distintos para filtros del modulo de evolucion por anio."""
     try:
@@ -819,7 +823,7 @@ def filtros_analisis_zonas_homogeneas(
 
 @router.get("/padron/analisis/zonas-homogeneas/plantilla.csv")
 def plantilla_importacion_zonas_homogeneas(
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Plantilla CSV para importar zonas homogeneas de un ejercicio."""
     header = "anio,zona,sector,subsector,homoclave_col_fracc,seccion,descripcion_col_fracc,valor_m2,codigo_zona_homogenea,zona_homogenea"
@@ -843,7 +847,7 @@ def evolucion_zonas_homogeneas(
     limite: int = Query(200, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     indice: int = Query(0, ge=0),
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Evolucion de valor/m2 por zona homogenea por ejercicios disponibles."""
     try:
@@ -1108,7 +1112,7 @@ def _ajustar_valor_zh_adicional(cur, clave_zonah: str, anio: int, valor_m2: floa
 @router.patch("/padron/analisis/zonas-homogeneas")
 def ajustar_zona_homogenea(
     payload: AjusteZonaHomogeneaPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Corrige valor/m2, descripcion o clasificacion de una zona homogenea por ejercicio."""
     clave = payload.clave_zonah.strip().upper()
@@ -1232,7 +1236,7 @@ def _insertar_zh_adicional(cur, anio: int, meta: dict, valor_m2: float, tipo_zon
 @router.post("/padron/analisis/zonas-homogeneas")
 def crear_zona_homogenea(
     payload: NuevaZonaHomogeneaPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Registra una nueva zona homogenea en el catalogo fiscal o adicional."""
     meta = {
@@ -1401,7 +1405,7 @@ def _importar_filas_zonas(cur, anio_objetivo: int, filas: list, reemplazar: bool
 @router.post("/padron/analisis/zonas-homogeneas/importar")
 def importar_zonas_homogeneas_json(
     payload: ImportZonasHomogeneasPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Importa zonas homogeneas desde JSON (CSV/Excel parseado en frontend)."""
     if not payload.filas:
@@ -1435,7 +1439,7 @@ async def importar_zonas_homogeneas_archivo(
     archivo: UploadFile = File(...),
     anio: int = Form(2027),
     reemplazar: bool = Form(False),
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Importa CSV de zonas homogeneas para un ejercicio fiscal."""
     nombre = (archivo.filename or "").lower()
@@ -1472,7 +1476,7 @@ def tile_predios(
     z: int,
     x: int,
     y: int,
-    usuario_actual: dict = Depends(requerir_permiso_token_o_query("consulta")),
+    usuario_actual: dict = Depends(_permiso_consulta_query),
 ):
     try:
         conn = get_conn()
@@ -1794,7 +1798,7 @@ def _where_unidades_condominio(
 
 @router.get("/padron/condominios/tipos")
 def tipos_condominio_padron(
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Catálogo institucional de tipos y conteo real en padrón."""
     try:
@@ -1858,7 +1862,7 @@ def resumen_condominios_padron(
     clave_prefijo: str = Query("", max_length=20),
     colonia: str = Query("", max_length=150),
     q: str = Query("", max_length=150),
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Totales del padrón filtrados por tipo de tenencia."""
     try:
@@ -1920,7 +1924,7 @@ def catalogo_condominios_padron(
     clave_prefijo: str = Query("", max_length=20),
     limite: int = Query(200, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Agrupa predios por tipo de tenencia."""
     try:
@@ -1995,7 +1999,7 @@ def unidades_condominio_padron(
     clave_prefijo: str = Query("", max_length=20),
     limite: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(_permiso_consulta),
 ):
     """Unidades del padrón filtradas por tipo de tenencia."""
     try:
@@ -2145,7 +2149,7 @@ def _aplicar_tenencia_predio(cur, clave: str, tenencia: str, usuario: str = "sis
 @router.put("/padron/tenencia/masiva")
 def actualizar_tenencia_masiva(
     payload: TenenciaMasivaPadronPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Asignación masiva de tipo de tenencia."""
     if not payload.confirmar:
@@ -2207,7 +2211,7 @@ def actualizar_tenencia_masiva(
 def resumen_tenencia_por_prefijo(
     prefijo: str = Query(..., min_length=1, max_length=20),
     tipo_actual: str = Query("", max_length=5),
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Vista previa: predios cuya clave empieza con el prefijo indicado."""
     pref = (prefijo or "").strip().upper()
@@ -2261,7 +2265,7 @@ def resumen_tenencia_por_prefijo(
 @router.put("/padron/tenencia/por-prefijo")
 def aplicar_tenencia_por_prefijo(
     payload: TenenciaPrefijoPadronPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Asigna tenencia a todas las claves que empiezan con el prefijo."""
     if not payload.confirmar:
@@ -2452,7 +2456,7 @@ def resumen_regimen_masivo_padron(
     origenes: str = Query("NULL", max_length=80),
     destino: str = Query("P", max_length=5),
     excluir_condominio_catastro: bool = Query(True),
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Vista previa: marcar predios del padrón (Sin dato, Normal, etc.) hacia P, N o C."""
     dest = (destino or "P").strip().upper()
@@ -2484,7 +2488,7 @@ def resumen_regimen_masivo_padron(
 @router.post("/padron/condominios/regimen-masivo")
 def aplicar_regimen_masivo_padron(
     payload: RegimenMasivoPadronPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Actualización masiva del campo padron.condominio."""
     if not payload.confirmar:
@@ -2535,7 +2539,7 @@ def aplicar_regimen_masivo_padron(
 @router.get("/padron/condominios/sin-dato-a-privado/resumen")
 def resumen_sin_dato_a_privado(
     excluir_condominio_catastro: bool = Query(True),
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Compatibilidad: vista previa Sin dato → Privado (P)."""
     data = resumen_regimen_masivo_padron("NULL", "P", excluir_condominio_catastro, usuario_actual)
@@ -2547,7 +2551,7 @@ def resumen_sin_dato_a_privado(
 @router.post("/padron/condominios/sin-dato-a-privado")
 def aplicar_sin_dato_a_privado(
     payload: SinDatoAPrivadoPayload,
-    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Compatibilidad: Sin dato → Privado (P)."""
     return aplicar_regimen_masivo_padron(

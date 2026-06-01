@@ -4,14 +4,20 @@ import os
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import FileResponse
 
-from auth.dependencies import obtener_usuario_actual, requerir_permiso, requerir_permiso_token_o_query
+from auth.dependencies import requerir_permiso, requerir_permiso_token_o_query
+
+_permiso_ver_expediente = requerir_permiso("ver_expediente")
+_permiso_ver_documentos = requerir_permiso("ver_documentos")
+_permiso_ver_documentos_query = requerir_permiso_token_o_query("ver_documentos")
+_permiso_editar_cartografia = requerir_permiso("editar_cartografia")
+_permiso_ver_fiscal = requerir_permiso("ver_fiscal")
 from database import get_conn
 
 router = APIRouter(tags=["expediente"])
 
 
 @router.get("/control-cartografico/estadisticas")
-def estadisticas_control(usuario_actual: dict = Depends(obtener_usuario_actual)):
+def estadisticas_control(usuario_actual: dict = Depends(_permiso_editar_cartografia)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -58,7 +64,7 @@ def estadisticas_control(usuario_actual: dict = Depends(obtener_usuario_actual))
 @router.get("/control-cartografico/sin-geometria")
 def control_sin_geometria(
     limite: int = Query(100, ge=1, le=1000),
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(_permiso_editar_cartografia)
 ):
     try:
         conn = get_conn()
@@ -98,7 +104,7 @@ def control_sin_geometria(
 
 
 @router.get("/expediente/{clave}")
-def obtener_expediente_integral(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def obtener_expediente_integral(clave: str, usuario_actual: dict = Depends(_permiso_ver_expediente)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -223,7 +229,7 @@ def obtener_expediente_integral(clave: str, usuario_actual: dict = Depends(obten
 
 
 @router.get("/expediente/{clave}/historial")
-def historial_expediente(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def historial_expediente(clave: str, usuario_actual: dict = Depends(_permiso_ver_expediente)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -267,7 +273,7 @@ def historial_expediente(clave: str, usuario_actual: dict = Depends(obtener_usua
 @router.get("/expediente/{clave}/documentos")
 def documentos_expediente(
     clave: str,
-    usuario_actual: dict = Depends(requerir_permiso("ver_documentos")),
+    usuario_actual: dict = Depends(_permiso_ver_documentos),
 ):
     try:
         conn = get_conn()
@@ -308,7 +314,7 @@ def documentos_expediente(
 def abrir_documento(
     clave: str,
     archivo: str,
-    usuario_actual: dict = Depends(requerir_permiso_token_o_query("ver_documentos")),
+    usuario_actual: dict = Depends(_permiso_ver_documentos_query),
 ):
     # Protección contra path traversal: la ruta final, ya resuelta (sin '..',
     # symlinks, etc.), debe quedar estrictamente dentro de la carpeta base.
@@ -325,7 +331,7 @@ def abrir_documento(
 
 
 @router.get("/cambios-geometricos")
-def cambios_geometricos(usuario_actual: dict = Depends(obtener_usuario_actual)):
+def cambios_geometricos(usuario_actual: dict = Depends(_permiso_editar_cartografia)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -370,7 +376,7 @@ def cambios_geometricos(usuario_actual: dict = Depends(obtener_usuario_actual)):
 
 
 @router.get("/dashboard-cartografico")
-def dashboard_cartografico(usuario_actual: dict = Depends(obtener_usuario_actual)):
+def dashboard_cartografico(usuario_actual: dict = Depends(_permiso_editar_cartografia)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -420,7 +426,7 @@ def dashboard_cartografico(usuario_actual: dict = Depends(obtener_usuario_actual
 
 
 @router.get("/dashboard-fiscal")
-def dashboard_fiscal(usuario_actual: dict = Depends(requerir_permiso("ver_fiscal"))):
+def dashboard_fiscal(usuario_actual: dict = Depends(_permiso_ver_fiscal)):
     try:
         conn = get_conn()
         cur = conn.cursor()

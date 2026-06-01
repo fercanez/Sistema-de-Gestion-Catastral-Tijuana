@@ -3,14 +3,17 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from database import get_conn
 from auth.models import UsuarioNuevo, UsuarioActualizar, PasswordReset
-from auth.dependencies import require_role, registrar_auditoria, pwd_context, verificar_password
+from auth.dependencies import requerir_permiso, registrar_auditoria, pwd_context, verificar_password
+
+_permiso_administrar = requerir_permiso("administrar_usuarios")
+_permiso_auditoria = requerir_permiso("ver_auditoria")
 
 router = APIRouter(tags=["admin"])
 
 @router.get("/admin/auditoria")
 async def obtener_auditoria(
     limite: int = Query(200, ge=1, le=1000),
-    user = Depends(require_role(["admin"]))
+    user = Depends(_permiso_auditoria),
 ):
     conn = None
     cur = None
@@ -54,7 +57,7 @@ async def obtener_auditoria(
 
 @router.get("/admin/usuarios")
 async def obtener_usuarios(
-    user = Depends(require_role(["admin"]))
+    user = Depends(_permiso_administrar)
 ):
     conn = None
     cur = None
@@ -114,7 +117,7 @@ async def obtener_usuarios(
 
 @router.get("/admin/roles")
 async def obtener_roles(
-    user = Depends(require_role(["admin"]))
+    user = Depends(_permiso_administrar)
 ):
     conn = None
     cur = None
@@ -155,7 +158,7 @@ async def obtener_roles(
 async def crear_usuario_admin(
     nuevo: UsuarioNuevo,
     request: Request,
-    user = Depends(require_role(["admin"]))
+    user = Depends(_permiso_administrar)
 ):
     conn = None
     cur = None
@@ -255,7 +258,7 @@ async def actualizar_usuario_admin(
     usuario_id: int,
     datos: UsuarioActualizar,
     request: Request,
-    user = Depends(require_role(["admin"]))
+    user = Depends(_permiso_administrar)
 ):
     conn = None
     cur = None
@@ -358,7 +361,7 @@ async def reset_password_usuario_admin(
     usuario_id: int,
     datos: PasswordReset,
     request: Request,
-    user = Depends(require_role(["admin"]))
+    user = Depends(_permiso_administrar)
 ):
     conn = None
     cur = None
