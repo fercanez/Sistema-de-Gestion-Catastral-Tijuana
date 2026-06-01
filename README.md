@@ -409,9 +409,17 @@ Aun así, la documentación debe considerarse viva y seguir actualizándose conf
 - revisar periódicamente `docs/roadmap.md` para orientar prioridades
 - usar `docs/estructura-documentacion.md` como referencia si en el futuro se reorganiza `docs/`
 - mantener `README.md` y `docs/indice-documentacion.md` sincronizados
-
-
 ---
+
+## Recomendaciones de trabajo
+
+- documentar todo cambio relevante
+- usar `docs/checklist-produccion.md` antes de cambios productivos
+- registrar resultados en `docs/bitacora-cambios.md`
+- agregar nuevos pendientes en `docs/backlog-tecnico.md`
+- revisar periódicamente `docs/roadmap.md` para orientar prioridades
+- usar `docs/estructura-documentacion.md` como referencia si en el futuro se reorganiza `docs/`
+- mantener `README.md` y `docs/indice-documentacion.md` sincronizados
 
 ## Licencia
 
