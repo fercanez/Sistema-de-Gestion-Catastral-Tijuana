@@ -1,0 +1,662 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema de Gestión Catastral de FC Arquitectos</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css">
+  <link rel="stylesheet" href="./catastro.css?v=20260528_v27i_update_pp_rfc">
+</head>
+
+<body>
+
+<!-- LOGIN INSTITUCIONAL -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-card">
+    <div class="login-header">
+      <div class="login-logo">🏛️</div>
+      <div>
+        <h1>Sistema de Gestión Catastral</h1>
+        <p>BC · Acceso institucional</p>
+      </div>
+    </div>
+
+    <div class="login-body">
+      <h2>Ingresar</h2>
+      <label>Usuario</label>
+      <input id="loginUsuario" type="text" autocomplete="username" placeholder="Usuario">
+
+      <label>Contraseña</label>
+      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña">
+
+      <button id="btnLogin" type="button" onclick="loginInstitucional()">Ingresar</button>
+
+      <div id="loginMensaje" class="login-mensaje"></div>
+    </div>
+
+    <div class="login-footer">
+      Acceso exclusivo para personal autorizado. Todas las operaciones podrán ser registradas.
+    </div>
+  </div>
+</div>
+
+<!-- BARRA DE SESIÓN -->
+<div id="barraSesion" class="barra-sesion oculto">
+  <div>
+    <b id="sesionNombre">Usuario</b>
+    <span id="sesionRol">rol</span>
+  </div>
+  <button type="button" onclick="cerrarSesionInstitucional()">Salir</button>
+</div>
+
+
+<div id="panel" class="panel-modern">
+  <div class="panel-header">
+    <div class="panel-title">Catastro Mexicali</div>
+    <div class="panel-subtitle">Consulta y herramientas</div>
+  </div>
+
+  <div class="tabs">
+    <button type="button" class="tab-btn active" onclick="mostrarTab('tabConsulta', this)">🔍 Consulta</button>
+    <button type="button" class="tab-btn" onclick="mostrarTab('tabCapas', this)">🗺️ Capas</button>
+    <button type="button" class="tab-btn" onclick="mostrarTab('tabHerramientas', this)">📐 Herramientas</button>
+    <button type="button" class="tab-btn requiere-movimientos" onclick="mostrarTab('tabMovimientos', this)">📝 Movimientos</button>
+    <button type="button" class="tab-btn solo-admin" onclick="mostrarTab('tabAdministracion', this)">🔐 Admin</button>
+  </div>
+
+  <div id="tabConsulta" class="tab-content active">
+    <div class="card-panel consulta-unificada">
+      <div class="section-label">Búsqueda catastral</div>
+
+      <input type="text" id="claveInput" placeholder="CLAVE CATASTRAL">
+      <input type="text" id="nombreInput" placeholder="NOMBRE / RAZÓN SOCIAL">
+
+      <div class="busqueda-grid-2">
+        <input type="text" id="calleInput" placeholder="CALLE">
+        <input type="text" id="numeroInput" placeholder="NÚMERO OFICIAL">
+      </div>
+
+      <input type="text" id="coloniaInput" placeholder="COLONIA">
+
+      <button type="button" class="btn-busqueda-unica" onclick="buscarAvanzado()">🔎 Buscar</button>
+
+      <div id="contadorBusquedaGeneral" class="contador-busqueda contador-general">Sin búsqueda realizada</div>
+
+      <!-- Compatibilidad interna con funciones existentes -->
+      <div id="contadorClave" class="contador-busqueda contador-oculto">Sin búsqueda realizada</div>
+      <div id="contadorNombre" class="contador-busqueda contador-oculto">Sin búsqueda realizada</div>
+      <div id="contadorDireccion" class="contador-busqueda contador-oculto">Sin búsqueda realizada</div>
+    </div>
+
+    <div id="resultadosBusqueda"></div>
+    <div id="ficha"></div>
+  </div>
+
+  <div id="tabCapas" class="tab-content">
+    <div class="card-panel">
+      <div class="section-label">Mapa base</div>
+      <select id="baseLayerSelect" onchange="cambiarCapaBase()">
+        <option value="osm">OpenStreetMap</option>
+        <option value="esri">ESRI Satellite</option>
+        <option value="googleSat">Google Satellite</option>
+        <option value="googleHybrid" selected>Google Hybrid</option>
+      </select>
+    </div>
+
+    
+<div class="card-panel">
+      <div class="section-label">Capas WMS</div>
+
+      <div class="layer-item" data-layer-id="predios">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkPrediosWms" checked onchange="togglePrediosWms()">
+            <span class="layer-dot dot-red"></span>
+            <b>Predios GeoServer WMS</b>
+          </label>
+          <span id="opPrediosTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opPredios" oninput="cambiarOpacidadCapa('predios', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('predios')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('predios')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="fiscal">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkAdeudosFiscal" onchange="toggleAdeudosFiscal()">
+            <span class="layer-dot dot-green"></span>
+            <b>Temático fiscal local</b>
+          </label>
+          <span id="opFiscalTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opFiscal" oninput="cambiarOpacidadCapa('fiscal', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('fiscal')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('fiscal')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="colonias">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkColoniasWms" onchange="toggleColoniasWms()">
+            <span class="layer-dot dot-purple"></span>
+            <b>Colonias WMS</b>
+          </label>
+          <span id="opColoniasTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opColonias" oninput="cambiarOpacidadCapa('colonias', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('colonias')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('colonias')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="codigos">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkCodigosWms" onchange="toggleCodigosWms()">
+            <span class="layer-dot dot-orange"></span>
+            <b>Códigos postales WMS</b>
+          </label>
+          <span id="opCodigosTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opCodigos" oninput="cambiarOpacidadCapa('codigos', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('codigos')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('codigos')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="auditoria">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkCambiosGeom" onchange="toggleCambiosGeom()">
+            <span class="layer-dot dot-amber"></span>
+            <b>Auditoría geométrica</b>
+          </label>
+          <span id="opAuditoriaTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opAuditoria" oninput="cambiarOpacidadCapa('auditoria', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('auditoria')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('auditoria')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <label class="check-row dashboard-toggle-row">
+        <input type="checkbox" id="chkDashboard" onchange="toggleDashboardVisible()" checked>
+        <span>Panel control cartográfico</span>
+      </label>
+
+      <label class="check-row">
+        <input type="checkbox" id="chkLeyenda" onchange="toggleLeyendaDesdePanel()" checked>
+        <span>Leyenda dinámica flotante</span>
+      </label>
+
+      <div class="fiscal-legend">
+        <div><span class="legend-box legend-verde"></span> Sin adeudo</div>
+        <div><span class="legend-box legend-rojo"></span> Con adeudo</div>
+        <div><span class="legend-box legend-amarillo"></span> Sin dato fiscal</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tabHerramientas" class="tab-content">
+
+    <div class="card-panel">
+      <div class="section-label">Impresión institucional</div>
+      <button id="btnPdfInstitucional" class="perm-exportar-pdf" type="button" onclick="generarPDFInstitucional()">📄 Generar ficha PDF</button>
+      <div id="estadoPdfInstitucional" class="estado-pdf">Listo para generar PDF.</div>
+      <div class="nota-herramienta">
+        Genera un PDF del predio seleccionado con croquis, datos catastrales, estado fiscal y QR.
+      </div>
+    </div>
+
+    <div class="card-panel">
+      <div class="section-label">Medición</div>
+      <button type="button" class="perm-medir" onclick="alert('Herramienta de línea pendiente de integrar')">📏 Línea</button>
+      <button type="button" class="perm-medir" onclick="alert('Herramienta de polígono pendiente de integrar')">📐 Polígono</button>
+      <button type="button" class="perm-medir" onclick="alert('Borrar medición pendiente de integrar')">🗑️ Borrar medición</button>
+    </div>
+
+    <div class="card-panel">
+      <div class="section-label">Cotas y cuadro de construcción</div>
+      <button type="button" class="perm-editar-cartografia" onclick="alert('Generación de cotas pendiente de integrar')">📐 Generar cotas y cuadro</button>
+      <button type="button" class="perm-exportar-excel" onclick="exportarResultadosExcel()">⬇ Excel</button>
+    </div>
+  </div>
+
+  
+
+  <div id="tabMovimientos" class="tab-content">
+    <div class="card-panel movimientos-card">
+      <div class="section-label">Movimientos catastrales</div>
+      <button type="button" class="btn-modal-test" onclick="abrirModalCambioNombre()">🪪 Abrir ventana: Cambio de nombre</button>
+
+      <label class="input-label-mini">Tipo de movimiento</label>
+      <select id="movTipo">
+        <option value="CAMBIO_SUPERFICIE">Cambio de superficie</option>
+        <option value="CAMBIO_CONSTRUCCION">Cambio de construcción</option>
+        <option value="CAMBIO_USO_SUELO">Cambio de uso de suelo</option>
+        <option value="CAMBIO_ZONA_HOMOGENEA">Cambio de zona homogénea</option>
+        <option value="ASIGNACION_NUMERO_OFICIAL">Asignación de número oficial</option>
+        <option value="CAMBIO_NUMERO_OFICIAL">Cambio de número oficial</option>
+        <option value="CAMBIO_TITULARIDAD">Cambio de titularidad</option>
+        <option value="CAMBIO_NOMBRE">Cambio de nombre</option>
+        <option value="CAMBIO_CLAVE">Cambio de clave</option>
+        <option value="BLOQUEO">Bloqueo</option>
+        <option value="DESBLOQUEO">Desbloqueo</option>
+        <option value="BAJA_CLAVE">Baja de clave</option>
+        <option value="ALTA_CLAVE">Alta de clave</option>
+        <option value="SUBDIVISION">Subdivisión</option>
+        <option value="FUSION">Fusión</option>
+      </select>
+
+      <label class="input-label-mini">Clave catastral origen</label>
+      <input type="text" id="movClave" placeholder="CLAVE CATASTRAL">
+
+      <label class="input-label-mini">Clave nueva / destino</label>
+      <input type="text" id="movClaveNueva" placeholder="CLAVE NUEVA / DESTINO">
+
+      <div class="mov-grid-2">
+        <div>
+          <label class="input-label-mini">Campo</label>
+          <select id="movCampo">
+            <option value="superficie_documental">Superficie documental</option>
+            <option value="superficie_fisica">Superficie física</option>
+            <option value="superficie_privativa">Superficie privativa</option>
+            <option value="superficie_predial">Superficie predial</option>
+            <option value="superficie_construccion">Construcción</option>
+            <option value="uso_suelo">Uso de suelo</option>
+            <option value="zona_homogenea">Zona homogénea</option>
+            <option value="numero_oficial">Número oficial</option>
+            <option value="nombre_propietario">Nombre / titular</option>
+            <option value="porcentaje_indiviso">% indiviso</option>
+            <option value="tasa">Tasa</option>
+            <option value="vigencia">Vigencia</option>
+            <option value="condominio">Condominio</option>
+          </select>
+        </div>
+        <div>
+          <label class="input-label-mini">Valor nuevo</label>
+          <input type="text" id="movValorNuevo" placeholder="VALOR NUEVO">
+        </div>
+      </div>
+
+      <button type="button" class="btn-busqueda-unica" onclick="agregarDetalleMovimiento()">➕ Agregar cambio</button>
+
+      <div id="movDetallesLista" class="mov-detalles-lista">
+        Sin campos agregados.
+      </div>
+
+      <label class="input-label-mini">Motivo</label>
+      <input type="text" id="movMotivo" placeholder="MOTIVO DEL MOVIMIENTO">
+
+      <label class="input-label-mini">Observaciones</label>
+      <textarea id="movObservaciones" placeholder="OBSERVACIONES"></textarea>
+
+      <button type="button" class="btn-busqueda-unica perm-editar-catastro" onclick="crearMovimientoPadron()">💾 Guardar movimiento</button>
+      <div id="movMensaje" class="admin-mensaje"></div>
+    </div>
+
+    <div class="card-panel movimientos-card">
+      <div class="section-label">Historial de movimientos</div>
+      <div class="admin-toolbar">
+        <input type="text" id="movFiltroClave" placeholder="FILTRAR POR CLAVE">
+        <button type="button" onclick="cargarMovimientosPadron()">🔄</button>
+      </div>
+      <div id="movimientosTabla" class="admin-table-wrap">Sin movimientos cargados.</div>
+    </div>
+  </div>
+
+
+  <div id="tabAdministracion" class="tab-content">
+    <div class="card-panel admin-card">
+      <div class="section-label">Administración institucional</div>
+      <div class="admin-kpi-row">
+        <div class="admin-kpi"><span>Usuarios</span><b id="adminTotalUsuarios">...</b></div>
+        <div class="admin-kpi"><span>Activos</span><b id="adminUsuariosActivos">...</b></div>
+        <div class="admin-kpi"><span>Inactivos</span><b id="adminUsuariosInactivos">...</b></div>
+      </div>
+    </div>
+
+    <div class="card-panel admin-card">
+      <div class="section-label">Crear usuario</div>
+      <div class="admin-form">
+        <input type="text" id="adminNuevoUsuario" placeholder="Usuario">
+        <input type="text" id="adminNuevoNombre" placeholder="Nombre completo">
+        <input type="password" id="adminNuevoPassword" placeholder="Contraseña">
+        <select id="adminNuevoRol">
+          <option value="consulta">consulta</option>
+          <option value="catastro">catastro</option>
+          <option value="cartografia">cartografia</option>
+          <option value="fiscalizacion">fiscalizacion</option>
+          <option value="supervisor">supervisor</option>
+          <option value="admin">admin</option>
+        </select>
+        <button type="button" onclick="crearUsuarioAdmin()">➕ Crear usuario</button>
+      </div>
+      <div id="adminMensaje" class="admin-mensaje"></div>
+    </div>
+
+    <div class="card-panel admin-card">
+      <div class="section-label">Usuarios del sistema</div>
+      <div class="admin-toolbar">
+        <input type="text" id="adminFiltroUsuarios" placeholder="Filtrar..." onkeyup="filtrarUsuariosAdmin()">
+        <button type="button" onclick="cargarUsuariosAdmin()">🔄</button>
+      </div>
+      <div id="adminUsuariosTabla" class="admin-table-wrap">Cargando usuarios...</div>
+    </div>
+
+    
+    <div class="card-panel admin-card">
+      <div class="section-label">Matriz de permisos por rol</div>
+      <div class="permisos-info">
+        Estos permisos controlan qué módulos y acciones se muestran en el frontend.
+        La validación definitiva también debe permanecer protegida en FastAPI.
+      </div>
+      <div class="permisos-matriz-wrap">
+        <table class="permisos-matriz">
+          <thead>
+            <tr>
+              <th>Rol</th><th>Usuarios</th><th>Auditoría</th><th>Cartografía</th><th>Catastro</th><th>Fiscal</th><th>PDF</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>admin</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+            <tr><td>supervisor</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
+            <tr><td>cartografia</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
+            <tr><td>catastro</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td></tr>
+            <tr><td>fiscalizacion</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
+            <tr><td>consulta</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+<div class="card-panel admin-card">
+      <div class="section-label">Auditoría institucional</div>
+      <div class="admin-toolbar only-btn">
+        <button type="button" onclick="cargarAuditoriaAdmin()">🔄 Actualizar auditoría</button>
+      </div>
+      <div id="adminAuditoriaTabla" class="admin-table-wrap">Sin datos.</div>
+    </div>
+  </div>
+
+</div>
+
+<button id="btnMostrarPanel" class="btn-mostrar-panel oculto" onclick="mostrarPanelPrincipal()">☰ Catastro</button>
+
+<div id="map"></div>
+
+<div id="dashboardCartografico">
+  <h4>
+    <span>Control cartográfico</span>
+    <button type="button" onclick="toggleDashboard()" class="mini-btn">—</button>
+  </h4>
+
+  <div id="dashboardContenido">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span>Total predios</span>
+        <b id="dashTotal">...</b>
+      </div>
+      <div class="kpi-card">
+        <span>Cobertura</span>
+        <b id="dashCobertura">...</b>
+      </div>
+      <div class="kpi-card kpi-ok">
+        <span>Sin adeudo</span>
+        <b id="dashSinAdeudo">...</b>
+      </div>
+      <div class="kpi-card kpi-danger">
+        <span>Con adeudo</span>
+        <b id="dashConAdeudo">...</b>
+      </div>
+    </div>
+
+    <div class="dashboard-row"><span>Dibujados:</span><span id="dashDibujados" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Sin geometría:</span><span id="dashSinGeom" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Cambios:</span><span id="dashCambios" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Adeudo total:</span><span id="dashAdeudoTotal" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Valor catastral:</span><span id="dashValorTotal" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Con documentos:</span><span id="dashConDocs" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Sin documentos:</span><span id="dashSinDocs" class="dashboard-value">...</span></div>
+  </div>
+</div>
+
+
+
+<div id="leyendaDinamica" class="leyenda-dinamica">
+  <div class="leyenda-header">
+    <span>🧭 Leyenda</span>
+    <div class="leyenda-actions">
+      <button type="button" onclick="minimizarLeyendaDinamica()" title="Minimizar">—</button>
+      <button type="button" onclick="toggleLeyendaDinamica()" title="Ocultar">×</button>
+    </div>
+  </div>
+  <div id="leyendaContenido" class="leyenda-contenido"></div>
+</div>
+
+<button id="btnMostrarLeyenda" class="btn-mostrar-leyenda oculto" onclick="toggleLeyendaDinamica()">🧭 Leyenda</button>
+
+<div id="tablaResultadosFlotante" class="tabla-flotante oculto">
+  <div class="tabla-header">
+    <span id="tablaTitulo">Resultados</span>
+    <div class="tabla-actions">
+      <button type="button" class="tabla-small-btn" onclick="toggleTablaCompacta()">Compacto</button>
+      <button type="button" class="tabla-small-btn" onclick="exportarResultadosExcel()">⬇ Excel</button>
+      <button type="button" class="tabla-small-btn" onclick="cerrarTablaResultados()">×</button>
+    </div>
+  </div>
+
+  <div class="datagrid-toolbar">
+    <input type="text" id="filtroTablaResultados" placeholder="Filtro general..." onkeyup="filtrarTablaResultados()">
+    <select id="pageSizeResultados" onchange="cambiarPageSizeResultados()">
+      <option value="10">10 filas</option>
+      <option value="25" selected>25 filas</option>
+      <option value="50">50 filas</option>
+      <option value="100">100 filas</option>
+      <option value="500">500 filas</option>
+      <option value="1000">1000 filas</option>
+    </select>
+  </div>
+
+  <div id="tablaResultadosContenido"></div>
+
+  <div class="datagrid-footer">
+    <span id="tablaResumen">Sin resultados</span>
+    <div>
+      <button type="button" class="tabla-small-btn" onclick="paginaResultadosAnterior()">◀</button>
+      <span id="tablaPagina">1 / 1</span>
+      <button type="button" class="tabla-small-btn" onclick="paginaResultadosSiguiente()">▶</button>
+    </div>
+  </div>
+</div>
+
+<div id="fichaFlotante" class="ficha-flotante oculto">
+  <div id="fichaFlotanteHeader" class="ficha-flotante-header">
+    <div>
+      <div class="ficha-flotante-title">Información del predio</div>
+      <div id="fichaFlotanteClave" class="ficha-flotante-clave">Sin selección</div>
+    </div>
+    <div class="ficha-flotante-actions">
+      <button type="button" onclick="minimizarFichaFlotante()" title="Minimizar">—</button>
+      <button type="button" onclick="cerrarFichaFlotante()" title="Cerrar">×</button>
+    </div>
+  </div>
+  <div id="fichaFlotanteBody" class="ficha-flotante-body"></div>
+</div>
+
+<canvas id="qrPdfTemp" style="display:none;"></canvas>
+<div id="popup"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="./catastro.js?v=20260529_v28b_restore_ficha_modal"></script>
+
+
+<!-- ============================================================
+     v27 - Modal institucional Cambio de Nombre
+============================================================ -->
+<div id="modalMovimientoNombre" class="modal-movimiento-overlay oculto">
+  <div class="modal-movimiento-card">
+    <div class="modal-movimiento-left">
+      <div class="modal-icon">🏛️</div>
+      <h2>Movimiento Catastral</h2>
+      <h3>Cambio de Nombre / Titular</h3>
+      <p>
+        Este módulo registra una solicitud institucional para modificar el titular
+        asociado a la clave catastral seleccionada.
+      </p>
+      <div class="modal-nota">
+        La solicitud queda en historial y posteriormente puede ser aplicada al padrón.
+      </div>
+    </div>
+
+    <div class="modal-movimiento-right">
+      <button type="button" class="modal-cerrar" onclick="cerrarModalCambioNombre()">×</button>
+
+      <div class="section-label">Datos del movimiento</div>
+
+      <label class="input-label-mini">Clave catastral</label>
+      <input type="text" id="modalMovClave" placeholder="CLAVE CATASTRAL">
+
+      <label class="input-label-mini">Nombre actual</label>
+      <input type="text" id="modalMovNombreActual" placeholder="NOMBRE ACTUAL" readonly>
+
+      <label class="input-label-mini">Tipo de persona</label>
+      <select id="modalMovTipoPersona" onchange="cambiarTipoPersonaModal()">
+        <option value="FISICA">PERSONA FÍSICA</option>
+        <option value="MORAL">PERSONA MORAL</option>
+      </select>
+
+      <div id="bloquePersonaFisica">
+        <label class="input-label-mini">Primer apellido</label>
+        <input type="text" id="modalMovPrimerApellido" placeholder="PRIMER APELLIDO">
+
+        <label class="input-label-mini">Segundo apellido</label>
+        <input type="text" id="modalMovSegundoApellido" placeholder="SEGUNDO APELLIDO">
+
+        <label class="input-label-mini">Nombre(s)</label>
+        <input type="text" id="modalMovNombres" placeholder="NOMBRE(S)">
+      </div>
+
+      <div id="bloquePersonaMoral" class="oculto">
+        <label class="input-label-mini">Razón social</label>
+        <input type="text" id="modalMovRazonSocial" placeholder="RAZÓN SOCIAL">
+      </div>
+
+      <label class="input-label-mini">Nombre completo generado</label>
+      <input type="text" id="modalMovNombreNuevo" placeholder="NOMBRE COMPLETO GENERADO" readonly>
+
+      <label class="input-label-mini">RFC</label>
+      <input type="text" id="modalMovRFC" placeholder="RFC">
+
+      <label class="input-label-mini">Motivo</label>
+      <input type="text" id="modalMovMotivo" placeholder="MOTIVO DEL CAMBIO">
+
+      <label class="input-label-mini">Observaciones</label>
+      <textarea id="modalMovObservaciones" placeholder="OBSERVACIONES"></textarea>
+
+      <button type="button" class="btn-modal-principal" onclick="guardarCambioNombreModal()">💾 Guardar solicitud</button>
+
+      <div id="modalMovMensaje" class="modal-mov-msg"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     v27b - Modal seguimiento movimiento
+============================================================ -->
+<div id="modalSeguimientoMovimiento" class="modal-seguimiento-overlay oculto">
+  <div class="modal-seguimiento-card">
+    <button type="button" class="modal-cerrar" onclick="cerrarModalSeguimientoMovimiento()">×</button>
+
+    <div class="seguimiento-icon">📋</div>
+    <h2>Seguimiento del Movimiento</h2>
+
+    <div class="seguimiento-row">
+      <span>Folio</span>
+      <b id="segMovFolio">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Clave catastral</span>
+      <b id="segMovClave">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Tipo</span>
+      <b id="segMovTipo">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Estado</span>
+      <b id="segMovEstado">BORRADOR</b>
+    </div>
+
+    <div class="seguimiento-etapas">
+      <div class="etapa activa">1<br><small>Solicitud</small></div>
+      <div class="etapa">2<br><small>Revisión</small></div>
+      <div class="etapa">3<br><small>Autorización</small></div>
+      <div class="etapa">4<br><small>Aplicación</small></div>
+    </div>
+
+    <div class="seguimiento-actions">
+      <button type="button" onclick="cerrarModalSeguimientoMovimiento()">Cerrar</button>
+      <button type="button" class="principal" onclick="irHistorialMovimiento()">Ver historial</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     v27e - Modal aplicar movimiento seguro
+============================================================ -->
+<div id="modalAplicarMovimiento" class="modal-aplicar-overlay oculto">
+  <div class="modal-aplicar-card">
+    <button type="button" class="modal-cerrar" onclick="cerrarModalAplicarMovimiento()">×</button>
+
+    <div class="seguimiento-icon">✅</div>
+    <h2>Aplicar Movimiento al Padrón</h2>
+
+    <div class="seguimiento-row">
+      <span>Folio</span>
+      <b id="aplicarMovFolio">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Clave catastral</span>
+      <b id="aplicarMovClave">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Tipo</span>
+      <b id="aplicarMovTipo">---</b>
+    </div>
+
+    <div class="modal-alerta-aplicar">
+      Esta acción modificará la base real del padrón catastral y quedará registrada en auditoría.
+    </div>
+
+    <label class="input-label-mini">Observaciones de aplicación</label>
+    <textarea id="aplicarMovObservaciones" placeholder="OBSERVACIONES DE APLICACIÓN"></textarea>
+
+    <div class="seguimiento-actions">
+      <button type="button" onclick="cerrarModalAplicarMovimiento()">Cancelar</button>
+      <button type="button" class="principal" onclick="confirmarAplicarMovimientoModal()">Aplicar</button>
+    </div>
+
+    <div id="aplicarMovMensaje" class="modal-mov-msg"></div>
+  </div>
+</div>
+
+</body>
+</html>

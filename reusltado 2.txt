@@ -1,0 +1,202 @@
+|table_schema|table_name                   |ordinal_position|column_name          |data_type                  |
+|------------|-----------------------------|----------------|---------------------|---------------------------|
+|auditoria   |bitacora                     |1               |id                   |bigint                     |
+|auditoria   |bitacora                     |2               |esquema              |character varying          |
+|auditoria   |bitacora                     |3               |tabla                |character varying          |
+|auditoria   |bitacora                     |4               |registro_id          |bigint                     |
+|auditoria   |bitacora                     |5               |accion               |character varying          |
+|auditoria   |bitacora                     |6               |datos_anteriores     |jsonb                      |
+|auditoria   |bitacora                     |7               |datos_nuevos         |jsonb                      |
+|auditoria   |bitacora                     |8               |usuario              |character varying          |
+|auditoria   |bitacora                     |9               |fecha                |timestamp without time zone|
+|auditoria   |cambios_geometricos_predios  |1               |id_cambio            |bigint                     |
+|auditoria   |cambios_geometricos_predios  |2               |clave_catastral      |text                       |
+|auditoria   |cambios_geometricos_predios  |3               |area_catastro        |numeric                    |
+|auditoria   |cambios_geometricos_predios  |4               |area_geonode         |numeric                    |
+|auditoria   |cambios_geometricos_predios  |5               |diferencia_area      |numeric                    |
+|auditoria   |cambios_geometricos_predios  |6               |centroid_x_catastro  |numeric                    |
+|auditoria   |cambios_geometricos_predios  |7               |centroid_y_catastro  |numeric                    |
+|auditoria   |cambios_geometricos_predios  |8               |centroid_x_geonode   |numeric                    |
+|auditoria   |cambios_geometricos_predios  |9               |centroid_y_geonode   |numeric                    |
+|auditoria   |cambios_geometricos_predios  |10              |distancia_centroides |numeric                    |
+|auditoria   |cambios_geometricos_predios  |11              |tipo_cambio          |text                       |
+|auditoria   |cambios_geometricos_predios  |12              |fecha_deteccion      |timestamp without time zone|
+|auditoria   |cambios_geometricos_predios  |13              |usuario_ejecucion    |text                       |
+|auditoria   |cambios_geometricos_predios  |14              |observaciones        |text                       |
+|auditoria   |cambios_geometricos_predios  |15              |prioridad            |text                       |
+|auditoria   |cambios_geometricos_predios  |16              |porcentaje_cambio    |numeric                    |
+|auditoria   |cambios_geometricos_predios  |17              |requiere_revision    |boolean                    |
+|auditoria   |expedientes_historico        |1               |id_historico         |bigint                     |
+|auditoria   |expedientes_historico        |2               |id_expediente        |bigint                     |
+|auditoria   |expedientes_historico        |3               |clave_catastral      |text                       |
+|auditoria   |expedientes_historico        |4               |estatus              |text                       |
+|auditoria   |expedientes_historico        |5               |tiene_documentos     |boolean                    |
+|auditoria   |expedientes_historico        |6               |tiene_cartografia    |boolean                    |
+|auditoria   |expedientes_historico        |7               |tiene_construccion   |boolean                    |
+|auditoria   |expedientes_historico        |8               |tiene_avaluo         |boolean                    |
+|auditoria   |expedientes_historico        |9               |tiene_inspeccion     |boolean                    |
+|auditoria   |expedientes_historico        |10              |tiene_rppc           |boolean                    |
+|auditoria   |expedientes_historico        |11              |tiene_fotografia     |boolean                    |
+|auditoria   |expedientes_historico        |12              |tiene_cedula         |boolean                    |
+|auditoria   |expedientes_historico        |13              |tiene_historial      |boolean                    |
+|auditoria   |expedientes_historico        |14              |observaciones        |text                       |
+|auditoria   |expedientes_historico        |15              |accion               |text                       |
+|auditoria   |expedientes_historico        |16              |usuario_modifico     |text                       |
+|auditoria   |expedientes_historico        |17              |fecha_modificacion   |timestamp without time zone|
+|auditoria   |movimientos_padron_auditoria |1               |id                   |bigint                     |
+|auditoria   |movimientos_padron_auditoria |2               |movimiento_id        |bigint                     |
+|auditoria   |movimientos_padron_auditoria |3               |clave_catastral      |character varying          |
+|auditoria   |movimientos_padron_auditoria |4               |accion               |character varying          |
+|auditoria   |movimientos_padron_auditoria |5               |estado_anterior      |character varying          |
+|auditoria   |movimientos_padron_auditoria |6               |estado_nuevo         |character varying          |
+|auditoria   |movimientos_padron_auditoria |7               |detalle              |text                       |
+|auditoria   |movimientos_padron_auditoria |8               |datos                |jsonb                      |
+|auditoria   |movimientos_padron_auditoria |9               |usuario              |character varying          |
+|auditoria   |movimientos_padron_auditoria |10              |ip                   |character varying          |
+|auditoria   |movimientos_padron_auditoria |11              |fecha                |timestamp without time zone|
+|auditoria   |sync_geonode_predios         |1               |id_sync              |bigint                     |
+|auditoria   |sync_geonode_predios         |2               |fecha_sync           |timestamp without time zone|
+|auditoria   |sync_geonode_predios         |3               |insertados           |integer                    |
+|auditoria   |sync_geonode_predios         |4               |faltantes            |integer                    |
+|auditoria   |sync_geonode_predios         |5               |total_catastro       |integer                    |
+|auditoria   |sync_geonode_predios         |6               |usuario_ejecucion    |text                       |
+|auditoria   |sync_geonode_predios         |7               |observaciones        |text                       |
+|auditoria   |v_cambios_geometricos_resumen|1               |clave_catastral      |text                       |
+|auditoria   |v_cambios_geometricos_resumen|2               |tipo_cambio          |text                       |
+|auditoria   |v_cambios_geometricos_resumen|3               |prioridad            |text                       |
+|auditoria   |v_cambios_geometricos_resumen|4               |requiere_revision    |boolean                    |
+|auditoria   |v_cambios_geometricos_resumen|5               |area_catastro        |numeric                    |
+|auditoria   |v_cambios_geometricos_resumen|6               |area_geonode         |numeric                    |
+|auditoria   |v_cambios_geometricos_resumen|7               |diferencia_area      |numeric                    |
+|auditoria   |v_cambios_geometricos_resumen|8               |porcentaje_cambio    |numeric                    |
+|auditoria   |v_cambios_geometricos_resumen|9               |distancia_centroides |numeric                    |
+|auditoria   |v_cambios_geometricos_resumen|10              |fecha_deteccion      |timestamp without time zone|
+|auditoria   |v_cambios_geometricos_resumen|11              |observaciones        |text                       |
+|auditoria   |v_expedientes_timeline       |1               |id_historico         |bigint                     |
+|auditoria   |v_expedientes_timeline       |2               |id_expediente        |bigint                     |
+|auditoria   |v_expedientes_timeline       |3               |clave_catastral      |text                       |
+|auditoria   |v_expedientes_timeline       |4               |estatus              |text                       |
+|auditoria   |v_expedientes_timeline       |5               |tiene_documentos     |boolean                    |
+|auditoria   |v_expedientes_timeline       |6               |tiene_cartografia    |boolean                    |
+|auditoria   |v_expedientes_timeline       |7               |tiene_construccion   |boolean                    |
+|auditoria   |v_expedientes_timeline       |8               |tiene_avaluo         |boolean                    |
+|auditoria   |v_expedientes_timeline       |9               |tiene_inspeccion     |boolean                    |
+|auditoria   |v_expedientes_timeline       |10              |tiene_rppc           |boolean                    |
+|auditoria   |v_expedientes_timeline       |11              |tiene_fotografia     |boolean                    |
+|auditoria   |v_expedientes_timeline       |12              |tiene_cedula         |boolean                    |
+|auditoria   |v_expedientes_timeline       |13              |tiene_historial      |boolean                    |
+|auditoria   |v_expedientes_timeline       |14              |observaciones        |text                       |
+|auditoria   |v_expedientes_timeline       |15              |accion               |text                       |
+|auditoria   |v_expedientes_timeline       |16              |usuario_modifico     |text                       |
+|auditoria   |v_expedientes_timeline       |17              |fecha_modificacion   |timestamp without time zone|
+|auditoria   |v_expedientes_timeline       |18              |tipo_movimiento      |text                       |
+|catalogos   |cat_calles                   |1               |id                   |integer                    |
+|catalogos   |cat_calles                   |2               |nombre_calle         |text                       |
+|catalogos   |cat_calles                   |3               |activo               |boolean                    |
+|catalogos   |cat_colonias                 |1               |id                   |integer                    |
+|catalogos   |cat_colonias                 |2               |nombre_colonia       |text                       |
+|catalogos   |cat_colonias                 |3               |activo               |boolean                    |
+|catalogos   |cat_estados_movimiento_padron|1               |id                   |integer                    |
+|catalogos   |cat_estados_movimiento_padron|2               |clave                |character varying          |
+|catalogos   |cat_estados_movimiento_padron|3               |nombre               |character varying          |
+|catalogos   |cat_estados_movimiento_padron|4               |orden                |integer                    |
+|catalogos   |cat_estados_movimiento_padron|5               |es_final             |boolean                    |
+|catalogos   |cat_estados_movimiento_padron|6               |activo               |boolean                    |
+|catalogos   |cat_tasas                    |1               |id                   |integer                    |
+|catalogos   |cat_tasas                    |2               |id_tasa              |numeric                    |
+|catalogos   |cat_tasas                    |3               |porcentaje_tasa      |numeric                    |
+|catalogos   |cat_tasas                    |4               |descripcion_uso      |text                       |
+|catalogos   |cat_tasas                    |5               |activo               |boolean                    |
+|catalogos   |cat_tipos_movimiento_padron  |1               |id                   |integer                    |
+|catalogos   |cat_tipos_movimiento_padron  |2               |clave                |character varying          |
+|catalogos   |cat_tipos_movimiento_padron  |3               |nombre               |character varying          |
+|catalogos   |cat_tipos_movimiento_padron  |4               |descripcion          |text                       |
+|catalogos   |cat_tipos_movimiento_padron  |5               |requiere_autorizacion|boolean                    |
+|catalogos   |cat_tipos_movimiento_padron  |6               |activo               |boolean                    |
+|catalogos   |cat_tipos_movimiento_padron  |7               |fecha_creacion       |timestamp without time zone|
+|catalogos   |cat_tipos_titularidad        |1               |id                   |integer                    |
+|catalogos   |cat_tipos_titularidad        |2               |clave                |character varying          |
+|catalogos   |cat_tipos_titularidad        |3               |nombre               |character varying          |
+|catalogos   |cat_tipos_titularidad        |4               |descripcion          |text                       |
+|catalogos   |cat_tipos_titularidad        |5               |activo               |boolean                    |
+|catalogos   |cat_usos_prediales           |1               |id                   |integer                    |
+|catalogos   |cat_usos_prediales           |2               |descripcion_uso      |text                       |
+|catalogos   |cat_usos_prediales           |3               |activo               |boolean                    |
+|catalogos   |cat_zonas_homogeneas         |1               |id                   |integer                    |
+|catalogos   |cat_zonas_homogeneas         |2               |anio                 |integer                    |
+|catalogos   |cat_zonas_homogeneas         |3               |zona_homogenea       |text                       |
+|catalogos   |cat_zonas_homogeneas         |4               |activo               |boolean                    |
+|catalogos   |padron_2026                  |1               |clave_catastral      |text                       |
+|catalogos   |padron_2026                  |2               |nombre_completo      |text                       |
+|catalogos   |padron_2026                  |3               |delegacion           |text                       |
+|catalogos   |padron_2026                  |4               |colonia              |text                       |
+|catalogos   |padron_2026                  |5               |calle                |text                       |
+|catalogos   |padron_2026                  |6               |numof                |text                       |
+|catalogos   |padron_2026                  |7               |numint               |text                       |
+|catalogos   |padron_2026                  |8               |letra                |text                       |
+|catalogos   |padron_2026                  |9               |zonah                |text                       |
+|catalogos   |padron_2026                  |10              |valor2026            |numeric                    |
+|catalogos   |padron_2026                  |11              |sup_documental       |numeric                    |
+|catalogos   |padron_2026                  |12              |sup_fisica           |numeric                    |
+|catalogos   |padron_2026                  |13              |condominio           |text                       |
+|catalogos   |padron_2026                  |14              |adeudo_2026          |numeric                    |
+|catalogos   |padron_2026                  |15              |adeudo_total         |numeric                    |
+|catalogos   |padron_2026                  |16              |sup_const            |numeric                    |
+|catalogos   |padron_2026                  |17              |id_tasa              |numeric                    |
+|catalogos   |padron_2026                  |18              |descripcion_uso      |text                       |
+|catalogos   |padron_2026                  |19              |porcentaje_tasa      |numeric                    |
+|catalogos   |padron_2026                  |20              |clave_catastral_norm |text                       |
+|catalogos   |personas                     |1               |id_persona           |bigint                     |
+|catalogos   |personas                     |2               |tipo_persona         |character varying          |
+|catalogos   |personas                     |3               |nombre               |character varying          |
+|catalogos   |personas                     |4               |apellido_paterno     |character varying          |
+|catalogos   |personas                     |5               |apellido_materno     |character varying          |
+|catalogos   |personas                     |6               |razon_social         |character varying          |
+|catalogos   |personas                     |7               |rfc                  |character varying          |
+|catalogos   |personas                     |8               |curp                 |character varying          |
+|catalogos   |personas                     |9               |activo               |boolean                    |
+|catalogos   |personas                     |10              |fecha_creacion       |timestamp without time zone|
+|catastro    |domicilios                   |1               |id                   |bigint                     |
+|catastro    |domicilios                   |2               |calle                |character varying          |
+|catastro    |domicilios                   |3               |numero_exterior      |character varying          |
+|catastro    |domicilios                   |4               |numero_interior      |character varying          |
+|catastro    |domicilios                   |5               |colonia              |character varying          |
+|catastro    |domicilios                   |6               |codigo_postal        |character varying          |
+|catastro    |domicilios                   |7               |municipio            |character varying          |
+|catastro    |domicilios                   |8               |estado               |character varying          |
+|catastro    |domicilios                   |9               |pais                 |character varying          |
+|catastro    |domicilios                   |10              |referencia           |text                       |
+|catastro    |domicilios                   |11              |created_at           |timestamp without time zone|
+|catastro    |domicilios                   |12              |updated_at           |timestamp without time zone|
+|catastro    |expediente_documentos        |1               |id_documento         |bigint                     |
+|catastro    |expediente_documentos        |2               |clave_catastral      |text                       |
+|catastro    |expediente_documentos        |3               |tipo_documento       |text                       |
+|catastro    |expediente_documentos        |4               |nombre_archivo       |text                       |
+|catastro    |expediente_documentos        |5               |ruta_archivo         |text                       |
+|catastro    |expediente_documentos        |6               |descripcion          |text                       |
+|catastro    |expediente_documentos        |7               |anio                 |integer                    |
+|catastro    |expediente_documentos        |8               |origen               |text                       |
+|catastro    |expediente_documentos        |9               |activo               |boolean                    |
+|catastro    |expediente_documentos        |10              |usuario_carga        |text                       |
+|catastro    |expediente_documentos        |11              |fecha_carga          |timestamp without time zone|
+|catastro    |expediente_documentos        |12              |clave_catastral_norm |text                       |
+|catastro    |expedientes                  |1               |id                   |bigint                     |
+|catastro    |expedientes                  |2               |clave_catastral      |text                       |
+|catastro    |expedientes                  |3               |fecha_alta           |timestamp without time zone|
+|catastro    |expedientes                  |4               |fecha_actualizacion  |timestamp without time zone|
+|catastro    |expedientes                  |5               |estatus              |text                       |
+|catastro    |expedientes                  |6               |tiene_documentos     |boolean                    |
+|catastro    |expedientes                  |7               |tiene_cartografia    |boolean                    |
+|catastro    |expedientes                  |8               |tiene_construccion   |boolean                    |
+|catastro    |expedientes                  |9               |tiene_avaluo         |boolean                    |
+|catastro    |expedientes                  |10              |tiene_inspeccion     |boolean                    |
+|catastro    |expedientes                  |11              |observaciones        |text                       |
+|catastro    |expedientes                  |12              |clave_catastral_norm |text                       |
+|catastro    |expedientes                  |13              |tiene_rppc           |boolean                    |
+|catastro    |expedientes                  |14              |tiene_fotografia     |boolean                    |
+|catastro    |expedientes                  |15              |tiene_cedula         |boolean                    |
+|catastro    |expedientes                  |16              |tiene_historial      |boolean                    |
+|catastro    |historial_titularidad        |1               |id                   |bigint                     |
+|catastro    |historial_titularidad        |2               |clave_catastral      |character varying          |
+|catastro    |historial_titularidad        |3               |movimiento_id        |bigint                     |
+|catastro    |historial_titularidad        |4               |tipo_evento          |character varying          |
