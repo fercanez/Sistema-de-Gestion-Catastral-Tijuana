@@ -4320,34 +4320,72 @@ async function aplicarTitularPadronMasivo() {
     });
     if (!confirmado) return;
 
-    // 2) Aplicar (puede requerir varias pasadas si hay más que el límite por lote).
+    // 2) Aplicar por LOTES chicos para no exceder el timeout del proxy (evita 502).
+    //    El backend procesa hasta ~1500 por petición y avisa con hay_mas si quedan más.
+    const LOTE = 1500;
+    const progreso = mostrarProgresoOverlay("Aplicando titular del padrón");
     let aplicadosTotal = 0;
-    let restantes = pendientes;
+    let sinResolverTotal = 0;
     let pasadas = 0;
-    const MAX_PASADAS = 50;
+    const MAX_PASADAS = 5000;
+    let hayMas = true;
+    let errorFatal = null;
 
-    while (restantes > 0 && pasadas < MAX_PASADAS) {
-      pasadas++;
-      const r = await fetch(`${API}/predios/propietarios/sincronizar-padron-masivo?confirmar=true&_=${Date.now()}`, {
-        method: "POST",
-        headers: authHeaders()
-      });
-      const data = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(extraerMensajeApi(data, "No se pudo aplicar el titular del padrón."));
+    try {
+      while (hayMas && pasadas < MAX_PASADAS) {
+        pasadas++;
+        let data;
+        try {
+          const r = await fetch(`${API}/predios/propietarios/sincronizar-padron-masivo?confirmar=true&limite=${LOTE}&_=${Date.now()}`, {
+            method: "POST",
+            headers: authHeaders()
+          });
+          data = await r.json().catch(() => ({}));
+          if (!r.ok) throw new Error(extraerMensajeApi(data, `Error HTTP ${r.status} al aplicar el lote.`));
+        } catch (eLote) {
+          // Un lote puede fallar puntualmente (p. ej. 502). Reintenta una vez antes de abortar.
+          await new Promise(res => setTimeout(res, 1200));
+          const r2 = await fetch(`${API}/predios/propietarios/sincronizar-padron-masivo?confirmar=true&limite=${LOTE}&_=${Date.now()}`, {
+            method: "POST",
+            headers: authHeaders()
+          }).catch(() => null);
+          if (!r2 || !r2.ok) { errorFatal = eLote; break; }
+          data = await r2.json().catch(() => ({}));
+        }
 
-      aplicadosTotal += Number(data.aplicados || 0);
-      restantes = Number(data.restantes || 0);
+        aplicadosTotal += Number(data.aplicados || 0);
+        sinResolverTotal += Number(data.sin_resolver || 0);
+        hayMas = !!data.hay_mas;
 
-      // Si un lote no aplicó nada, se corta para no entrar en bucle infinito.
-      if (Number(data.aplicados || 0) === 0) break;
+        const pct = pendientes > 0 ? Math.min(100, Math.round((aplicadosTotal / pendientes) * 100)) : 100;
+        progreso.update(
+          `Procesados <b>${formatoNumeroEntero(aplicadosTotal)}</b> de ~${formatoNumeroEntero(pendientes)} predio(s) (${pct}%).` +
+          `<br><br><div style="background:#eee;border-radius:6px;height:14px;overflow:hidden;"><div style="background:#2e7d32;height:100%;width:${pct}%;transition:width .2s;"></div></div>` +
+          `<br><small>No cierres esta ventana. Lote ${formatoNumeroEntero(pasadas)}.</small>`
+        );
+
+        // Corte de seguridad: si un lote no aplicó nada y dice que no hay más, terminamos.
+        if (Number(data.aplicados || 0) === 0 && !hayMas) break;
+      }
+    } finally {
+      progreso.close();
     }
 
-    await mostrarConfirmacionAsync(
-      "Proceso terminado",
-      `Se aplicó el titular del padrón a <b>${formatoNumeroEntero(aplicadosTotal)}</b> predio(s).` +
-      (restantes > 0 ? `<br><br>Quedan <b>${formatoNumeroEntero(restantes)}</b> pendientes (pueden requerir revisión manual).` : ""),
-      { soloInfo: true }
-    );
+    if (errorFatal) {
+      await mostrarConfirmacionAsync(
+        "Proceso interrumpido",
+        `Se alcanzó a aplicar el titular del padrón a <b>${formatoNumeroEntero(aplicadosTotal)}</b> predio(s) antes de un error de red.` +
+        `<br><br>${escapeHtml(errorFatal.message || "Error de conexión")}<br><br>Puedes volver a ejecutar para continuar con los restantes.`,
+        { soloInfo: true }
+      );
+    } else {
+      await mostrarConfirmacionAsync(
+        "Proceso terminado",
+        `Se aplicó el titular del padrón a <b>${formatoNumeroEntero(aplicadosTotal)}</b> predio(s).` +
+        (sinResolverTotal > 0 ? `<br><br><b>${formatoNumeroEntero(sinResolverTotal)}</b> no se pudieron resolver (nombre vacío o inválido en el padrón).` : ""),
+        { soloInfo: true }
+      );
+    }
 
     if (copropEstado.clave) {
       await cargarCopropietariosPredio(copropEstado.clave);
@@ -4358,6 +4396,32 @@ async function aplicarTitularPadronMasivo() {
   }
 }
 window.aplicarTitularPadronMasivo = aplicarTitularPadronMasivo;
+
+// Overlay de progreso NO bloqueante (sin botones); se actualiza por código.
+function mostrarProgresoOverlay(titulo) {
+  const previo = document.getElementById("progresoOverlay");
+  if (previo) previo.remove();
+  const overlay = document.createElement("div");
+  overlay.id = "progresoOverlay";
+  overlay.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100000;display:flex;align-items:center;justify-content:center;";
+  overlay.innerHTML = `
+    <div style="background:#fff;max-width:480px;width:90%;border-radius:8px;box-shadow:0 12px 48px rgba(0,0,0,.35);overflow:hidden;">
+      <div style="background:#7a1f2b;color:#fff;padding:10px 14px;font-weight:bold;font-size:14px;">${escapeHtml(titulo)}</div>
+      <div id="progresoOverlayBody" style="padding:16px;font-size:13px;color:#222;line-height:1.45;">Iniciando…</div>
+    </div>`;
+  document.body.appendChild(overlay);
+  return {
+    update(html) {
+      const body = document.getElementById("progresoOverlayBody");
+      if (body) body.innerHTML = html;
+    },
+    close() {
+      const el = document.getElementById("progresoOverlay");
+      if (el) el.remove();
+    }
+  };
+}
+window.mostrarProgresoOverlay = mostrarProgresoOverlay;
 
 async function sincronizarTitularDesdePadron(reemplazar = false) {
   const clave = copropEstado.clave;
