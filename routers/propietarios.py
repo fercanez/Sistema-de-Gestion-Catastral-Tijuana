@@ -714,6 +714,11 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
     nombre = upper_clean_v28(nombre_completo)
     if not nombre:
         return None
+    # Las columnas de catalogos.personas son varchar(120). Si el nombre del padrón
+    # excede ese tamaño, el INSERT falla con StringDataRightTruncation; por eso se
+    # recorta de forma segura (cada campo) antes de buscar/insertar.
+    MAX_PERSONA = 120
+    nombre = nombre[:MAX_PERSONA]
 
     cur.execute(f"""
         SELECT p.id_persona
@@ -734,7 +739,7 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
                 tipo_persona, razon_social, activo, fecha_creacion
             ) VALUES ('MORAL', %s, TRUE, now())
             RETURNING id_persona;
-        """, (nombre,))
+        """, (nombre[:MAX_PERSONA],))
     else:
         parsed = parse_nombre_padron_v28(nombre)
         cur.execute("""
@@ -742,7 +747,11 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
                 tipo_persona, nombre, apellido_paterno, apellido_materno, activo, fecha_creacion
             ) VALUES ('FISICA', %s, %s, %s, TRUE, now())
             RETURNING id_persona;
-        """, (parsed["nombre"], parsed["apellido_paterno"], parsed["apellido_materno"]))
+        """, (
+            (parsed["nombre"] or "")[:MAX_PERSONA],
+            (parsed["apellido_paterno"] or "")[:MAX_PERSONA],
+            (parsed["apellido_materno"] or "")[:MAX_PERSONA],
+        ))
 
     created = cur.fetchone()
     return int(created["id_persona"]) if created else None
@@ -2580,7 +2589,8 @@ def sincronizar_titular_padron_masivo_v28(
     El frontend llama repetidamente con confirmar=true hasta que `hay_mas` sea false.
     Lotes chicos para que cada petición HTTP termine antes del timeout del proxy.
     Es idempotente: solo toca predios SIN titular vigente."""
-    with get_conn() as conn:
+    try:
+      with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if not confirmar:
                 # Índice funcional que acelera el NOT EXISTS (evita seq scan por fila al crecer
@@ -2652,19 +2662,30 @@ def sincronizar_titular_padron_masivo_v28(
             personas = 0
             sin_resolver = 0
             for nombre, claves in claves_por_nombre.items():
-                id_persona = resolver_persona_por_nombre_padron_v28(cur, nombre)
-                if not id_persona:
+                # SAVEPOINT por titular: si un nombre falla (p. ej. choca con una
+                # restricción única por un registro no vigente previo), se revierte
+                # SOLO ese nombre y el lote sigue avanzando, en vez de abortar todo.
+                try:
+                    cur.execute("SAVEPOINT sp_titular;")
+                    id_persona = resolver_persona_por_nombre_padron_v28(cur, nombre)
+                    if not id_persona:
+                        sin_resolver += len(claves)
+                        cur.execute("RELEASE SAVEPOINT sp_titular;")
+                        continue
+                    personas += 1
+                    cur.execute("""
+                        INSERT INTO catastro.predio_propietario (
+                            clave_catastral, id_persona, porcentaje_propiedad,
+                            tipo_titularidad, vigente, fecha_inicio
+                        )
+                        SELECT UNNEST(%s::text[]), %s, 100, 'PROPIETARIO', TRUE, CURRENT_DATE
+                        ON CONFLICT DO NOTHING;
+                    """, (claves, id_persona))
+                    aplicados += cur.rowcount or 0
+                    cur.execute("RELEASE SAVEPOINT sp_titular;")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_titular;")
                     sin_resolver += len(claves)
-                    continue
-                personas += 1
-                cur.execute("""
-                    INSERT INTO catastro.predio_propietario (
-                        clave_catastral, id_persona, porcentaje_propiedad,
-                        tipo_titularidad, vigente, fecha_inicio
-                    )
-                    SELECT UNNEST(%s::text[]), %s, 100, 'PROPIETARIO', TRUE, CURRENT_DATE;
-                """, (claves, id_persona))
-                aplicados += cur.rowcount or 0
 
             registrar_auditoria_simple_v28(
                 cur,
@@ -2688,6 +2709,11 @@ def sincronizar_titular_padron_masivo_v28(
                 "hay_mas": hay_mas,
                 "mensaje": f"Lote aplicado: {aplicados} predio(s)."
             }
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Devuelve el detalle real del error para diagnosticar desde el navegador.
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
 @router.post("/predios/{clave}/propietarios/reemplazar")
@@ -2769,3 +2795,121 @@ def reemplazar_propietarios_predio_v28(
                 "propietarios": insertados,
                 "padron_actualizados": padron_sync,
             }
+            
+    @router.get("/predios/propietarios/sincronizar-padron-pendientes")
+def listar_pendientes_titular_padron_v28(
+    limite: int = Query(500, ge=1, le=5000),
+    offset: int = Query(0, ge=0),
+    solo_invalidos: bool = Query(False),
+    usuario_actual: dict = Depends(permiso_movimientos)
+):
+    """
+    Lista predios del padrón que siguen sin propietario vigente en catálogo
+    después de la sincronización masiva.
+
+    - Si solo_invalidos=true, prioriza/filtra casos con nombre vacío o sospechoso.
+    """
+    try:
+        with get_conn() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                where_extra = ""
+                params_extra = []
+
+                if solo_invalidos:
+                    where_extra = """
+                      AND (
+                            NULLIF(TRIM(p.nombre_completo), '') IS NULL
+                            OR LENGTH(TRIM(COALESCE(p.nombre_completo, ''))) < 3
+                            OR UPPER(TRIM(COALESCE(p.nombre_completo, ''))) IN (
+                                'SIN NOMBRE', 'PROPIETARIO', 'DESCONOCIDO', 'XXXXXXXX', 'X X X', 'N/A', 'NA'
+                            )
+                            OR REGEXP_REPLACE(
+                                COALESCE(p.nombre_completo, ''),
+                                '[A-ZÁÉÍÓÚÜÑ0-9 .,&/\\-]',
+                                '',
+                                'gi'
+                            ) <> ''
+                      )
+                    """
+
+                cur.execute(f"""
+                    SELECT COUNT(*)::int AS total
+                    {_SQL_PENDIENTES_TITULAR_PADRON}
+                    {where_extra};
+                """, params_extra)
+                total = int((cur.fetchone() or {}).get("total") or 0)
+
+                cur.execute(f"""
+                    SELECT
+                        UPPER(TRIM(p.clave_catastral)) AS clave_catastral,
+                        UPPER(TRIM(COALESCE(p.nombre_completo, ''))) AS nombre_completo,
+                        UPPER(TRIM(COALESCE(p.colonia, ''))) AS colonia,
+                        UPPER(TRIM(COALESCE(p.calle, ''))) AS calle,
+                        UPPER(TRIM(COALESCE(p.numof, ''))) AS numof,
+                        UPPER(TRIM(COALESCE(p.delegacion, ''))) AS delegacion,
+                        CASE
+                            WHEN NULLIF(TRIM(p.nombre_completo), '') IS NULL THEN 'VACIO'
+                            WHEN LENGTH(TRIM(COALESCE(p.nombre_completo, ''))) < 3 THEN 'DEMASIADO_CORTO'
+                            WHEN UPPER(TRIM(COALESCE(p.nombre_completo, ''))) IN (
+                                'SIN NOMBRE', 'PROPIETARIO', 'DESCONOCIDO', 'XXXXXXXX', 'X X X', 'N/A', 'NA'
+                            ) THEN 'NOMBRE_GENERICO'
+                            WHEN REGEXP_REPLACE(
+                                COALESCE(p.nombre_completo, ''),
+                                '[A-ZÁÉÍÓÚÜÑ0-9 .,&/\\-]',
+                                '',
+                                'gi'
+                            ) <> '' THEN 'CARACTERES_RAROS'
+                            ELSE 'NO_RESUELTO'
+                        END AS motivo_probable
+                    {_SQL_PENDIENTES_TITULAR_PADRON}
+                    {where_extra}
+                    ORDER BY
+                        CASE
+                            WHEN NULLIF(TRIM(p.nombre_completo), '') IS NULL THEN 0
+                            WHEN LENGTH(TRIM(COALESCE(p.nombre_completo, ''))) < 3 THEN 1
+                            WHEN UPPER(TRIM(COALESCE(p.nombre_completo, ''))) IN (
+                                'SIN NOMBRE', 'PROPIETARIO', 'DESCONOCIDO', 'XXXXXXXX', 'X X X', 'N/A', 'NA'
+                            ) THEN 2
+                            WHEN REGEXP_REPLACE(
+                                COALESCE(p.nombre_completo, ''),
+                                '[A-ZÁÉÍÓÚÜÑ0-9 .,&/\\-]',
+                                '',
+                                'gi'
+                            ) <> '' THEN 3
+                            ELSE 4
+                        END,
+                        p.clave_catastral
+                    LIMIT %s OFFSET %s;
+                """, [*params_extra, limite, offset])
+                rows = [dict(r) for r in cur.fetchall()]
+
+                cur.execute(f"""
+                    SELECT
+                        COUNT(*) FILTER (WHERE NULLIF(TRIM(p.nombre_completo), '') IS NULL)::int AS vacio,
+                        COUNT(*) FILTER (WHERE LENGTH(TRIM(COALESCE(p.nombre_completo, ''))) < 3 AND NULLIF(TRIM(p.nombre_completo), '') IS NOT NULL)::int AS demasiado_corto,
+                        COUNT(*) FILTER (
+                            WHERE UPPER(TRIM(COALESCE(p.nombre_completo, ''))) IN (
+                                'SIN NOMBRE', 'PROPIETARIO', 'DESCONOCIDO', 'XXXXXXXX', 'X X X', 'N/A', 'NA'
+                            )
+                        )::int AS nombre_generico
+                    {_SQL_PENDIENTES_TITULAR_PADRON};
+                """)
+                resumen = dict(cur.fetchone() or {})
+
+                return {
+                    "ok": True,
+                    "total": total,
+                    "limite": limite,
+                    "offset": offset,
+                    "solo_invalidos": solo_invalidos,
+                    "resumen": {
+                        "vacio": int(resumen.get("vacio") or 0),
+                        "demasiado_corto": int(resumen.get("demasiado_corto") or 0),
+                        "nombre_generico": int(resumen.get("nombre_generico") or 0),
+                    },
+                    "resultados": rows,
+                }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
