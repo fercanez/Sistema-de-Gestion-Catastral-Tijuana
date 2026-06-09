@@ -714,6 +714,11 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
     nombre = upper_clean_v28(nombre_completo)
     if not nombre:
         return None
+    # Las columnas de catalogos.personas son varchar(120). Si el nombre del padrón
+    # excede ese tamaño, el INSERT falla con StringDataRightTruncation; por eso se
+    # recorta de forma segura (cada campo) antes de buscar/insertar.
+    MAX_PERSONA = 120
+    nombre = nombre[:MAX_PERSONA]
 
     cur.execute(f"""
         SELECT p.id_persona
@@ -734,7 +739,7 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
                 tipo_persona, razon_social, activo, fecha_creacion
             ) VALUES ('MORAL', %s, TRUE, now())
             RETURNING id_persona;
-        """, (nombre,))
+        """, (nombre[:MAX_PERSONA],))
     else:
         parsed = parse_nombre_padron_v28(nombre)
         cur.execute("""
@@ -742,7 +747,11 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
                 tipo_persona, nombre, apellido_paterno, apellido_materno, activo, fecha_creacion
             ) VALUES ('FISICA', %s, %s, %s, TRUE, now())
             RETURNING id_persona;
-        """, (parsed["nombre"], parsed["apellido_paterno"], parsed["apellido_materno"]))
+        """, (
+            (parsed["nombre"] or "")[:MAX_PERSONA],
+            (parsed["apellido_paterno"] or "")[:MAX_PERSONA],
+            (parsed["apellido_materno"] or "")[:MAX_PERSONA],
+        ))
 
     created = cur.fetchone()
     return int(created["id_persona"]) if created else None
@@ -2580,7 +2589,8 @@ def sincronizar_titular_padron_masivo_v28(
     El frontend llama repetidamente con confirmar=true hasta que `hay_mas` sea false.
     Lotes chicos para que cada petición HTTP termine antes del timeout del proxy.
     Es idempotente: solo toca predios SIN titular vigente."""
-    with get_conn() as conn:
+    try:
+      with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             if not confirmar:
                 # Índice funcional que acelera el NOT EXISTS (evita seq scan por fila al crecer
@@ -2652,19 +2662,30 @@ def sincronizar_titular_padron_masivo_v28(
             personas = 0
             sin_resolver = 0
             for nombre, claves in claves_por_nombre.items():
-                id_persona = resolver_persona_por_nombre_padron_v28(cur, nombre)
-                if not id_persona:
+                # SAVEPOINT por titular: si un nombre falla (p. ej. choca con una
+                # restricción única por un registro no vigente previo), se revierte
+                # SOLO ese nombre y el lote sigue avanzando, en vez de abortar todo.
+                try:
+                    cur.execute("SAVEPOINT sp_titular;")
+                    id_persona = resolver_persona_por_nombre_padron_v28(cur, nombre)
+                    if not id_persona:
+                        sin_resolver += len(claves)
+                        cur.execute("RELEASE SAVEPOINT sp_titular;")
+                        continue
+                    personas += 1
+                    cur.execute("""
+                        INSERT INTO catastro.predio_propietario (
+                            clave_catastral, id_persona, porcentaje_propiedad,
+                            tipo_titularidad, vigente, fecha_inicio
+                        )
+                        SELECT UNNEST(%s::text[]), %s, 100, 'PROPIETARIO', TRUE, CURRENT_DATE
+                        ON CONFLICT DO NOTHING;
+                    """, (claves, id_persona))
+                    aplicados += cur.rowcount or 0
+                    cur.execute("RELEASE SAVEPOINT sp_titular;")
+                except Exception:
+                    cur.execute("ROLLBACK TO SAVEPOINT sp_titular;")
                     sin_resolver += len(claves)
-                    continue
-                personas += 1
-                cur.execute("""
-                    INSERT INTO catastro.predio_propietario (
-                        clave_catastral, id_persona, porcentaje_propiedad,
-                        tipo_titularidad, vigente, fecha_inicio
-                    )
-                    SELECT UNNEST(%s::text[]), %s, 100, 'PROPIETARIO', TRUE, CURRENT_DATE;
-                """, (claves, id_persona))
-                aplicados += cur.rowcount or 0
 
             registrar_auditoria_simple_v28(
                 cur,
@@ -2688,6 +2709,11 @@ def sincronizar_titular_padron_masivo_v28(
                 "hay_mas": hay_mas,
                 "mensaje": f"Lote aplicado: {aplicados} predio(s)."
             }
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Devuelve el detalle real del error para diagnosticar desde el navegador.
+        raise HTTPException(status_code=500, detail=f"{type(e).__name__}: {e}")
 
 
 @router.post("/predios/{clave}/propietarios/reemplazar")
