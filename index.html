@@ -2,47 +2,113 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Sistema de Gestión Catastral de FC Arquitectos</title>
+  <title>Sistema de Gestión Catastral · Mexicali, B.C.</title>
   <base href="/api/catastro/visor/">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css">
-  <link rel="stylesheet" href="css/00-base.css?v=20260609_v119_modular">
-  <link rel="stylesheet" href="css/10-mapa.css?v=20260609_v119_modular">
-  <link rel="stylesheet" href="css/20-ficha.css?v=20260609_v119_modular">
-  <link rel="stylesheet" href="css/30-tablas.css?v=20260609_v119_modular">
-  <link rel="stylesheet" href="css/40-modales.css?v=20260609_v119_modular">
-  <link rel="stylesheet" href="css/50-modulos.css?v=20260609_v119_modular">
+  <link rel="stylesheet" href="css/00-base.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/10-mapa.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/20-ficha.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/30-tablas.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/40-modales.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/50-modulos.css?v=20260609_v149_ocultar_tabs">
+  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260609_v149_ocultar_tabs">
 </head>
 
 <body>
 
-<!-- LOGIN INSTITUCIONAL -->
+<!-- LOGIN INSTITUCIONAL · Propuesta C -->
 <div id="loginOverlay" class="login-overlay">
-  <div class="login-card">
-    <div class="login-header">
-      <div class="login-logo">
-        <img src="logomxli.png" alt="Gobierno de Mexicali" class="login-logo-img" width="120" height="56">
+  <div class="login-portal">
+    <header class="login-topbar">
+      <div class="login-topbar-marca">
+        <img src="logomxli.png" alt="Gobierno de Mexicali" class="login-topbar-logo" width="72" height="72">
+        <div class="login-topbar-texto">
+          <div class="login-topbar-linea">Dirección de Administración Urbana</div>
+          <div class="login-topbar-linea login-topbar-linea-principal">Jefatura de Catastro</div>
+          <div class="login-topbar-linea login-topbar-linea-municipio">Mexicali, Baja California</div>
+        </div>
       </div>
-      <div>
-        <h1>Sistema de Gestión Catastral</h1>
-        <p>BC · Acceso institucional</p>
-      </div>
+    </header>
+
+    <div class="login-card">
+      <section class="login-info-panel" aria-label="Información institucional">
+        <h1 class="login-info-titulo">Sistema de Gestión Catastral</h1>
+        <p class="login-info-subtitulo">Portal Institucional de Consultas y Administración Catastral Multifinalitaria</p>
+        <p class="login-info-descripcion">
+          Plataforma web para la consulta, integración y administración de la información predial
+          del Municipio de Mexicali. Acceso exclusivo para personal autorizado de la Jefatura de Catastro
+          y dependencias vinculadas.
+        </p>
+        <ul class="login-info-lista">
+          <li><span class="login-info-icono" aria-hidden="true">🗺️</span> Consulta cartográfica y catastral</li>
+          <li><span class="login-info-icono" aria-hidden="true">📋</span> Expedientes y titularidad predial</li>
+          <li><span class="login-info-icono" aria-hidden="true">🔒</span> Operaciones con registro de auditoría</li>
+        </ul>
+      </section>
+
+      <section class="login-body" aria-label="Acceso al sistema">
+        <div class="login-body-inner">
+          <h2>Ingresar</h2>
+          <p class="login-body-aviso">Introduzca su nombre de cuenta y contraseña institucional.</p>
+          <label for="loginUsuario">Usuario</label>
+          <input id="loginUsuario" type="text" autocomplete="username" placeholder="Nombre de cuenta">
+
+          <label for="loginPassword">Contraseña</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña">
+
+          <button id="btnLogin" type="button" onclick="loginInstitucional()">Ingresar sesión</button>
+
+          <div id="loginMensaje" class="login-mensaje"></div>
+          <p class="login-body-legal">Acceso exclusivo para personal autorizado.</p>
+        </div>
+      </section>
     </div>
 
-    <div class="login-body">
-      <h2>Ingresar</h2>
-      <label>Usuario</label>
-      <input id="loginUsuario" type="text" autocomplete="username" placeholder="Usuario">
+    <footer class="login-footer">
+      <div class="login-footer-grid">
+        <div class="login-footer-col">
+          <strong>Dirección</strong>
+          <span>Av. Independencia 998, Centro Cívico C.P. 21000, Mexicali, Baja California.</span>
+        </div>
+        <div class="login-footer-col">
+          <strong>Contacto</strong>
+          <a href="mailto:contacto@mexicali.gob.mx">contacto@mexicali.gob.mx</a>
+          <span>(686) 558.1600</span>
+        </div>
+        <div class="login-footer-col">
+          <strong>Horario</strong>
+          <span>Lunes a Viernes 8:00 – 3:00 p.m.</span>
+          <span>Sábados 10:00 – 3:00 p.m.</span>
+        </div>
+      </div>
+      <div class="login-footer-auditoria">
+        Todas las operaciones quedan registradas en auditoría institucional.
+      </div>
+    </footer>
+  </div>
+</div>
 
-      <label>Contraseña</label>
-      <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña">
-
-      <button id="btnLogin" type="button" onclick="loginInstitucional()">Ingresar</button>
-
-      <div id="loginMensaje" class="login-mensaje"></div>
-    </div>
-
-    <div class="login-footer">
-      Acceso exclusivo para personal autorizado. Todas las operaciones podrán ser registradas.
+<!-- SELECTOR DE MÓDULOS (post-login) -->
+<div id="selectorModulosOverlay" class="selector-modulos-overlay oculto">
+  <div class="selector-modulos-portal">
+    <header class="selector-modulos-topbar">
+      <div class="selector-modulos-topbar-marca">
+        <img src="logomxli.png" alt="Gobierno de Mexicali" class="selector-modulos-topbar-logo" width="64" height="64">
+        <div class="selector-modulos-topbar-texto">
+          <div class="selector-modulos-topbar-linea">Dirección de Administración Urbana</div>
+          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-principal">Jefatura de Catastro</div>
+          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-municipio">Mexicali, Baja California</div>
+        </div>
+      </div>
+      <p id="selectorModulosBienvenida" class="selector-modulos-bienvenida">Bienvenido</p>
+    </header>
+    <div class="selector-modulos-body">
+      <h2>Seleccione el módulo al que desea ingresar:</h2>
+      <p class="selector-modulos-aviso">Solo se muestran los módulos autorizados para su rol institucional.</p>
+      <ul id="listaModulosInstitucionales" class="selector-modulos-lista"></ul>
+      <div class="selector-modulos-footer">
+        <button type="button" class="btn-modulos-salir" onclick="cerrarSesionInstitucional()">Salir del sistema</button>
+      </div>
     </div>
   </div>
 </div>
@@ -68,6 +134,7 @@
     <div class="header-kpi"><span>Cambios</span><b id="headerDashCambios">—</b></div>
   </div>
   <div class="header-inst-meta">
+    <button type="button" class="header-btn-modulos" onclick="volverSelectorModulos()" title="Volver al selector de módulos">← Módulos</button>
     <div id="headerRelojInstitucional" class="header-reloj-inst"></div>
     <div id="barraSesion" class="header-sesion oculto">
       <div class="header-sesion-info">
@@ -141,23 +208,23 @@
       <span class="tab-btn-icon" aria-hidden="true">🗺️</span>
       <span class="tab-btn-label">Capas</span>
     </button>
-    <button type="button" class="tab-btn" onclick="mostrarTab('tabHerramientas', this)" title="Herramientas de medición">
+    <button type="button" class="tab-btn tab-modulo-extra" onclick="mostrarTab('tabHerramientas', this)" title="Herramientas de medición">
       <span class="tab-btn-icon" aria-hidden="true">📐</span>
       <span class="tab-btn-label">Herramientas</span>
     </button>
-    <button type="button" class="tab-btn requiere-analisis-zonas" onclick="mostrarTab('tabAnalisisZonas', this)" title="Análisis de zonas homogéneas">
+    <button type="button" class="tab-btn tab-modulo-extra requiere-analisis-zonas" onclick="mostrarTab('tabAnalisisZonas', this)" title="Análisis de zonas homogéneas">
       <span class="tab-btn-icon" aria-hidden="true">📊</span>
       <span class="tab-btn-label">Zonas H.</span>
     </button>
-    <button type="button" class="tab-btn requiere-analisis-condominios" onclick="mostrarTab('tabCondominios', this)" title="Análisis régimen en condominio">
+    <button type="button" class="tab-btn tab-modulo-extra requiere-analisis-condominios" onclick="mostrarTab('tabCondominios', this)" title="Análisis régimen en condominio">
       <span class="tab-btn-icon" aria-hidden="true">🏢</span>
       <span class="tab-btn-label">Condominios</span>
     </button>
-    <button type="button" class="tab-btn requiere-movimientos" onclick="mostrarTab('tabMovimientos', this)" title="Movimientos catastrales">
+    <button type="button" class="tab-btn tab-modulo-extra requiere-movimientos" onclick="mostrarTab('tabMovimientos', this)" title="Movimientos catastrales">
       <span class="tab-btn-icon" aria-hidden="true">📝</span>
       <span class="tab-btn-label">Movimientos</span>
     </button>
-    <button type="button" class="tab-btn solo-admin" onclick="mostrarTab('tabAdministracion', this)" title="Administración">
+    <button type="button" class="tab-btn tab-modulo-extra solo-admin" onclick="mostrarTab('tabAdministracion', this)" title="Administración">
       <span class="tab-btn-icon" aria-hidden="true">⚙️</span>
       <span class="tab-btn-label">Admin</span>
     </button>
@@ -218,7 +285,7 @@
       <div class="layer-item" data-layer-id="predios">
         <div class="layer-top">
           <label class="layer-name">
-            <input type="checkbox" id="chkPrediosWms" checked onchange="togglePrediosWms()">
+            <input type="checkbox" id="chkPrediosWms" onchange="togglePrediosWms()">
             <span class="layer-dot dot-red"></span>
             <b>Predios GeoServer WMS</b>
           </label>
@@ -250,7 +317,7 @@
       <div class="layer-item" data-layer-id="colonias">
         <div class="layer-top">
           <label class="layer-name">
-            <input type="checkbox" id="chkColoniasWms" onchange="toggleColoniasWms()">
+            <input type="checkbox" id="chkColoniasWms" checked onchange="toggleColoniasWms()">
             <span class="layer-dot dot-purple"></span>
             <b>Colonias WMS</b>
           </label>
@@ -370,6 +437,7 @@
         <button type="button" class="btn-mov-tipo btn-mant-prop" onclick="abrirMantenimientoPropietarios()">👤 Propietarios</button>
         <button type="button" class="btn-mov-tipo btn-mant-cat" onclick="abrirMantenimientoCalles()">🛣️ Calles</button>
         <button type="button" class="btn-mov-tipo btn-mant-cat" onclick="abrirMantenimientoColonias()">🏘️ Colonias</button>
+        <button type="button" class="btn-mov-tipo btn-mant-adeudos perm-editar-catastro" onclick="abrirMantenimientoAdeudos()">💰 Adeudos 2026</button>
       </div>
     </div>
 
@@ -566,6 +634,42 @@
 </footer>
 
 </div><!-- /appInstitucional -->
+
+<!-- Pop-up de trabajo del predio (Gestión Catastral) -->
+<div id="popupPredioWorkspace" class="popup-predio-workspace oculto" role="dialog" aria-modal="true" aria-labelledby="popupPredioClave">
+  <div class="popup-predio-backdrop" onclick="cerrarPopupPredioWorkspace()"></div>
+  <div class="popup-predio-window">
+    <header class="popup-predio-header">
+      <div class="popup-predio-nav">
+        <button type="button" onclick="navegarPopupPredio(-1)" title="Predio anterior">‹</button>
+        <button type="button" onclick="navegarPopupPredio(1)" title="Predio siguiente">›</button>
+      </div>
+      <div id="popupPredioResumen" class="popup-predio-resumen"></div>
+      <div id="popupPredioClave" class="popup-predio-clave">—</div>
+      <div id="popupPredioNavInfo" class="popup-predio-nav-info"></div>
+      <button type="button" class="popup-predio-btn-ficha" onclick="generarFichaCatastralGeneral()" title="Próximamente">📄 Ficha catastral general</button>
+      <button type="button" class="popup-predio-btn-cerrar" onclick="cerrarPopupPredioWorkspace()" title="Cerrar">×</button>
+    </header>
+    <nav class="popup-predio-tabs" aria-label="Pestañas del predio">
+      <button type="button" class="popup-predio-tab active" data-tab="datos-generales" onclick="mostrarPopupPredioTab('datos-generales')">Datos Generales</button>
+      <button type="button" class="popup-predio-tab" data-tab="construcciones" onclick="mostrarPopupPredioTab('construcciones')">Construcciones/Medidas</button>
+      <button type="button" class="popup-predio-tab" data-tab="archivo" onclick="mostrarPopupPredioTab('archivo')">Archivo Digitalizado</button>
+      <button type="button" class="popup-predio-tab" data-tab="numeros-oficiales" onclick="mostrarPopupPredioTab('numeros-oficiales')">Números Oficiales</button>
+      <button type="button" class="popup-predio-tab" data-tab="carta-urbana" onclick="mostrarPopupPredioTab('carta-urbana')">Carta Urbana 2040</button>
+      <button type="button" class="popup-predio-tab" data-tab="colonia" onclick="mostrarPopupPredioTab('colonia')">Colonia/Fraccionamiento</button>
+      <button type="button" class="popup-predio-tab" data-tab="zona-homogenea" onclick="mostrarPopupPredioTab('zona-homogenea')">Zona Homogénea</button>
+    </nav>
+    <div class="popup-predio-body">
+      <div id="popupTabDatosGenerales" class="popup-tab-panel active" data-tab="datos-generales"></div>
+      <div id="popupTabConstrucciones" class="popup-tab-panel" data-tab="construcciones"></div>
+      <div id="popupTabArchivo" class="popup-tab-panel" data-tab="archivo"></div>
+      <div id="popupTabNumerosOficiales" class="popup-tab-panel" data-tab="numeros-oficiales"></div>
+      <div id="popupTabCartaUrbana" class="popup-tab-panel" data-tab="carta-urbana"></div>
+      <div id="popupTabColonia" class="popup-tab-panel" data-tab="colonia"></div>
+      <div id="popupTabZonaHomogenea" class="popup-tab-panel" data-tab="zona-homogenea"></div>
+    </div>
+  </div>
+</div>
 
 <canvas id="qrPdfTemp" style="display:none;"></canvas>
 <div id="popup"></div>
@@ -800,22 +904,61 @@
   </div>
 </div>
 
+<div id="modalMantenimientoAdeudos" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window mant-adeudos-window">
+    <div class="mant-prop-titlebar">
+      <h2>💰 Importar adeudos 2026</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoAdeudos()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-adeudos-body">
+      <p class="mant-adeudos-intro">
+        Cargue el reporte fiscal (<b>Adeudo2026.xlsx</b> o CSV) con columnas
+        <b>CLAVECATASTRAL</b>, <b>ADEUDO</b> y <b>PAGO</b> (SI/NO).
+        Si <b>PAGO = SI</b>, el predio queda sin adeudo; si <b>NO</b>, se registra el monto en adeudo 2026 y adeudo total.
+      </p>
+
+      <div class="analisis-zonas-import-block">
+        <label class="input-label-mini">Archivo Excel o CSV</label>
+        <input type="file" id="mantAdeudosFile" accept=".xlsx,.xls,.csv,.txt" onchange="vistaPreviaAdeudosMantenimiento()">
+        <div class="overlay-analisis-zonas-acciones">
+          <button type="button" class="btn-busqueda-unica" onclick="vistaPreviaAdeudosMantenimiento()">👁️ Vista previa</button>
+          <button type="button" onclick="descargarPlantillaAdeudosMantenimiento()">Plantilla CSV</button>
+        </div>
+      </div>
+
+      <div id="mantAdeudosResumen" class="mant-adeudos-resumen"></div>
+      <div id="mantAdeudosPreview" class="mant-adeudos-preview"></div>
+      <div id="mantAdeudosProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar" id="mantAdeudosProgressBar"></div></div>
+      <div id="mantAdeudosMsg" class="mant-prop-msg"></div>
+    </div>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn ok" onclick="importarAdeudosMantenimiento()">📥 Importar al padrón</button>
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoAdeudos()">Salir</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.12.1/proj4.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/00-nucleo.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/10-mapa.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/20-ficha.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/40-pdf.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/30-busqueda.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/50-admin.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/60-propietarios.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/70-movimientos.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/80-zonas.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/85-condominios.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/90-mantenimiento.js?v=20260610_v122_sin_brinco"></script>
-<script src="js/99-init.js?v=20260610_v122_sin_brinco"></script>
+<script src="js/00-nucleo.js?v=20260609_v144_mapa_colonias"></script>
+<script src="js/10-mapa.js?v=20260609_v148_solo_tabs"></script>
+<script src="js/20-ficha.js?v=20260609_v142_ficha_rapida"></script>
+<script src="js/40-pdf.js?v=20260610_v125_portal"></script>
+<script src="js/30-busqueda.js?v=20260609_v145_panel_capas"></script>
+<script src="js/05-modulos-portal.js?v=20260609_v149_ocultar_tabs"></script>
+<script src="js/06-construcciones-medicion.js?v=20260610_v140_snap_vecinos"></script>
+<script src="js/50-admin.js?v=20260610_v125_portal"></script>
+<script src="js/60-propietarios.js?v=20260609_v143_ficha_rapida"></script>
+<script src="js/70-movimientos.js?v=20260610_v125_portal"></script>
+<script src="js/80-zonas.js?v=20260610_v125_portal"></script>
+<script src="js/85-condominios.js?v=20260610_v125_portal"></script>
+<script src="js/90-mantenimiento.js?v=20260609_v141_adeudos"></script>
+<script src="js/99-init.js?v=20260610_v125_portal"></script>
 
 <!-- Modal edición / alta zona homogénea (z-index sobre módulo análisis) -->
 <div id="modalEditarZonaHomogenea" class="modal-analisis-zona-overlay oculto">

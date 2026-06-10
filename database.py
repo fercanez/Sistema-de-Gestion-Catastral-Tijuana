@@ -1,7 +1,7 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD
+from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, GEONODE_DB_NAME
 
 
 def get_conn():
@@ -9,6 +9,18 @@ def get_conn():
         host=DB_HOST,
         port=DB_PORT,
         dbname=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        cursor_factory=RealDictCursor,
+    )
+
+
+def get_geonode_conn():
+    """Conexión a geonode_data (capa construccionesmxli y otras de GeoNode)."""
+    return psycopg2.connect(
+        host=DB_HOST,
+        port=DB_PORT,
+        dbname=GEONODE_DB_NAME,
         user=DB_USER,
         password=DB_PASSWORD,
         cursor_factory=RealDictCursor,

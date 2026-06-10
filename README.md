@@ -83,8 +83,72 @@ Componentes principales identificados:
   - catálogos
   - administración
 
+- **Frontend modular (visor catastral)**  
+  Interfaz en `index.html` con assets partidos en módulos:
+  - `css/00-base.css` … `css/55-modulos-portal.css`
+  - `js/00-nucleo.js` — utilidades, sesión, capas
+  - `js/10-mapa.js` — mapa OpenLayers, WMS, leyenda
+  - `js/20-ficha.js` — ficha predial y pestañas
+  - `js/30-busqueda.js` — búsqueda y selección de predios
+  - `js/05-modulos-portal.js` — portal por módulos y popup predio
+  - `js/06-construcciones-medicion.js` — construcciones/medición en popup
+  - `js/50-admin.js` … `js/99-init.js` — admin, propietarios, movimientos, init
+  - Respaldos monolíticos en `respaldo de originales/` (`catastro.js`, `catastro.css`)
+
 - `docs/`  
   Base documental técnica, operativa y de soporte.
+
+---
+
+## Despliegue frontend + backend
+
+| Componente | Ruta en servidor | Acción tras subir archivos |
+|------------|------------------|----------------------------|
+| API FastAPI | `/opt/catastro_api/` | `sudo systemctl restart catastro-api` |
+| Visor web | `/var/www/catastro/` | Recarga forzada en navegador (**Ctrl+F5**) |
+
+URL del visor (base): `/api/catastro/visor/` (según `index.html`).
+
+### Cache buster actual (jun 2026)
+
+Tras cambios en JS/CSS, actualizar el parámetro `?v=` en `index.html`. Referencia reciente:
+
+| Archivo | Versión |
+|---------|---------|
+| `css/50-modulos.css`, `css/55-modulos-portal.css` | `v149_ocultar_tabs` |
+| `js/05-modulos-portal.js` | `v149_ocultar_tabs` |
+| `js/10-mapa.js` | `v148_solo_tabs` |
+| `js/30-busqueda.js` | `v145_panel_capas` |
+| `js/90-mantenimiento.js` | `v141_adeudos` |
+
+---
+
+## Estado actual del visor (10 jun 2026)
+
+Trabajo reciente en **Gestión Catastral** (sesión en curso, pendiente commit):
+
+### Portal y panel lateral
+- Modo **Gestión Catastral**: panel izquierdo con **Consulta** + **Capas** únicamente.
+- Ocultas en ese modo: Herramientas, Zonas H., Condominios, Movimientos, Admin (clase `tab-modulo-extra` + CSS + JS `ocultarTabsExtraGestionCatastral()`).
+- Ficha del predio en **popup** (`popupPredioWorkspace`); búsqueda y leyenda integrada en el panel.
+
+### Capas del mapa (Gestión Catastral)
+- **Inicio:** solo **colonias** WMS al 100 %; predios WMS apagados.
+- **Al seleccionar predio:** zoom automático + encendido de capa predios WMS.
+- Sincronización checkbox ↔ capa: `sincronizarCapasWmsDesdeControles()` en `js/10-mapa.js`.
+
+### Backend / mantenimiento
+- Importación **Adeudos 2026** desde Excel (~439k filas): `POST /padron/mantenimiento/adeudos/importar` (`routers/padron.py`).
+- UI: botón en Movimientos → Catálogos → **Adeudos 2026** (`js/90-mantenimiento.js`).
+- Optimización carga ficha: caché y menos peticiones duplicadas (`js/30-busqueda.js`, `js/20-ficha.js`, `js/60-propietarios.js`).
+
+### Pendiente para siguiente sesión
+- [ ] Confirmar despliegue completo de `v149_ocultar_tabs` en producción (panel + pestañas ocultas).
+- [ ] Validar capas: colonias solas al entrar; predios al seleccionar; toggles en pestaña Capas.
+- [ ] Integrar herramientas del panel de trabajo en **fichas del predio** según privilegios (Herramientas, Zonas, Condominios, Movimientos, Admin).
+- [ ] Revisar consulta WFS construcciones (`construccionesmxli`) — timeout en GeoServer para claves como `ST312031`.
+- [ ] Unificar cache busters en `index.html` y crear **commit** con todos los cambios locales sin commitear.
+- [ ] Post-import adeudos (opcional): `ANALYZE catalogos.padron_2026;`
 
 ---
 
@@ -260,35 +324,8 @@ La carpeta `docs/` contiene documentación técnica, funcional, operativa y de s
   Backlog técnico inicial priorizado.
 
 - [`docs/roadmap.md`](docs/roadmap.md)  
-  ## Gestión técnica y mejora continua
+  Hoja de ruta técnica y operativa del sistema.
 
-### `docs/pendientes-tecnicos.md`
-Lista razonada de hallazgos y áreas de mejora:
-- seguridad
-- despliegue
-- datos
-- pruebas
-- documentación
-- infraestructura
-
-### `docs/backlog-tecnico.md`
-Backlog inicial priorizado:
-- ID
-- tema
-- pendiente
-- prioridad
-- estado sugerido
-- observaciones
-- fases sugeridas
-
-### `docs/roadmap.md`
-Hoja de ruta técnica y operativa del sistema:
-- horizontes de trabajo
-- prioridades por fase
-- evolución sugerida
-- dependencias
-- indicadores simples
-- próximos pasos
 ---
 
 ## Orden de lectura sugerido
@@ -402,25 +439,13 @@ Aun así, la documentación debe considerarse viva y seguir actualizándose conf
 
 ## Recomendaciones de trabajo
 
-- documentar todo cambio relevante
+- documentar todo cambio relevante en `docs/bitacora-cambios.md`
 - usar `docs/checklist-produccion.md` antes de cambios productivos
-- registrar resultados en `docs/bitacora-cambios.md`
 - agregar nuevos pendientes en `docs/backlog-tecnico.md`
 - revisar periódicamente `docs/roadmap.md` para orientar prioridades
-- usar `docs/estructura-documentacion.md` como referencia si en el futuro se reorganiza `docs/`
 - mantener `README.md` y `docs/indice-documentacion.md` sincronizados
+- tras desplegar frontend, verificar en DevTools que los `.js`/`.css` carguen con el cache buster esperado
+
 ---
-
-## Recomendaciones de trabajo
-
-- documentar todo cambio relevante
-- usar `docs/checklist-produccion.md` antes de cambios productivos
-- registrar resultados en `docs/bitacora-cambios.md`
-- agregar nuevos pendientes en `docs/backlog-tecnico.md`
-- revisar periódicamente `docs/roadmap.md` para orientar prioridades
-- usar `docs/estructura-documentacion.md` como referencia si en el futuro se reorganiza `docs/`
-- mantener `README.md` y `docs/indice-documentacion.md` sincronizados
-
-## Licencia
 
 Pendiente de definir según lineamientos institucionales o del repositorio.
