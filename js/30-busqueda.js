@@ -338,15 +338,36 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
 
   if (seq !== seleccionPredioSeq) return;
 
-  if (!fichaGeojsonResponse.ok) {
-    console.warn("No se pudo cargar expediente:", claveNorm);
-    return;
+  let featureGeojson = null;
+
+  if (fichaGeojsonResponse.ok) {
+    featureGeojson = await fichaGeojsonResponse.json();
+  } else {
+    // Muchos predios existen en padrón/cartografía pero aún no tienen expediente integral.
+    // Sin este respaldo el clic en el mapa dejaba la ficha del predio anterior.
+    console.warn("Expediente no disponible, se intenta padrón:", claveNorm);
+    const resPadron = await fetch(`${API}/padron/${encodeURIComponent(claveNorm)}/ficha?_=${Date.now()}`, {
+      cache: "no-store",
+      headers: authHeaders()
+    });
+    if (seq !== seleccionPredioSeq) return;
+    if (!resPadron.ok) {
+      console.warn("No se pudo cargar ficha del predio:", claveNorm);
+      return;
+    }
+    featureGeojson = await resPadron.json();
+    // Si el clic ya trajo geometría exacta, preferirla sobre la del padrón.
+    if (geojsonPrefetch?.geometry && !featureGeojson?.geometry) {
+      featureGeojson = { ...featureGeojson, geometry: geojsonPrefetch.geometry };
+    }
+    if (geojsonPrefetch?.geometry && featureGeojson?.geometry) {
+      featureGeojson.geometry = geojsonPrefetch.geometry;
+    }
   }
 
-  const featureGeojson = await fichaGeojsonResponse.json();
   if (seq !== seleccionPredioSeq) return;
 
-  const ficha = featureGeojson.properties || {};
+  const ficha = featureGeojson.properties || featureGeojson || {};
 
   const enResultados = resultadosSource?.getFeatures().some(
     f => String(f.get("clave_catastral") || "").toUpperCase() === claveNorm
