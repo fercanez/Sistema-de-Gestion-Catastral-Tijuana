@@ -7,6 +7,7 @@ from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
 
 from database import get_conn, columnas_tabla, asegurar_tabla_predio_condominio
+from auth.dependencies import obtener_usuario_actual
 from routers.movimientos import permiso_movimientos, permiso_aplicar_movimientos
 from routers.padron import (
     SQL_TIPO_CONDOMINIO,
@@ -1692,7 +1693,7 @@ def eliminar_propietario_catalogo(
 @router.get("/predios/{clave}/propietarios")
 def listar_propietarios_predio_v28(
     clave: str,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(obtener_usuario_actual)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

@@ -8,8 +8,15 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
+from psycopg2.extras import execute_values
+
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_roles
 from database import get_conn, asegurar_tabla_predio_condominio
+
+try:
+    from database import get_geonode_conn
+except ImportError:
+    get_geonode_conn = None
 
 router = APIRouter(tags=["padron"])
 
@@ -107,9 +114,9 @@ def busqueda_avanzada(
     try:
         limite = min(max(limite, 1), 5000)
 
-        clave_like = (clave or "").strip() + "%"
-        colonia_like = "%" + (colonia or "").strip() + "%"
-        calle_like = "%" + (calle or "").strip() + "%"
+        clave_stripped = (clave or "").strip()
+        colonia_stripped = (colonia or "").strip()
+        calle_stripped = (calle or "").strip()
         numero_txt = (numero or "").strip()
 
         # Búsqueda por nombre tolerante: cada palabra debe aparecer (en cualquier
@@ -127,6 +134,37 @@ def busqueda_avanzada(
         conn = get_conn()
         cur = conn.cursor()
 
+        # Atajo: solo clave (sin nombre/colonia/calle/número) → igualdad exacta,
+        # sin COUNT(*) sobre ~441k filas (evita 10–20 s de espera).
+        solo_clave = (
+            clave_stripped
+            and not nombre_tokens
+            and not colonia_stripped
+            and not calle_stripped
+            and not numero_txt
+        )
+        if solo_clave:
+            clave_exacta = clave_stripped.upper()
+            cur.execute(f"""
+                {SQL_SELECT_PADRON_UNICO}
+                {SQL_FROM_PADRON_UNICO}
+                WHERE UPPER(TRIM(p.clave_catastral)) = %s
+                LIMIT 1;
+            """, (clave_exacta,))
+            row = cur.fetchone()
+            cur.close()
+            conn.close()
+            return {
+                "total": 1 if row else 0,
+                "limite": limite,
+                "cargados": 1 if row else 0,
+                "resultados": [row] if row else [],
+            }
+
+        clave_like = clave_stripped + "%"
+        colonia_like = "%" + colonia_stripped + "%"
+        calle_like = "%" + calle_stripped + "%"
+
         where_sql = f"""
             WHERE
                 (%s = '' OR UPPER(p.clave_catastral) LIKE UPPER(%s))
@@ -137,10 +175,10 @@ def busqueda_avanzada(
         """
 
         params_where = (
-            (clave or "").strip(), clave_like,
+            clave_stripped, clave_like,
             *nombre_params,
-            (colonia or "").strip(), colonia_like,
-            (calle or "").strip(), calle_like,
+            colonia_stripped, colonia_like,
+            calle_stripped, calle_like,
             numero_txt, numero_txt
         )
 
@@ -340,6 +378,64 @@ def geojson_predio(clave: str, usuario_actual: dict = Depends(obtener_usuario_ac
         return {"type": "Feature", "geometry": geometry, "properties": {"clave_catastral": clave.upper().strip()}}
     except HTTPException:
         raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/predios/{clave}/construcciones")
+def construcciones_predio(
+    clave: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Construcciones cartográficas del predio (capa construccionesmxli en geonode_data)."""
+    if get_geonode_conn is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Conexion geonode no configurada en el servidor (database.get_geonode_conn).",
+        )
+    clave_norm = clave.upper().strip()
+    try:
+        conn = get_geonode_conn()
+        cur = conn.cursor()
+        cur.execute("""
+            SELECT
+                fid,
+                clavecatas,
+                claveconst,
+                claveorig,
+                niveles,
+                suphor,
+                colonia,
+                perimetro,
+                tipo
+            FROM construccionesmxli
+            WHERE UPPER(TRIM(clavecatas)) = %s
+               OR UPPER(TRIM(claveorig)) = %s
+            ORDER BY claveconst NULLS LAST, fid;
+        """, (clave_norm, clave_norm))
+        rows = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        construcciones = []
+        for r in rows:
+            construcciones.append({
+                "fid": r.get("fid"),
+                "clavecatas": r.get("clavecatas"),
+                "claveconst": r.get("claveconst"),
+                "claveorig": r.get("claveorig"),
+                "niveles": r.get("niveles"),
+                "suphor": float(r["suphor"]) if r.get("suphor") is not None else None,
+                "colonia": r.get("colonia"),
+                "perimetro": float(r["perimetro"]) if r.get("perimetro") is not None else None,
+                "tipo": r.get("tipo"),
+            })
+
+        return {
+            "clave_catastral": clave_norm,
+            "total": len(construcciones),
+            "construcciones": construcciones,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -1503,6 +1599,187 @@ async def importar_zonas_homogeneas_archivo(
 
     payload = ImportZonasHomogeneasPayload(anio=anio, reemplazar=reemplazar, filas=filas)
     return importar_zonas_homogeneas_json(payload, usuario_actual)
+
+
+class ImportAdeudoFila(BaseModel):
+    clave_catastral: str
+    adeudo: Optional[float] = None
+    pago: Optional[str] = None
+
+
+class ImportAdeudosPayload(BaseModel):
+    ejercicio: int = Field(default=2026, ge=2020, le=2035)
+    filas: List[ImportAdeudoFila]
+
+
+def _normalizar_clave_adeudo(clave: str) -> str:
+    return re.sub(r"\s+", "", str(clave or "").strip().upper())
+
+
+def _es_pago_si(valor) -> bool:
+    t = str(valor or "").strip().upper()
+    if not t:
+        return False
+    return t in ("SI", "SÍ", "S", "1", "TRUE", "PAGADO", "PAGO", "YES", "Y")
+
+
+def _parsear_monto_adeudo(raw) -> float:
+    if raw is None or str(raw).strip() == "":
+        return 0.0
+    s = str(raw).strip().replace("$", "").replace(",", "").replace(" ", "")
+    return max(0.0, float(s))
+
+
+def _importar_lote_adeudos(cur, filas: list):
+    valores = []
+    omitidos = 0
+    errores = []
+
+    for i, raw in enumerate(filas):
+        if isinstance(raw, dict):
+            clave = _normalizar_clave_adeudo(raw.get("clave_catastral") or "")
+            pago = raw.get("pago")
+            adeudo_raw = raw.get("adeudo")
+        else:
+            clave = _normalizar_clave_adeudo(getattr(raw, "clave_catastral", "") or "")
+            pago = getattr(raw, "pago", None)
+            adeudo_raw = getattr(raw, "adeudo", None)
+
+        if not clave:
+            omitidos += 1
+            continue
+        try:
+            monto = _parsear_monto_adeudo(adeudo_raw)
+        except (ValueError, TypeError):
+            errores.append(f"Fila {i + 1}: adeudo invalido ({clave})")
+            continue
+
+        if _es_pago_si(pago):
+            adeudo_2026 = 0.0
+            adeudo_total = 0.0
+        else:
+            adeudo_2026 = monto
+            adeudo_total = monto
+
+        valores.append((clave, adeudo_2026, adeudo_total))
+
+    if not valores:
+        return {
+            "actualizados": 0,
+            "no_encontrados": 0,
+            "no_encontrados_muestra": [],
+            "omitidos": omitidos,
+            "errores": errores,
+            "procesados": len(filas),
+            "unicos": 0,
+        }
+
+    cur.execute("""
+        CREATE TEMP TABLE tmp_adeudos_import (
+            clave_catastral VARCHAR(30) PRIMARY KEY,
+            adeudo_2026 NUMERIC,
+            adeudo_total NUMERIC
+        ) ON COMMIT DROP;
+    """)
+
+    execute_values(
+        cur,
+        """
+        INSERT INTO tmp_adeudos_import (clave_catastral, adeudo_2026, adeudo_total)
+        VALUES %s
+        ON CONFLICT (clave_catastral) DO UPDATE
+            SET adeudo_2026 = EXCLUDED.adeudo_2026,
+                adeudo_total = EXCLUDED.adeudo_total
+        """,
+        valores,
+        page_size=2000,
+    )
+
+    cur.execute("""
+        UPDATE catalogos.padron_2026 p
+        SET adeudo_2026 = t.adeudo_2026,
+            adeudo_total = t.adeudo_total
+        FROM tmp_adeudos_import t
+        WHERE UPPER(TRIM(p.clave_catastral)) = t.clave_catastral
+    """)
+    actualizados = cur.rowcount
+
+    cur.execute("""
+        SELECT t.clave_catastral
+        FROM tmp_adeudos_import t
+        LEFT JOIN catalogos.padron_2026 p
+            ON UPPER(TRIM(p.clave_catastral)) = t.clave_catastral
+        WHERE p.clave_catastral IS NULL
+        LIMIT 50
+    """)
+    no_enc_muestra = [r["clave_catastral"] for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM tmp_adeudos_import t
+        LEFT JOIN catalogos.padron_2026 p
+            ON UPPER(TRIM(p.clave_catastral)) = t.clave_catastral
+        WHERE p.clave_catastral IS NULL
+    """)
+    no_encontrados = int(cur.fetchone()["total"])
+
+    return {
+        "actualizados": actualizados,
+        "no_encontrados": no_encontrados,
+        "no_encontrados_muestra": no_enc_muestra,
+        "omitidos": omitidos,
+        "errores": errores,
+        "procesados": len(filas),
+        "unicos": len(valores),
+    }
+
+
+@router.post("/padron/mantenimiento/adeudos/importar")
+def importar_adeudos_padron(
+    payload: ImportAdeudosPayload,
+    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+):
+    """Importa adeudos fiscales al padrón (adeudo_2026 / adeudo_total) por clave catastral."""
+    if not payload.filas:
+        raise HTTPException(status_code=400, detail="No hay filas para importar")
+    if len(payload.filas) > 15000:
+        raise HTTPException(status_code=400, detail="Maximo 15,000 filas por lote")
+
+    usuario = usuario_actual.get("usuario") or "sistema"
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        resumen = _importar_lote_adeudos(cur, payload.filas)
+        conn.commit()
+        registrar_auditoria(
+            usuario,
+            "IMPORTAR_ADEUDOS_PADRON",
+            "catalogos.padron_2026",
+            (
+                f"ejercicio={payload.ejercicio}; procesados={resumen.get('procesados')}; "
+                f"actualizados={resumen.get('actualizados')}; no_encontrados={resumen.get('no_encontrados')}"
+            ),
+        )
+        cur.close()
+        conn.close()
+        return {"ok": True, "ejercicio": payload.ejercicio, **resumen}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/padron/mantenimiento/adeudos/plantilla.csv")
+def plantilla_import_adeudos(
+    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+):
+    """Plantilla CSV para importación de adeudos (columnas del reporte fiscal)."""
+    contenido = "CLAVECATASTRAL,ADEUDO,PAGO\nA1004003,106830,NO\nB2001001,0,SI\n"
+    return Response(
+        content=contenido,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="plantilla_adeudos_2026.csv"'},
+    )
 
 
 @router.get("/tiles/predios/{z}/{x}/{y}.pbf")
