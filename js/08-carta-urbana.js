@@ -22,6 +22,25 @@ let popupCartaCapas = null;
 let popupCartaClaveActual = "";
 let popupCartaDatos = null;
 
+const POPUP_CARTA_CAPA_ORDEN_DEF = {
+  predio: 35,
+  sectores: 28,
+  zona: 18,
+  carta: 12,
+  prediosWms: 8,
+  colonias: 5
+};
+let popupCartaCapaOrdenEstado = { ...POPUP_CARTA_CAPA_ORDEN_DEF };
+
+const POPUP_CARTA_CAPA_PROP = {
+  predio: "predioVector",
+  sectores: "sectoresWms",
+  zona: "zonaVector",
+  carta: "cartaWms",
+  prediosWms: "prediosWms",
+  colonias: "coloniasWms"
+};
+
 function popupCartaEsc(texto) {
   return String(texto ?? "")
     .replace(/&/g, "&amp;")
@@ -110,8 +129,8 @@ function popupCartaCrearCapas(wmsLayerName) {
     }),
     sectoresWms: new ol.layer.Tile({
       visible: true,
-      opacity: 0.92,
-      zIndex: 11,
+      opacity: 1,
+      zIndex: POPUP_CARTA_CAPA_ORDEN_DEF.sectores,
       source: new ol.source.TileWMS({
         url: POPUP_CARTA_GEONODE_WMS,
         params: {
@@ -188,20 +207,83 @@ function popupCartaAsegurarCanvasMapa() {
   return canvas;
 }
 
+function popupCartaHtmlLayerItem(id, opts) {
+  const { checkboxId, dotClass, label, checked, opacity } = opts;
+  const chk = checked ? "checked" : "";
+  const op = opacity == null ? 100 : opacity;
+  return `
+    <div class="layer-item popup-carta-layer-item" data-layer-id="${id}">
+      <div class="layer-top">
+        <label class="layer-name">
+          <input type="checkbox" id="${checkboxId}" ${chk} onchange="togglePopupCartaCapa('${id}')">
+          <span class="layer-dot ${dotClass}"></span>
+          <b>${label}</b>
+        </label>
+        <span id="popupCartaOp${id}Txt" class="layer-percent">${op}%</span>
+      </div>
+      <input type="range" min="0" max="100" value="${op}" id="popupCartaOp${id}"
+        oninput="popupCartaCambiarOpacidadCapa('${id}', this.value)">
+      <div class="layer-actions">
+        <button type="button" onclick="popupCartaSubirCapa('${id}')">↑ Subir</button>
+        <button type="button" onclick="popupCartaBajarCapa('${id}')">↓ Bajar</button>
+      </div>
+    </div>`;
+}
+
 function htmlMenuCapasPopupCarta() {
+  const capas = [
+    popupCartaHtmlLayerItem("predio", {
+      checkboxId: "popupCartaChkPredio",
+      dotClass: "dot-amber",
+      label: "Predio consultado",
+      checked: true,
+      opacity: 100
+    }),
+    popupCartaHtmlLayerItem("sectores", {
+      checkboxId: "popupCartaChkSectores",
+      dotClass: "dot-blue",
+      label: "Sectores (WMS)",
+      checked: true,
+      opacity: 100
+    }),
+    popupCartaHtmlLayerItem("zona", {
+      checkboxId: "popupCartaChkZona",
+      dotClass: "dot-orange",
+      label: "Polígono de zona",
+      checked: true,
+      opacity: 100
+    }),
+    popupCartaHtmlLayerItem("carta", {
+      checkboxId: "popupCartaChkCarta",
+      dotClass: "dot-green",
+      label: "Usos propuestos 2040 (WMS)",
+      checked: true,
+      opacity: 88
+    }),
+    popupCartaHtmlLayerItem("prediosWms", {
+      checkboxId: "popupCartaChkPrediosWms",
+      dotClass: "dot-red",
+      label: "Predios (WMS)",
+      checked: false,
+      opacity: 45
+    }),
+    popupCartaHtmlLayerItem("colonias", {
+      checkboxId: "popupCartaChkColoniasWms",
+      dotClass: "dot-purple",
+      label: "Colonias",
+      checked: false,
+      opacity: 45
+    })
+  ].join("");
+
   return `
     <div class="popup-capas-menu popup-carta-capas-menu" id="popupCartaCapasMenu" onclick="event.stopPropagation()">
       <div class="popup-capas-menu-head">
         <strong>Capas del plano</strong>
         <button type="button" class="popup-capas-cerrar" onclick="cerrarPopupCartaCapasMenu()" title="Ocultar capas">−</button>
       </div>
-      <div class="popup-capas-seccion">
-        <label><input type="checkbox" id="popupCartaChkCartaWms" checked onchange="togglePopupCartaCapa('carta')"> Usos propuestos 2040 (WMS)</label>
-        <label><input type="checkbox" id="popupCartaChkSectoresWms" checked onchange="togglePopupCartaCapa('sectores')"> Sectores (WMS)</label>
-        <label><input type="checkbox" id="popupCartaChkPredio" checked onchange="togglePopupCartaCapa('predio')"> Predio consultado</label>
-        <label><input type="checkbox" id="popupCartaChkZona" checked onchange="togglePopupCartaCapa('zona')"> Polígono de zona</label>
-        <label><input type="checkbox" id="popupCartaChkPrediosWms" onchange="togglePopupCartaCapa('prediosWms')"> Predios (WMS)</label>
-        <label><input type="checkbox" id="popupCartaChkColoniasWms" onchange="togglePopupCartaCapa('colonias')"> Colonias</label>
+      <div class="popup-capas-seccion popup-carta-capas-overlay" id="popupCartaCapasOverlayList">
+        ${capas}
       </div>
       <div class="popup-capas-seccion">
         <strong>Base mapas</strong>
@@ -211,6 +293,68 @@ function htmlMenuCapasPopupCarta() {
         <label><input type="radio" name="popupCartaBaseMap" value="osm" onchange="setPopupCartaBaseLayer(this.value)"> OpenStreetMap</label>
       </div>
     </div>`;
+}
+
+function popupCartaObtenerCapaPorId(id) {
+  if (!popupCartaCapas) return null;
+  const prop = POPUP_CARTA_CAPA_PROP[id];
+  return prop ? popupCartaCapas[prop] : null;
+}
+
+function popupCartaAplicarZIndexCapa(id) {
+  const capa = popupCartaObtenerCapaPorId(id);
+  if (capa && typeof capa.setZIndex === "function") {
+    capa.setZIndex(popupCartaCapaOrdenEstado[id] ?? 5);
+  }
+}
+
+function popupCartaCambiarOpacidadCapa(id, valor) {
+  const opacidad = Number(valor) / 100;
+  const txt = document.getElementById(`popupCartaOp${id}Txt`);
+  if (txt) txt.innerText = `${valor}%`;
+  const capa = popupCartaObtenerCapaPorId(id);
+  if (capa && typeof capa.setOpacity === "function") {
+    capa.setOpacity(opacidad);
+  }
+  popupCartaMap?.render();
+}
+
+function popupCartaSubirCapa(id) {
+  popupCartaCapaOrdenEstado[id] = (popupCartaCapaOrdenEstado[id] || 0) + 10;
+  popupCartaAplicarZIndexCapa(id);
+  popupCartaActualizarOrdenVisualCapas();
+  popupCartaMap?.render();
+}
+
+function popupCartaBajarCapa(id) {
+  popupCartaCapaOrdenEstado[id] = (popupCartaCapaOrdenEstado[id] || 0) - 10;
+  popupCartaAplicarZIndexCapa(id);
+  popupCartaActualizarOrdenVisualCapas();
+  popupCartaMap?.render();
+}
+
+function popupCartaActualizarOrdenVisualCapas() {
+  const contenedor = document.getElementById("popupCartaCapasOverlayList");
+  if (!contenedor) return;
+  const items = Array.from(contenedor.querySelectorAll(".layer-item"));
+  items
+    .sort((a, b) => {
+      const za = popupCartaCapaOrdenEstado[a.dataset.layerId] || 0;
+      const zb = popupCartaCapaOrdenEstado[b.dataset.layerId] || 0;
+      return zb - za;
+    })
+    .forEach(item => contenedor.appendChild(item));
+}
+
+function popupCartaInicializarOrdenCapas() {
+  Object.keys(POPUP_CARTA_CAPA_PROP).forEach(id => {
+    const capa = popupCartaObtenerCapaPorId(id);
+    if (capa) {
+      capa.set("layerId", id);
+      popupCartaAplicarZIndexCapa(id);
+    }
+  });
+  popupCartaActualizarOrdenVisualCapas();
 }
 
 function cerrarPopupCartaCapasMenu() {
@@ -229,19 +373,21 @@ function togglePopupCartaCapasMenu(ev) {
 
 function togglePopupCartaCapa(tipo) {
   if (!popupCartaCapas) return;
-  if (tipo === "carta") {
-    popupCartaCapas.cartaWms.setVisible(document.getElementById("popupCartaChkCartaWms")?.checked !== false);
-  } else if (tipo === "sectores") {
-    popupCartaCapas.sectoresWms.setVisible(document.getElementById("popupCartaChkSectoresWms")?.checked !== false);
-  } else if (tipo === "predio") {
-    popupCartaCapas.predioVector.setVisible(document.getElementById("popupCartaChkPredio")?.checked !== false);
-  } else if (tipo === "zona") {
-    popupCartaCapas.zonaVector.setVisible(document.getElementById("popupCartaChkZona")?.checked !== false);
-  } else if (tipo === "prediosWms") {
-    popupCartaCapas.prediosWms.setVisible(document.getElementById("popupCartaChkPrediosWms")?.checked !== false);
-  } else if (tipo === "colonias") {
-    popupCartaCapas.coloniasWms.setVisible(document.getElementById("popupCartaChkColoniasWms")?.checked === true);
-  }
+  const chkMap = {
+    carta: "popupCartaChkCarta",
+    sectores: "popupCartaChkSectores",
+    predio: "popupCartaChkPredio",
+    zona: "popupCartaChkZona",
+    prediosWms: "popupCartaChkPrediosWms",
+    colonias: "popupCartaChkColoniasWms"
+  };
+  const capa = popupCartaObtenerCapaPorId(tipo);
+  if (!capa) return;
+  const chkId = chkMap[tipo];
+  const visible = tipo === "colonias" || tipo === "prediosWms"
+    ? document.getElementById(chkId)?.checked === true
+    : document.getElementById(chkId)?.checked !== false;
+  capa.setVisible(visible);
   popupCartaMap?.render();
 }
 
@@ -647,6 +793,7 @@ function popupCartaActualizarMapa(data) {
       view: new ol.View({ center: ol.proj.fromLonLat([-115.468, 32.624]), zoom: 17 }),
       controls: []
     });
+    popupCartaInicializarOrdenCapas();
   } else if (popupCartaCapas?.cartaWms) {
     popupCartaCapas.cartaWms.getSource().updateParams({ LAYERS: wmsLayer });
   }
@@ -710,6 +857,7 @@ function destruirPopupCartaUrbana() {
     popupCartaMap = null;
   }
   popupCartaCapas = null;
+  popupCartaCapaOrdenEstado = { ...POPUP_CARTA_CAPA_ORDEN_DEF };
   popupCartaClaveActual = "";
   popupCartaDatos = null;
 }

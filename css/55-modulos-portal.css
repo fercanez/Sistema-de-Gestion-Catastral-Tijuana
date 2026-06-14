@@ -827,6 +827,21 @@ body.panel-oculto-activo .app-institucional .btn-mostrar-panel {
   border-radius: 4px !important;
 }
 
+.popup-mini-map-wrap {
+  position: relative;
+  min-height: 280px;
+}
+
+.popup-numof-mapa-body {
+  position: relative;
+  flex: 1;
+  min-height: 480px;
+}
+
+.popup-construcciones-mapa-wrap {
+  position: relative;
+}
+
 .popup-capas-menu {
   position: absolute;
   top: 8px;
@@ -1757,7 +1772,8 @@ body.popup-archivo-foto-lightbox-abierto {
   flex-shrink: 0;
 }
 
-.popup-predio-workspace button.popup-btn-numof-ficha {
+.popup-predio-workspace button.popup-btn-numof-ficha,
+.popup-predio-workspace button.popup-btn-colonia-ficha {
   width: auto !important;
   padding: 4px 12px !important;
   border: 1px solid #703341 !important;
@@ -1825,6 +1841,13 @@ body.popup-archivo-foto-lightbox-abierto {
 
 .popup-numof-capas-menu {
   top: 40px;
+  width: min(300px, calc(100% - 24px));
+  max-height: min(420px, calc(100% - 24px));
+  overflow-y: auto;
+}
+
+.popup-numof-capas-menu .popup-capas-overlay .layer-item {
+  margin: 8px 0;
 }
 
 /* ══════════════ CARTA URBANA 2040 (popup predio) ══════════════ */
@@ -1987,23 +2010,69 @@ body.popup-archivo-foto-lightbox-abierto {
   flex-direction: column;
 }
 
-.popup-carta-capas-menu {
+.popup-carta-capas-menu,
+.popup-capas-menu.popup-carta-capas-menu,
+.popup-capas-menu.popup-mini-capas-menu,
+.popup-capas-menu.popup-constr-capas-menu,
+.popup-capas-menu.popup-numof-capas-menu,
+.popup-capas-menu.popup-colonia-capas-menu {
   display: none;
   position: absolute;
   top: 12px;
   right: 12px;
   left: auto;
-  width: min(248px, calc(100% - 24px));
-  max-height: min(340px, calc(100% - 24px));
+  width: min(300px, calc(100% - 24px));
+  max-height: min(420px, calc(100% - 24px));
   overflow-y: auto;
   z-index: 1000;
   margin: 0;
   pointer-events: auto;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 0;
 }
 
-.popup-carta-capas-menu.popup-carta-capas-visible {
+.popup-carta-capas-menu.popup-carta-capas-visible,
+.popup-capas-menu.popup-carta-capas-menu.popup-carta-capas-visible,
+.popup-capas-menu.popup-mini-capas-menu.popup-carta-capas-visible,
+.popup-capas-menu.popup-constr-capas-menu.popup-carta-capas-visible,
+.popup-capas-menu.popup-numof-capas-menu.popup-carta-capas-visible,
+.popup-capas-menu.popup-colonia-capas-menu.popup-carta-capas-visible {
   display: block !important;
+}
+
+.popup-capas-menu.popup-carta-capas-menu .popup-capas-menu-head,
+.popup-capas-menu.popup-mini-capas-menu .popup-capas-menu-head,
+.popup-capas-menu.popup-constr-capas-menu .popup-capas-menu-head,
+.popup-capas-menu.popup-numof-capas-menu .popup-capas-menu-head,
+.popup-capas-menu.popup-colonia-capas-menu .popup-capas-menu-head {
+  padding: 8px 10px;
+  margin-bottom: 0;
+}
+
+.popup-capas-menu.popup-carta-capas-menu .popup-capas-seccion,
+.popup-capas-menu.popup-mini-capas-menu .popup-capas-seccion,
+.popup-capas-menu.popup-constr-capas-menu .popup-capas-seccion,
+.popup-capas-menu.popup-numof-capas-menu .popup-capas-seccion,
+.popup-capas-menu.popup-colonia-capas-menu .popup-capas-seccion {
+  padding: 8px 10px 10px;
+}
+
+.popup-carta-capas-overlay .layer-item {
+  margin: 8px 0;
+}
+
+.popup-carta-capas-overlay .layer-item:first-child {
+  margin-top: 4px;
+}
+
+.popup-capas-overlay .layer-item {
+  margin: 8px 0;
+}
+
+.popup-capas-overlay .layer-item:first-child {
+  margin-top: 4px;
 }
 
 .popup-carta-mapa {
@@ -2078,6 +2147,243 @@ body.popup-archivo-foto-lightbox-abierto {
   border-radius: 2px;
 }
 
+/* ══════════════ COLONIA / FRACCIONAMIENTO (popup predio) ══════════════ */
+.popup-colonia-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 34%) 1fr;
+  gap: 12px;
+  min-height: 560px;
+  height: min(72vh, 680px);
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.popup-colonia-panel-izq {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+}
+
+.popup-colonia-seccion {
+  background: #fff;
+  border: 1px solid #703341;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.popup-colonia-seccion h4 {
+  margin: 0 0 8px;
+  font-size: 0.9rem;
+  color: #703341;
+}
+
+.popup-colonia-seccion-carto {
+  border-color: #703341;
+  background: linear-gradient(180deg, #fdf8f9 0%, #fff 100%);
+}
+
+.popup-colonia-campo {
+  display: grid;
+  grid-template-columns: minmax(110px, 38%) 1fr;
+  gap: 6px;
+  padding: 4px 0;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 0.78rem;
+  align-items: start;
+}
+
+.popup-colonia-campo:last-child {
+  border-bottom: none;
+}
+
+.popup-colonia-campo-destacado .popup-colonia-valor {
+  color: #703341;
+  font-size: 0.86rem;
+}
+
+.popup-colonia-campo-nombre {
+  margin-bottom: 6px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed #d8bdc5;
+}
+
+.popup-colonia-valor-nombre {
+  font-size: 0.88rem !important;
+  font-weight: 800 !important;
+  color: #703341 !important;
+  letter-spacing: 0.01em;
+  line-height: 1.25;
+}
+
+.popup-colonia-label {
+  color: #64748b;
+  font-weight: 600;
+}
+
+.popup-colonia-valor {
+  color: #703341;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.popup-colonia-campo .popup-colonia-valor {
+  color: #703341 !important;
+}
+
+.popup-colonia-aviso {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fef3c7;
+  border: 1px solid #fcd34d;
+  color: #92400e;
+  font-size: 0.82rem;
+  line-height: 1.45;
+}
+
+.popup-colonia-meta {
+  margin-top: 8px;
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.4;
+}
+
+.popup-colonia-cargando {
+  padding: 12px;
+  color: #64748b;
+  font-size: 0.85rem;
+}
+
+.popup-colonia-mapa-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  position: relative;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.popup-colonia-mapa-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #f8fafc;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.popup-colonia-mapa-head-text strong {
+  display: block;
+  color: #703341;
+  font-size: 0.88rem;
+}
+
+.popup-colonia-mapa-head-text span {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.72rem;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.popup-colonia-mapa-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.popup-colonia-mapa-head-actions .popup-btn-colonia-ficha {
+  min-width: 118px;
+}
+
+.popup-colonia-mapa-body {
+  position: relative;
+  flex: 1;
+  min-height: 480px;
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-colonia-mapa {
+  flex: 1;
+  min-height: 480px;
+  height: 100%;
+  position: relative;
+  background: #e2e8f0;
+  border: 2px solid #703341;
+  box-sizing: border-box;
+  box-shadow: inset 0 0 0 1px rgba(201, 162, 39, 0.45);
+}
+
+.popup-colonia-mapa-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 460px;
+}
+
+.popup-colonia-mapa > .popup-mini-map-vacio {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
+  background: #e2e8f0;
+}
+
+.popup-colonia-leyenda {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 6px 10px;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+  font-size: 0.72rem;
+  color: #475569;
+}
+
+.popup-colonia-leyenda span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.popup-colonia-swatch {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  border: 1px solid rgba(0, 0, 0, 0.15);
+}
+
+.popup-colonia-swatch-predio {
+  background: rgba(37, 99, 235, 0.52);
+  border: 2px solid #1e3a8a;
+}
+
+.popup-colonia-swatch-colonia {
+  background: rgba(124, 58, 237, 0.14);
+  border: 2px solid #7c3aed;
+}
+
+.popup-colonia-swatch-wms {
+  background: rgba(34, 197, 94, 0.2);
+  border-color: #22c55e;
+}
+
 @media (max-width: 960px) {
   .popup-construcciones-layout {
     grid-template-columns: 1fr;
@@ -2088,6 +2394,10 @@ body.popup-archivo-foto-lightbox-abierto {
   }
 
   .popup-carta-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .popup-colonia-layout {
     grid-template-columns: 1fr;
   }
 

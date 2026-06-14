@@ -91,15 +91,27 @@ function fichaNumofEtiqueta(props) {
 }
 
 function fichaNumofLayerPanelHtml() {
+  const capas = typeof fichaMapaCapasItemsHtml === "function"
+    ? fichaMapaCapasItemsHtml([
+        { id: "consultado", checkboxId: "numofChkConsultado", dotClass: "dot-blue", label: "Predio consultado", checked: true, opacity: 100 },
+        { id: "codigos", checkboxId: "numofChkCodigosWms", dotClass: "dot-orange", label: "Códigos postales", checked: true, opacity: 100 },
+        { id: "otra", checkboxId: "numofChkOtra", dotClass: "dot-amber", label: "Otras calles", checked: true, opacity: 100 },
+        { id: "misma", checkboxId: "numofChkMisma", dotClass: "dot-green", label: "Misma calle", checked: true, opacity: 100 },
+        { id: "prediosWms", checkboxId: "numofChkPrediosWms", dotClass: "dot-red", label: "Predios (WMS)", checked: true, opacity: 85 },
+        { id: "colonias", checkboxId: "numofChkColoniasWms", dotClass: "dot-purple", label: "Colonias", checked: false, opacity: 55 }
+      ], {
+        opPrefix: "numofOp",
+        toggleFn: "toggleCapaFichaNumof",
+        opacityFn: "cambiarOpacidadCapaFichaNumof",
+        subirFn: "subirCapaFichaNumof",
+        bajarFn: "bajarCapaFichaNumof"
+      })
+    : "";
+
   return `<div id="numofLayerPanel" class="numof-layer-panel oculto">
-    <div class="grupo">
+    <div class="grupo ficha-capas-overlay" id="numofCapasOverlayList">
       <strong>Capas del plano</strong>
-      <label><input type="checkbox" id="numofChkConsultado" checked onchange="actualizarCapasFichaNumof()"> Predio consultado</label>
-      <label><input type="checkbox" id="numofChkMisma" checked onchange="actualizarCapasFichaNumof()"> Misma calle</label>
-      <label><input type="checkbox" id="numofChkOtra" checked onchange="actualizarCapasFichaNumof()"> Otras calles</label>
-      <label><input type="checkbox" id="numofChkPrediosWms" checked onchange="actualizarCapasFichaNumof()"> Predios (WMS)</label>
-      <label><input type="checkbox" id="numofChkCodigosWms" checked onchange="actualizarCapasFichaNumof()"> Códigos postales</label>
-      <label><input type="checkbox" id="numofChkColoniasWms" onchange="actualizarCapasFichaNumof()"> Colonias</label>
+      ${capas}
     </div>
     <div class="grupo">
       <strong>Base mapas</strong>
@@ -114,10 +126,50 @@ function fichaNumofLayerPanelHtml() {
 function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
   const geoJson = JSON.stringify(featuresJson || { type: "FeatureCollection", features: [] });
   const mapaInicial = JSON.stringify(mapaInicialJson || "");
+  const capasRuntime = typeof buildFichaMapaCapasRuntimeScript === "function"
+    ? buildFichaMapaCapasRuntimeScript({
+        ordenDef: {
+          consultado: 35,
+          codigos: 28,
+          otra: 14,
+          misma: 12,
+          prediosWms: 8,
+          colonias: 5
+        },
+        capaProp: {
+          consultado: "capaConsultado",
+          misma: "capaMisma",
+          otra: "capaOtra",
+          prediosWms: "capaPredios",
+          codigos: "capaCodigos",
+          colonias: "capaColonias"
+        },
+        chkMap: {
+          consultado: "numofChkConsultado",
+          misma: "numofChkMisma",
+          otra: "numofChkOtra",
+          prediosWms: "numofChkPrediosWms",
+          codigos: "numofChkCodigosWms",
+          colonias: "numofChkColoniasWms"
+        },
+        optionalIds: ["colonias"],
+        capasVar: "window.__numofPreviewCapas",
+        mapVar: "previewMapNumof",
+        overlayListId: "numofCapasOverlayList",
+        opPrefix: "numofOp",
+        toggleFn: "toggleCapaFichaNumof",
+        opacityFn: "cambiarOpacidadCapaFichaNumof",
+        subirFn: "subirCapaFichaNumof",
+        bajarFn: "bajarCapaFichaNumof",
+        initFn: "inicializarOrdenCapasFichaNumof"
+      })
+    : "";
+
   return `
   let previewMapNumof=null;
   const featuresNumof=${geoJson};
   const mapaInicialFicha=${mapaInicial};
+  ${capasRuntime}
 
   function crearWmsNumof(url,layers,visible,opacity,zIndex){
     return new ol.layer.Tile({
@@ -176,9 +228,9 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
     const baseGoogleRoad=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",crossOrigin:"anonymous"})});
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
-    const capaPredios=crearWmsNumof("${FICHA_NUMOF_CATASTRO_WMS}","catastro_bc:predios_oficial",true,0.85,8);
-    const capaColonias=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","colonias",false,0.55,9);
-    const capaCodigos=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","codigos_postales_bc_utm1",true,1,45);
+    const capaPredios=crearWmsNumof("${FICHA_NUMOF_CATASTRO_WMS}","catastro_bc:predios_oficial",true,0.85,fichaCapaOrdenDef.prediosWms);
+    const capaColonias=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","colonias",false,0.55,fichaCapaOrdenDef.colonias);
+    const capaCodigos=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","codigos_postales_bc_utm1",true,1,fichaCapaOrdenDef.codigos);
 
     const srcConsultado=new ol.source.Vector();
     const srcMisma=new ol.source.Vector();
@@ -192,9 +244,9 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
       else srcOtra.addFeatures(feats);
     });
 
-    const capaConsultado=new ol.layer.Vector({source:srcConsultado,zIndex:30,style:function(ft){return estiloNumofPreview("consultado",ft.getProperties());}});
-    const capaMisma=new ol.layer.Vector({source:srcMisma,zIndex:10,style:function(ft){return estiloNumofPreview("misma",ft.getProperties());}});
-    const capaOtra=new ol.layer.Vector({source:srcOtra,zIndex:11,style:function(ft){return estiloNumofPreview("otra",ft.getProperties());}});
+    const capaConsultado=new ol.layer.Vector({source:srcConsultado,zIndex:fichaCapaOrdenDef.consultado,style:function(ft){return estiloNumofPreview("consultado",ft.getProperties());}});
+    const capaMisma=new ol.layer.Vector({source:srcMisma,zIndex:fichaCapaOrdenDef.misma,style:function(ft){return estiloNumofPreview("misma",ft.getProperties());}});
+    const capaOtra=new ol.layer.Vector({source:srcOtra,zIndex:fichaCapaOrdenDef.otra,style:function(ft){return estiloNumofPreview("otra",ft.getProperties());}});
 
     previewMapNumof=new ol.Map({
       target:"previewNumofMap",
@@ -210,6 +262,7 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
     window.__numofPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaCodigos,capaPredios,capaColonias,capaConsultado,capaMisma,capaOtra};
     window.__numofVistaUsuario=false;
     window.__numofCentradoInicial=false;
+    if(typeof inicializarOrdenCapasFichaNumof==="function")inicializarOrdenCapasFichaNumof();
 
     function marcarVistaUsuarioNumof(){
       window.__numofVistaUsuario=true;
@@ -309,15 +362,7 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
   }
 
   function actualizarCapasFichaNumof(){
-    const c=window.__numofPreviewCapas;
-    if(!c)return;
-    c.capaConsultado.setVisible(document.getElementById("numofChkConsultado")?.checked!==false);
-    c.capaMisma.setVisible(document.getElementById("numofChkMisma")?.checked!==false);
-    c.capaOtra.setVisible(document.getElementById("numofChkOtra")?.checked!==false);
-    c.capaPredios.setVisible(document.getElementById("numofChkPrediosWms")?.checked!==false);
-    c.capaCodigos.setVisible(document.getElementById("numofChkCodigosWms")?.checked!==false);
-    c.capaColonias.setVisible(document.getElementById("numofChkColoniasWms")?.checked===true);
-    previewMapNumof&&previewMapNumof.render();
+    ["consultado","misma","otra","prediosWms","codigos","colonias"].forEach(toggleCapaFichaNumof);
   }
 
   function cambiarBaseFichaNumof(){
@@ -636,7 +681,8 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
 .toolbar{position:sticky;top:0;z-index:9999;background:#fff;border-bottom:1px solid #ddd;padding:8px 12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
 .toolbar button{border:none;background:var(--guinda);color:#fff;padding:7px 11px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;}
 .toolbar button.sec{background:#666;}
-.numof-layer-panel{background:#fff;border-bottom:1px solid #ddd;padding:8px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12px;}
+.numof-layer-panel{background:#fff;border-bottom:1px solid #ddd;padding:8px 14px;display:grid;grid-template-columns:minmax(280px,1fr) minmax(220px,1fr);gap:10px;font-size:12px;}
+${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS : ""}
 .numof-layer-panel.oculto{display:none!important;}
 .numof-layer-panel label{display:block;margin:4px 0;cursor:pointer;}
 .numof-layer-panel strong{display:block;margin-bottom:4px;color:#703341;}

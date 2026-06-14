@@ -99,16 +99,79 @@ function serializarFeaturesCartaFicha(cartaData) {
   };
 }
 
+function fichaCartaHtmlLayerItem(id, opts) {
+  const { checkboxId, dotClass, label, checked, opacity } = opts;
+  const chk = checked ? "checked" : "";
+  const op = opacity == null ? 100 : opacity;
+  return `
+    <div class="layer-item carta-layer-item" data-layer-id="${id}">
+      <div class="layer-top">
+        <label class="layer-name">
+          <input type="checkbox" id="${checkboxId}" ${chk} onchange="toggleCapaFichaCarta('${id}')">
+          <span class="layer-dot ${dotClass}"></span>
+          <b>${label}</b>
+        </label>
+        <span id="cartaOp${id}Txt" class="layer-percent">${op}%</span>
+      </div>
+      <input type="range" min="0" max="100" value="${op}" id="cartaOp${id}"
+        oninput="cambiarOpacidadCapaFichaCarta('${id}', this.value)">
+      <div class="layer-actions">
+        <button type="button" onclick="subirCapaFichaCarta('${id}')">↑ Subir</button>
+        <button type="button" onclick="bajarCapaFichaCarta('${id}')">↓ Bajar</button>
+      </div>
+    </div>`;
+}
+
 function fichaCartaLayerPanelHtml() {
+  const capas = [
+    fichaCartaHtmlLayerItem("predio", {
+      checkboxId: "cartaChkPredio",
+      dotClass: "dot-amber",
+      label: "Predio consultado",
+      checked: true,
+      opacity: 100
+    }),
+    fichaCartaHtmlLayerItem("sectores", {
+      checkboxId: "cartaChkSectores",
+      dotClass: "dot-blue",
+      label: "Sectores",
+      checked: true,
+      opacity: 100
+    }),
+    fichaCartaHtmlLayerItem("zona", {
+      checkboxId: "cartaChkZona",
+      dotClass: "dot-orange",
+      label: "Polígono de zona",
+      checked: true,
+      opacity: 100
+    }),
+    fichaCartaHtmlLayerItem("carta", {
+      checkboxId: "cartaChkUsos",
+      dotClass: "dot-green",
+      label: "Usos propuestos 2040",
+      checked: true,
+      opacity: 88
+    }),
+    fichaCartaHtmlLayerItem("prediosWms", {
+      checkboxId: "cartaChkPrediosWms",
+      dotClass: "dot-red",
+      label: "Predios (WMS)",
+      checked: false,
+      opacity: 45
+    }),
+    fichaCartaHtmlLayerItem("colonias", {
+      checkboxId: "cartaChkColoniasWms",
+      dotClass: "dot-purple",
+      label: "Colonias",
+      checked: false,
+      opacity: 45
+    })
+  ].join("");
+
   return `<div id="cartaLayerPanel" class="carta-layer-panel oculto">
-    <div class="grupo">
+    <div class="grupo ficha-capas-overlay carta-capas-overlay" id="cartaCapasOverlayList">
       <strong>Capas del plano</strong>
-      <label><input type="checkbox" id="cartaChkUsos" checked onchange="actualizarCapasFichaCarta()"> Usos propuestos 2040</label>
-      <label><input type="checkbox" id="cartaChkSectores" checked onchange="actualizarCapasFichaCarta()"> Sectores</label>
-      <label><input type="checkbox" id="cartaChkPredio" checked onchange="actualizarCapasFichaCarta()"> Predio consultado</label>
-      <label><input type="checkbox" id="cartaChkZona" checked onchange="actualizarCapasFichaCarta()"> Polígono de zona</label>
-      <label><input type="checkbox" id="cartaChkPrediosWms" onchange="actualizarCapasFichaCarta()"> Predios (WMS)</label>
-      <label><input type="checkbox" id="cartaChkColoniasWms" onchange="actualizarCapasFichaCarta()"> Colonias</label>
+      ${capas}
     </div>
     <div class="grupo">
       <strong>Base mapas</strong>
@@ -127,6 +190,79 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
   let previewMapCarta=null;
   const featuresCarta=${geoJson};
   const mapaInicialFicha=${mapaInicial};
+  const cartaCapaOrdenDef={predio:35,sectores:28,zona:18,carta:12,prediosWms:8,colonias:5};
+  let cartaCapaOrdenEstado=Object.assign({},cartaCapaOrdenDef);
+  const cartaCapaProp={predio:"capaPredio",sectores:"capaSectores",zona:"capaZona",carta:"capaUsos",prediosWms:"capaPredios",colonias:"capaColonias"};
+
+  function obtenerCapaFichaCarta(id){
+    const c=window.__cartaPreviewCapas;
+    if(!c)return null;
+    const k=cartaCapaProp[id];
+    return k?c[k]:null;
+  }
+
+  function aplicarZIndexCapaFichaCarta(id){
+    const capa=obtenerCapaFichaCarta(id);
+    if(capa&&typeof capa.setZIndex==="function")capa.setZIndex(cartaCapaOrdenEstado[id]||5);
+  }
+
+  function actualizarOrdenVisualCapasFicha(){
+    const cont=document.getElementById("cartaCapasOverlayList");
+    if(!cont)return;
+    Array.from(cont.querySelectorAll(".layer-item"))
+      .sort(function(a,b){
+        const za=cartaCapaOrdenEstado[a.dataset.layerId]||0;
+        const zb=cartaCapaOrdenEstado[b.dataset.layerId]||0;
+        return zb-za;
+      })
+      .forEach(function(item){cont.appendChild(item);});
+  }
+
+  function inicializarOrdenCapasFicha(){
+    Object.keys(cartaCapaProp).forEach(function(id){
+      const capa=obtenerCapaFichaCarta(id);
+      if(capa){
+        capa.set("layerId",id);
+        aplicarZIndexCapaFichaCarta(id);
+      }
+    });
+    actualizarOrdenVisualCapasFicha();
+  }
+
+  function cambiarOpacidadCapaFichaCarta(id,valor){
+    const opacidad=Number(valor)/100;
+    const txt=document.getElementById("cartaOp"+id+"Txt");
+    if(txt)txt.innerText=valor+"%";
+    const capa=obtenerCapaFichaCarta(id);
+    if(capa&&typeof capa.setOpacity==="function")capa.setOpacity(opacidad);
+    previewMapCarta&&previewMapCarta.render();
+  }
+
+  function subirCapaFichaCarta(id){
+    cartaCapaOrdenEstado[id]=(cartaCapaOrdenEstado[id]||0)+10;
+    aplicarZIndexCapaFichaCarta(id);
+    actualizarOrdenVisualCapasFicha();
+    previewMapCarta&&previewMapCarta.render();
+  }
+
+  function bajarCapaFichaCarta(id){
+    cartaCapaOrdenEstado[id]=(cartaCapaOrdenEstado[id]||0)-10;
+    aplicarZIndexCapaFichaCarta(id);
+    actualizarOrdenVisualCapasFicha();
+    previewMapCarta&&previewMapCarta.render();
+  }
+
+  function toggleCapaFichaCarta(id){
+    const chkMap={carta:"cartaChkUsos",sectores:"cartaChkSectores",predio:"cartaChkPredio",zona:"cartaChkZona",prediosWms:"cartaChkPrediosWms",colonias:"cartaChkColoniasWms"};
+    const capa=obtenerCapaFichaCarta(id);
+    if(!capa)return;
+    const chkId=chkMap[id];
+    const visible=id==="colonias"||id==="prediosWms"
+      ?document.getElementById(chkId)?.checked===true
+      :document.getElementById(chkId)?.checked!==false;
+    capa.setVisible(visible);
+    previewMapCarta&&previewMapCarta.render();
+  }
 
   function crearWmsCarta(url,layers,visible,opacity,zIndex){
     return new ol.layer.Tile({
@@ -171,10 +307,10 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
     const baseGoogleRoad=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",crossOrigin:"anonymous"})});
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
-    const capaUsos=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",wmsLayer,true,0.88,12);
-    const capaSectores=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",sectoresLayer,true,0.92,11);
-    const capaPredios=crearWmsCarta("https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms","catastro_bc:predios_oficial",false,0.45,8);
-    const capaColonias=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}","colonias",false,0.45,5);
+    const capaUsos=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",wmsLayer,true,0.88,cartaCapaOrdenDef.carta);
+    const capaSectores=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",sectoresLayer,true,1,cartaCapaOrdenDef.sectores);
+    const capaPredios=crearWmsCarta("https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms","catastro_bc:predios_oficial",false,0.45,cartaCapaOrdenDef.prediosWms);
+    const capaColonias=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}","colonias",false,0.45,cartaCapaOrdenDef.colonias);
 
     const srcPredio=new ol.source.Vector();
     const srcZona=new ol.source.Vector();
@@ -186,8 +322,8 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
       else if(p.es_zona)srcZona.addFeatures(feats);
     });
 
-    const capaPredio=new ol.layer.Vector({source:srcPredio,zIndex:30,style:estiloPredioCarta});
-    const capaZona=new ol.layer.Vector({source:srcZona,zIndex:15,style:estiloZonaCarta});
+    const capaPredio=new ol.layer.Vector({source:srcPredio,zIndex:cartaCapaOrdenDef.predio,style:estiloPredioCarta});
+    const capaZona=new ol.layer.Vector({source:srcZona,zIndex:cartaCapaOrdenDef.zona,style:estiloZonaCarta});
 
     previewMapCarta=new ol.Map({
       target:"previewCartaMap",
@@ -197,6 +333,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
     });
     window.__cartaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaPredios,capaColonias,capaPredio,capaZona};
     window.__cartaVistaUsuario=false;
+    inicializarOrdenCapasFicha();
 
     function marcarVistaUsuarioCarta(){window.__cartaVistaUsuario=true;}
     targetEl.addEventListener("wheel",marcarVistaUsuarioCarta,{passive:true});
@@ -280,15 +417,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
   }
 
   function actualizarCapasFichaCarta(){
-    const c=window.__cartaPreviewCapas;
-    if(!c)return;
-    c.capaUsos.setVisible(document.getElementById("cartaChkUsos")?.checked!==false);
-    c.capaSectores.setVisible(document.getElementById("cartaChkSectores")?.checked!==false);
-    c.capaPredio.setVisible(document.getElementById("cartaChkPredio")?.checked!==false);
-    c.capaZona.setVisible(document.getElementById("cartaChkZona")?.checked!==false);
-    c.capaPredios.setVisible(document.getElementById("cartaChkPrediosWms")?.checked===true);
-    c.capaColonias.setVisible(document.getElementById("cartaChkColoniasWms")?.checked===true);
-    previewMapCarta&&previewMapCarta.render();
+    ["carta","sectores","predio","zona","prediosWms","colonias"].forEach(toggleCapaFichaCarta);
   }
 
   function cambiarBaseFichaCarta(){
@@ -574,10 +703,11 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
 .toolbar button{border:none;background:var(--guinda);color:#fff;padding:7px 11px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;}
 .toolbar button.sec{background:#666;}
 .toolbar button:disabled{opacity:.55;cursor:not-allowed;}
-.carta-layer-panel{background:#fff;border-bottom:1px solid #ddd;padding:8px 14px;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px;font-size:12px;}
+.carta-layer-panel{background:#fff;border-bottom:1px solid #ddd;padding:8px 14px;display:grid;grid-template-columns:minmax(280px,1fr) minmax(220px,1fr);gap:10px;font-size:12px;}
 .carta-layer-panel.oculto{display:none!important;}
 .carta-layer-panel label{display:block;margin:4px 0;cursor:pointer;}
 .carta-layer-panel strong{display:block;margin-bottom:4px;color:#703341;}
+${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS : ""}
 .contenedor{width:min(100%,var(--ficha-ancho));max-width:var(--ficha-ancho);height:auto;min-height:0;margin:12px auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12);border:1px solid var(--guinda);border-radius:6px;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column;}
 .encabezado{background:var(--guinda)!important;color:#fff!important;padding:10px 12px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px;border-bottom:3px solid #c9a227;}
 .enc-logo img{height:52px;max-width:220px;object-fit:contain;background:#fff;padding:3px 8px;border-radius:6px;}

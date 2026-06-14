@@ -10,11 +10,134 @@ let popupConstrMedicionEscala = 1;
 let popupConstrGeom3857 = null;
 let popupConstrGeom32611 = null;
 let popupConstrCapas = null;
+let popupConstrCapasManager = null;
 let popupConstrClaveActual = "";
 let popupConstrProj4Ready = false;
 let popupConstrSnapSnapping = false;
 let popupConstrDrawSnapCleanup = null;
 let popupConstrSnapReloadTimer = null;
+
+const POPUP_CONSTR_CAPA_ORDEN_DEF = {
+  vertices: 42,
+  medidas: 38,
+  medicion: 32,
+  medicionEtiquetas: 32,
+  predio: 35,
+  constrVec: 26,
+  construcciones: 18,
+  predios: 12,
+  colonias: 5
+};
+
+const POPUP_CONSTR_CAPA_PROP = {
+  predio: "predioVector",
+  vertices: "vertices",
+  medidas: "medidasPredio",
+  medicion: "medicionLibre",
+  medicionEtiquetas: "medicionEtiquetas",
+  constrVec: "construccionesVector",
+  construcciones: "construccionesWms",
+  predios: "prediosWms",
+  colonias: "coloniasWms"
+};
+
+function popupConstrHtmlMenuCapas() {
+  const capas = typeof fichaMapaCapasItemsHtml === "function"
+    ? fichaMapaCapasItemsHtml([
+        { id: "predio", checkboxId: "popupConstrChkPredio", dotClass: "dot-blue", label: "Predio consultado", checked: true, opacity: 100 },
+        { id: "vertices", checkboxId: "popupConstrChkVertices", dotClass: "dot-cyan", label: "Vértices", checked: true, opacity: 100 },
+        { id: "medidas", checkboxId: "popupConstrChkMedidas", dotClass: "dot-amber", label: "Medidas del predio", checked: true, opacity: 100 },
+        { id: "medicion", checkboxId: "popupConstrChkMedicionLibre", dotClass: "dot-orange", label: "Medición libre", checked: true, opacity: 100 },
+        { id: "constrVec", checkboxId: "popupConstrChkConstrVec", dotClass: "dot-purple", label: "Construcciones (vector)", checked: true, opacity: 100 },
+        { id: "construcciones", checkboxId: "popupConstrChkConstrucciones", dotClass: "dot-green", label: "Construcciones (WMS)", checked: false, opacity: 85 },
+        { id: "predios", checkboxId: "popupConstrChkPredios", dotClass: "dot-red", label: "Predios (WMS)", checked: true, opacity: 88 },
+        { id: "colonias", checkboxId: "popupConstrChkColonias", dotClass: "dot-green", label: "Colonias", checked: false, opacity: 55 }
+      ], {
+        opPrefix: "popupConstrOp",
+        toggleFn: "popupConstrToggleCapaLayer",
+        opacityFn: "popupConstrCambiarOpacidadCapa",
+        subirFn: "popupConstrSubirCapa",
+        bajarFn: "popupConstrBajarCapa"
+      })
+    : "";
+
+  const basemap = `<div class="popup-capas-seccion">
+              <strong>Base mapas</strong>
+              <label><input type="radio" name="popupConstrBase" value="googleHybrid" checked onchange="popupConstrSetBaseLayer(this.value)"> Google Satellite &amp; Roads</label>
+              <label><input type="radio" name="popupConstrBase" value="googleSat" onchange="popupConstrSetBaseLayer(this.value)"> Google Satellite</label>
+              <label><input type="radio" name="popupConstrBase" value="esri" onchange="popupConstrSetBaseLayer(this.value)"> ESRI Satellite</label>
+              <label><input type="radio" name="popupConstrBase" value="osm" onchange="popupConstrSetBaseLayer(this.value)"> OpenStreetMap</label>
+            </div>`;
+
+  return typeof htmlPopupMapaCapasMenu === "function"
+    ? htmlPopupMapaCapasMenu({
+        menuId: "popupConstrCapasMenu",
+        overlayListId: "popupConstrCapasOverlayList",
+        menuClass: "popup-carta-capas-menu popup-constr-capas-menu",
+        itemsHtml: capas,
+        basemapHtml: basemap
+      })
+    : "";
+}
+
+function popupConstrInicializarCapasManager() {
+  if (typeof crearFichaMapaCapasManager !== "function") return;
+  popupConstrCapasManager = crearFichaMapaCapasManager({
+    ordenDef: POPUP_CONSTR_CAPA_ORDEN_DEF,
+    capaProp: POPUP_CONSTR_CAPA_PROP,
+    chkMap: {
+      predio: "popupConstrChkPredio",
+      predios: "popupConstrChkPredios",
+      colonias: "popupConstrChkColonias",
+      construcciones: "popupConstrChkConstrucciones",
+      constrVec: "popupConstrChkConstrVec",
+      medidas: "popupConstrChkMedidas",
+      medicion: "popupConstrChkMedicionLibre",
+      vertices: "popupConstrChkVertices"
+    },
+    optionalIds: ["colonias", "construcciones", "constrVec"],
+    linkedCapaIds: ["medicion", "medicionEtiquetas"],
+    getCapas: () => popupConstrCapas,
+    getMap: () => popupConstrMap,
+    overlayListId: "popupConstrCapasOverlayList",
+    opPrefix: "popupConstrOp"
+  });
+  popupConstrCapasManager.inicializar();
+}
+
+function popupConstrCambiarOpacidadCapa(id, valor) {
+  popupConstrCapasManager?.cambiarOpacidad(id, valor);
+}
+
+function popupConstrSubirCapa(id) {
+  popupConstrCapasManager?.subir(id);
+}
+
+function popupConstrBajarCapa(id) {
+  popupConstrCapasManager?.bajar(id);
+}
+
+function popupConstrToggleCapaLayer(id) {
+  if (id === "predio") {
+    popupConstrCapasManager?.toggle("predio");
+    return;
+  }
+  if (id === "constrVec") {
+    if (popupConstrCapas?.construccionesVector) {
+      popupConstrCapasManager?.toggle("constrVec");
+    }
+    return;
+  }
+  const legacy = {
+    predios: "predios",
+    colonias: "colonias",
+    construcciones: "construcciones",
+    medidas: "medidas",
+    medicion: "medicionLibre",
+    vertices: "vertices"
+  };
+  popupConstrToggleCapa(legacy[id] || id);
+}
 
 function asegurarProj4Utm11() {
   if (popupConstrProj4Ready) return true;
@@ -911,6 +1034,8 @@ async function popupConstrPintarVectorConstrucciones(clave, geojsonPrecargado) {
     featureProjection: "EPSG:3857"
   });
   src.addFeatures(feats);
+  const chkConstrVec = document.getElementById("popupConstrChkConstrVec");
+  if (chkConstrVec) chkConstrVec.disabled = false;
 }
 
 async function popupConstrCargarCapaConstrucciones(clave) {
@@ -1112,8 +1237,8 @@ function popupConstrDeshacerPunto() {
   if (popupConstrDraw) popupConstrDraw.removeLastPoint();
 }
 
-function popupConstrToggleCapasMenu() {
-  document.getElementById("popupConstrCapasMenu")?.classList.toggle("oculto");
+function popupConstrToggleCapasMenu(ev) {
+  togglePopupMapaCapasMenu("popupConstrCapasMenu", ev);
 }
 
 function destruirPopupConstruccionesMedicion() {
@@ -1125,6 +1250,7 @@ function destruirPopupConstruccionesMedicion() {
     popupConstrMap = null;
   }
   popupConstrCapas = null;
+  popupConstrCapasManager = null;
   popupConstrGeom3857 = null;
   popupConstrGeom32611 = null;
   popupConstrClaveActual = "";
@@ -1238,6 +1364,9 @@ function inicializarMapaConstrucciones() {
   });
 
   popupConstrEnlazarRecargaSnapVista();
+  popupConstrInicializarCapasManager();
+  const chkConstrVec = document.getElementById("popupConstrChkConstrVec");
+  if (chkConstrVec && !popupConstrCapas?.construccionesVector) chkConstrVec.disabled = true;
 }
 
 async function pintarPopupTabConstrucciones(p) {
@@ -1269,11 +1398,12 @@ async function pintarPopupTabConstrucciones(p) {
               <input type="checkbox" id="popupConstrChkPanelMedicion" checked onchange="popupConstrTogglePanelMedicion()">
               <span>Medición</span>
             </label>
-            <button type="button" class="popup-btn-capas" onclick="popupConstrToggleCapasMenu()">Capas</button>
+            <button type="button" class="popup-btn-capas" onclick="popupConstrToggleCapasMenu(event)">Capas</button>
           </div>
         </div>
         <div class="popup-construcciones-mapa-wrap">
           <div id="popupConstruccionesMap" class="popup-construcciones-map"></div>
+          ${popupConstrHtmlMenuCapas()}
           <div id="popupConstrPanelMedicion" class="popup-construcciones-medicion">
             <div class="popup-construcciones-medicion-title">Medición</div>
             <label class="popup-construcciones-snap">
@@ -1289,24 +1419,6 @@ async function pintarPopupTabConstrucciones(p) {
               <button type="button" class="popup-construcciones-tool popup-construcciones-tool-mini" onclick="popupConstrAjustarMedicion(1)" title="Aumentar tamaño/opacidad">➕</button>
             </div>
             <button type="button" class="popup-construcciones-tool popup-construcciones-tool-danger" onclick="popupConstrBorrarMedicion()">🗑 Quitar medición</button>
-          </div>
-          <div id="popupConstrCapasMenu" class="popup-capas-menu popup-constr-capas oculto">
-            <div class="popup-capas-seccion">
-              <strong>Capas</strong>
-              <label><input type="checkbox" id="popupConstrChkPredios" checked onchange="popupConstrToggleCapa('predios')"> Predios</label>
-              <label><input type="checkbox" id="popupConstrChkColonias" onchange="popupConstrToggleCapa('colonias')"> Colonias</label>
-              <label><input type="checkbox" id="popupConstrChkConstrucciones" onchange="popupConstrToggleCapa('construcciones')"> Construcciones</label>
-              <label><input type="checkbox" id="popupConstrChkMedidas" checked onchange="popupConstrToggleCapa('medidas')"> Medidas del predio</label>
-              <label><input type="checkbox" id="popupConstrChkMedicionLibre" checked onchange="popupConstrToggleCapa('medicionLibre')"> Medición libre</label>
-              <label><input type="checkbox" id="popupConstrChkVertices" checked onchange="popupConstrToggleCapa('vertices')"> Vértices</label>
-            </div>
-            <div class="popup-capas-seccion">
-              <strong>Base mapas</strong>
-              <label><input type="radio" name="popupConstrBase" value="googleHybrid" checked onchange="popupConstrSetBaseLayer(this.value)"> Google Satellite &amp; Roads</label>
-              <label><input type="radio" name="popupConstrBase" value="googleSat" onchange="popupConstrSetBaseLayer(this.value)"> Google Satellite</label>
-              <label><input type="radio" name="popupConstrBase" value="esri" onchange="popupConstrSetBaseLayer(this.value)"> ESRI Satellite</label>
-              <label><input type="radio" name="popupConstrBase" value="osm" onchange="popupConstrSetBaseLayer(this.value)"> OpenStreetMap</label>
-            </div>
           </div>
           <div id="popupConstrCoordBar" class="popup-construcciones-coord">Lon: — | Lat: —</div>
         </div>
@@ -1381,3 +1493,7 @@ window.popupConstrTogglePanelMedicion = popupConstrTogglePanelMedicion;
 window.popupConstrToggleCapa = popupConstrToggleCapa;
 window.popupConstrSetBaseLayer = popupConstrSetBaseLayer;
 window.popupConstrToggleCapasMenu = popupConstrToggleCapasMenu;
+window.popupConstrCambiarOpacidadCapa = popupConstrCambiarOpacidadCapa;
+window.popupConstrSubirCapa = popupConstrSubirCapa;
+window.popupConstrBajarCapa = popupConstrBajarCapa;
+window.popupConstrToggleCapaLayer = popupConstrToggleCapaLayer;

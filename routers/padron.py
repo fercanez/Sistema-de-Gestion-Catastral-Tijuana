@@ -1001,6 +1001,188 @@ def carta_urbana_2040_predio(
     return _carta_urbana_2040_payload(clave)
 
 
+COLONIA_FRACCIONAMIENTO_WMS_URL = CARTA_URBANA_2040_WMS_URL
+COLONIA_FRACCIONAMIENTO_WMS_LAYER = "colonias"
+COLONIA_FRACCIONAMIENTO_TABLAS = ["colonias"]
+COLONIA_FRACCIONAMIENTO_WMS_LAYERS = [
+    "colonias",
+    "geonode:colonias",
+]
+
+
+def _normalizar_atributos_colonia(props: Optional[dict]) -> dict:
+    if not props:
+        return {}
+    claves = {str(k).lower(): k for k in props.keys()}
+
+    def tomar(*candidatos: str) -> str:
+        for cand in candidatos:
+            cand_l = cand.lower()
+            for kl, orig in claves.items():
+                if cand_l in kl:
+                    val = props.get(orig)
+                    if val is not None and str(val).strip() not in ("", "NULL", "null"):
+                        return str(val).strip()
+        return ""
+
+    return {
+        "nombre": tomar(
+            "nombre", "nombre_colonia", "colonia", "nom_colonia", "desc_colonia",
+            "descripcion", "desc", "etiqueta", "label"
+        ),
+        "tipo": tomar("tipo", "clasific", "categoria", "clase", "g_tipo"),
+        "fraccionamiento": tomar("fraccion", "fraccionamiento", "frac", "subdivision"),
+        "delegacion": tomar("delegacion", "municipio", "deleg", "nom_deleg"),
+        "observaciones": tomar("observ", "nota", "coment", "leyenda"),
+        "codigo": tomar("codigo", "clave", "id_colonia", "cve_colonia", "gid", "fid"),
+    }
+
+
+def _consultar_colonia_geonode(cur, ewkt_predio: str, tablas: List[str]) -> Optional[dict]:
+    for tabla in tablas:
+        if not re.fullmatch(r"[a-z0-9_]+", tabla or "", re.I):
+            continue
+        try:
+            cur.execute(
+                f"""
+                SELECT
+                    t.*,
+                    ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry
+                FROM public.{tabla} t
+                WHERE t.geom IS NOT NULL
+                  AND ST_Intersects(
+                        t.geom,
+                        ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                  )
+                ORDER BY ST_Area(
+                    ST_Intersection(
+                        t.geom,
+                        ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                    )
+                ) DESC NULLS LAST
+                LIMIT 1;
+                """,
+                (ewkt_predio, ewkt_predio),
+            )
+            row = cur.fetchone()
+            if not row:
+                continue
+            props = dict(row)
+            geometry = props.pop("geometry", None)
+            props.pop("geom", None)
+            return {
+                "origen": "geonode",
+                "tabla": tabla,
+                "properties": props,
+                "geometry": geometry,
+                "atributos": _normalizar_atributos_colonia(props),
+            }
+        except Exception:
+            continue
+    return None
+
+
+def _colonia_fraccionamiento_payload(clave: str) -> dict:
+    clave_norm = clave.upper().strip()
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral requerida")
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            UPPER(TRIM(p.clave_catastral)) AS clave_catastral,
+            TRIM(COALESCE(p.descripcion_uso, '')) AS uso_padron,
+            TRIM(COALESCE(p.colonia, '')) AS colonia,
+            TRIM(COALESCE(p.delegacion, '')) AS delegacion,
+            TRIM(COALESCE(p.calle, '')) AS calle,
+            TRIM(COALESCE(p.numof, '')) AS numof,
+            ST_AsEWKT(ST_Transform(g.geom, 32611)) AS ewkt_32611,
+            ST_X(ST_Transform(ST_PointOnSurface(g.geom), 4326))::float AS lon,
+            ST_Y(ST_Transform(ST_PointOnSurface(g.geom), 4326))::float AS lat,
+            ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json AS geometry
+        FROM catalogos.padron_2026 p
+        INNER JOIN catastro.predios g
+            ON UPPER(TRIM(g.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
+        WHERE UPPER(TRIM(p.clave_catastral)) = %s
+          AND g.geom IS NOT NULL
+        LIMIT 1;
+    """, (clave_norm,))
+    row = cur.fetchone()
+    cur.close()
+    conn.close()
+
+    if not row:
+        raise HTTPException(status_code=404, detail="Predio no encontrado o sin geometría cartográfica")
+
+    lon = row.get("lon")
+    lat = row.get("lat")
+    ewkt = row.get("ewkt_32611")
+    colonia_carto = None
+
+    if get_geonode_conn is not None and ewkt:
+        try:
+            gconn = get_geonode_conn()
+            gcur = gconn.cursor()
+            colonia_carto = _consultar_colonia_geonode(
+                gcur, ewkt, COLONIA_FRACCIONAMIENTO_TABLAS
+            )
+            gcur.close()
+            gconn.close()
+        except Exception:
+            colonia_carto = None
+
+    if colonia_carto is None and lon is not None and lat is not None:
+        colonia_carto = _consultar_carta_urbana_wms(
+            float(lon), float(lat), COLONIA_FRACCIONAMIENTO_WMS_LAYERS
+        )
+        if colonia_carto:
+            props = colonia_carto.get("properties") or {}
+            colonia_carto["atributos"] = _normalizar_atributos_colonia(props)
+
+    wms_layer = (colonia_carto or {}).get("layer") or COLONIA_FRACCIONAMIENTO_WMS_LAYER
+    mensaje = ""
+    if not colonia_carto:
+        mensaje = (
+            "No se intersectó el predio con la capa de colonias. "
+            "Verifique geometría del predio o la simbología geonode:colonias."
+        )
+
+    return {
+        "clave_catastral": clave_norm,
+        "uso_padron": row.get("uso_padron") or "",
+        "colonia": row.get("colonia") or "",
+        "delegacion": row.get("delegacion") or "",
+        "calle": row.get("calle") or "",
+        "numof": row.get("numof") or "",
+        "centroide": {"lon": lon, "lat": lat},
+        "geometry": row.get("geometry"),
+        "colonia_carto": colonia_carto,
+        "wms_url": COLONIA_FRACCIONAMIENTO_WMS_URL,
+        "wms_layer": wms_layer,
+        "wms_layers_intentadas": COLONIA_FRACCIONAMIENTO_WMS_LAYERS,
+        "mensaje": mensaje,
+    }
+
+
+@router.get("/padron/{clave}/colonia-fraccionamiento")
+def colonia_fraccionamiento_padron(
+    clave: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Consulta colonia/fraccionamiento intersectando el predio (GeoNode + WMS)."""
+    return _colonia_fraccionamiento_payload(clave)
+
+
+@router.get("/predios/{clave}/colonia-fraccionamiento")
+def colonia_fraccionamiento_predio(
+    clave: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Alias de consulta colonia/fraccionamiento."""
+    return _colonia_fraccionamiento_payload(clave)
+
+
 def _numeros_oficiales_cercanos_payload(clave: str, limite_misma_calle: int, limite_otras_calles: int):
     clave_norm = clave.upper().strip()
     if not clave_norm:

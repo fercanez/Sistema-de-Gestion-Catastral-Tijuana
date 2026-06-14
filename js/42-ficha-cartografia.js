@@ -137,35 +137,94 @@ function serializarFeatureCarto(datos) {
 }
 
 function fichaCartoLayerPanel() {
-  return `<div id="cartoLayerPanel" class="layer-panel">
-    <div class="grupo">
-      <h4>Capas</h4>
-      <label><input type="checkbox" id="chkCartoPredioSel" checked onchange="actualizarCapasCarto()"> Predio consultado</label>
-      <label><input type="checkbox" id="chkCartoPrediosWMS" checked onchange="actualizarCapasCarto()"> Predios</label>
-      <label><input type="checkbox" id="chkCartoColoniasWMS" onchange="actualizarCapasCarto()"> Colonias</label>
-      <label><input type="checkbox" id="chkCartoConstruccionesWMS" checked onchange="actualizarCapasCarto()"> Construcciones (WMS)</label>
-      <label><input type="checkbox" id="chkCartoConstruccionesVec" checked onchange="actualizarCapasCarto()"> Construcciones (vector)</label>
-      <label><input type="checkbox" id="chkCartoCotas" checked onchange="actualizarCapasCarto()"> Cotas</label>
-      <label><input type="checkbox" id="chkCartoVertices" checked onchange="actualizarCapasCarto()"> Vértices</label>
+  const capas = typeof fichaMapaCapasItemsHtml === "function"
+    ? fichaMapaCapasItemsHtml([
+        { id: "predio", checkboxId: "chkCartoPredioSel", dotClass: "dot-blue", label: "Predio consultado", checked: true, opacity: 100 },
+        { id: "cotas", checkboxId: "chkCartoCotas", dotClass: "dot-amber", label: "Cotas", checked: true, opacity: 100 },
+        { id: "vertices", checkboxId: "chkCartoVertices", dotClass: "dot-cyan", label: "Vértices", checked: true, opacity: 100 },
+        { id: "constrVec", checkboxId: "chkCartoConstruccionesVec", dotClass: "dot-orange", label: "Construcciones (vector)", checked: true, opacity: 100 },
+        { id: "constrWms", checkboxId: "chkCartoConstruccionesWMS", dotClass: "dot-purple", label: "Construcciones (WMS)", checked: true, opacity: 88 },
+        { id: "prediosWms", checkboxId: "chkCartoPrediosWMS", dotClass: "dot-red", label: "Predios (WMS)", checked: true, opacity: 85 },
+        { id: "colonias", checkboxId: "chkCartoColoniasWMS", dotClass: "dot-green", label: "Colonias", checked: false, opacity: 55 }
+      ], {
+        opPrefix: "fichaCartoOp",
+        toggleFn: "toggleCapaFichaCarto",
+        opacityFn: "cambiarOpacidadCapaFichaCarto",
+        subirFn: "subirCapaFichaCarto",
+        bajarFn: "bajarCapaFichaCarto"
+      })
+    : "";
+
+  const inner = `<div class="grupo ficha-capas-overlay" id="fichaCartoCapasOverlayList">
+      <strong>Capas del plano</strong>
+      ${capas}
     </div>
-    <div class="grupo">
-      <h4>Base mapas</h4>
-      <label><input type="radio" name="cartoBasemap" value="googleHybrid" checked onchange="cambiarBaseCarto()"> Google Hybrid</label>
-      <label><input type="radio" name="cartoBasemap" value="googleSat" onchange="cambiarBaseCarto()"> Google Satellite</label>
-      <label><input type="radio" name="cartoBasemap" value="esri" onchange="cambiarBaseCarto()"> ESRI Satellite</label>
-      <label><input type="radio" name="cartoBasemap" value="osm" onchange="cambiarBaseCarto()"> OpenStreetMap</label>
-    </div>
-  </div>`;
+    ${typeof htmlFichaPreviewBasemapRadios === "function"
+      ? htmlFichaPreviewBasemapRadios("cartoBasemap", "cambiarBaseCarto", [
+          ["googleHybrid", "Google Hybrid", true],
+          ["googleSat", "Google Satellite", false],
+          ["esri", "ESRI Satellite", false],
+          ["osm", "OpenStreetMap", false]
+        ])
+      : ""}`;
+
+  return typeof htmlFichaPreviewLayerPanel === "function"
+    ? htmlFichaPreviewLayerPanel("fichaCartoLayerPanel", inner)
+    : `<div id="fichaCartoLayerPanel" class="ficha-preview-layer-panel oculto">${inner}</div>`;
 }
 
 function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONString) {
   const constrJson = construccionesGeoJSONString || "null";
+  const capasRuntime = typeof buildFichaMapaCapasRuntimeScript === "function"
+    ? buildFichaMapaCapasRuntimeScript({
+        ordenDef: {
+          predio: 35,
+          cotas: 42,
+          vertices: 42,
+          constrVec: 28,
+          constrWms: 18,
+          prediosWms: 12,
+          colonias: 5
+        },
+        capaProp: {
+          predio: "predioLayer",
+          prediosWms: "capaPredios",
+          colonias: "capaColonias",
+          constrWms: "capaConstruccionesWms",
+          constrVec: "construccionesVectorLayer",
+          cotas: "cotasLayer",
+          vertices: "cotasLayer"
+        },
+        chkMap: {
+          predio: "chkCartoPredioSel",
+          prediosWms: "chkCartoPrediosWMS",
+          colonias: "chkCartoColoniasWMS",
+          constrWms: "chkCartoConstruccionesWMS",
+          constrVec: "chkCartoConstruccionesVec",
+          cotas: "chkCartoCotas",
+          vertices: "chkCartoVertices"
+        },
+        optionalIds: ["colonias", "constrVec"],
+        linkedZIndexIds: ["cotas", "vertices"],
+        capasVar: "cartoCapas",
+        mapVar: "cartoMap",
+        overlayListId: "fichaCartoCapasOverlayList",
+        opPrefix: "fichaCartoOp",
+        toggleFn: "toggleCapaFichaCarto",
+        opacityFn: "cambiarOpacidadCapaFichaCarto",
+        subirFn: "subirCapaFichaCarto",
+        bajarFn: "bajarCapaFichaCarto",
+        initFn: "inicializarOrdenCapasFichaCarto"
+      })
+    : "";
+
   return `
   const featureGeoJSON=${featureGeoJSONString};
   const construccionesGeoJSON=${constrJson};
   let cartoMap=null,predioSource=null,cotasSource=null;
   let cartoCapas={};
   let mostrarCotasCarto=true,mostrarVerticesCarto=true;
+  ${capasRuntime}
 
   function obtenerCoordsCarto(feature){
     const geom=feature.getGeometry();
@@ -284,7 +343,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
     cartoCapas.baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
 
     cartoCapas.capaColonias=new ol.layer.Tile({
-      visible:false,opacity:0.55,
+      visible:false,opacity:0.55,zIndex:fichaCapaOrdenDef.colonias,
       source:new ol.source.TileWMS({
         url:"${FICHA_CARTO_WMS_GEONODE}",
         params:{LAYERS:"colonias",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
@@ -293,7 +352,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
     });
 
     cartoCapas.capaPredios=new ol.layer.Tile({
-      visible:true,opacity:0.85,
+      visible:true,opacity:0.85,zIndex:fichaCapaOrdenDef.prediosWms,
       source:new ol.source.TileWMS({
         url:"${FICHA_CARTO_WMS_CATASTRO}",
         params:{LAYERS:"catastro_bc:predios_oficial",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
@@ -302,7 +361,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
     });
 
     cartoCapas.capaConstruccionesWms=new ol.layer.Tile({
-      visible:true,opacity:0.88,
+      visible:true,opacity:0.88,zIndex:fichaCapaOrdenDef.constrWms,
       source:new ol.source.TileWMS({
         url:"${FICHA_CARTO_WMS_GEONODE}",
         params:{LAYERS:"geonode:construccionesmxli",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
@@ -318,6 +377,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
 
     cartoCapas.predioLayer=new ol.layer.Vector({
       source:predioSource,
+      zIndex:fichaCapaOrdenDef.predio,
       style:[
         new ol.style.Style({stroke:new ol.style.Stroke({color:"#ffffff",width:6})}),
         new ol.style.Style({stroke:new ol.style.Stroke({color:"#003cff",width:4,lineDash:[10,6]}),fill:new ol.style.Fill({color:"rgba(0,60,255,0.12)"})})
@@ -333,6 +393,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
       });
       cartoCapas.construccionesVectorLayer=new ol.layer.Vector({
         visible:true,
+        zIndex:fichaCapaOrdenDef.constrVec,
         source:srcConstr,
         style:new ol.style.Style({
           stroke:new ol.style.Stroke({color:"#e65100",width:2}),
@@ -342,7 +403,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
     }
 
     cotasSource=new ol.source.Vector();
-    cartoCapas.cotasLayer=new ol.layer.Vector({source:cotasSource,style:estiloCotasCarto});
+    cartoCapas.cotasLayer=new ol.layer.Vector({source:cotasSource,zIndex:fichaCapaOrdenDef.cotas,style:estiloCotasCarto});
 
     const layers=[
       cartoCapas.baseGoogleHybrid,cartoCapas.baseGoogleSat,cartoCapas.baseEsri,cartoCapas.baseOSM,
@@ -356,6 +417,8 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
       layers:layers,
       view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18})
     });
+
+    if(typeof inicializarOrdenCapasFichaCarto==="function")inicializarOrdenCapasFichaCarto();
 
     cartoMap.getView().on("change:resolution",function(){regenerarCotasCarto();});
     cartoMap.on("moveend",function(){regenerarCotasCarto();});
@@ -382,22 +445,25 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
 
   function actualizarCapasCarto(){
     if(!cartoCapas.predioLayer)return;
-    cartoCapas.predioLayer.setVisible(document.getElementById("chkCartoPredioSel")?.checked??true);
-    cartoCapas.capaPredios.setVisible(document.getElementById("chkCartoPrediosWMS")?.checked??true);
-    cartoCapas.capaColonias.setVisible(document.getElementById("chkCartoColoniasWMS")?.checked??false);
-    if(cartoCapas.capaConstruccionesWms){
-      cartoCapas.capaConstruccionesWms.setVisible(document.getElementById("chkCartoConstruccionesWMS")?.checked??true);
+    ["predio","prediosWms","colonias","constrWms","constrVec","cotas","vertices"].forEach(function(id){
+      toggleCapaFichaCarto(id);
+    });
+  }
+
+  const _toggleCapaFichaCartoBase=toggleCapaFichaCarto;
+  function toggleCapaFichaCarto(id){
+    if(id==="cotas"||id==="vertices"){
+      mostrarCotasCarto=document.getElementById("chkCartoCotas")?.checked??true;
+      mostrarVerticesCarto=document.getElementById("chkCartoVertices")?.checked??true;
+      if(cartoCapas.cotasLayer){
+        cartoCapas.cotasLayer.setVisible(mostrarCotasCarto||mostrarVerticesCarto);
+        cartoCapas.cotasLayer.changed();
+      }
+      cartoMap&&cartoMap.render();
+      return;
     }
-    if(cartoCapas.construccionesVectorLayer){
-      cartoCapas.construccionesVectorLayer.setVisible(document.getElementById("chkCartoConstruccionesVec")?.checked??true);
-    }
-    mostrarCotasCarto=document.getElementById("chkCartoCotas")?.checked??true;
-    mostrarVerticesCarto=document.getElementById("chkCartoVertices")?.checked??true;
-    if(cartoCapas.cotasLayer){
-      cartoCapas.cotasLayer.setVisible(mostrarCotasCarto||mostrarVerticesCarto);
-      cartoCapas.cotasLayer.changed();
-    }
-    if(cartoMap)cartoMap.render();
+    if(id==="constrVec"&&!cartoCapas.construccionesVectorLayer)return;
+    _toggleCapaFichaCartoBase(id);
   }
 
   function cambiarBaseCarto(){
@@ -411,23 +477,13 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
   }
 
   function toggleLayerPanelCarto(){
-    const p=document.getElementById("cartoLayerPanel");
-    if(p)p.style.display=p.style.display==="block"?"none":"block";
+    document.getElementById("fichaCartoLayerPanel")?.classList.toggle("oculto");
   }
 
   window.centrarMapaCarto=centrarMapaCarto;
   window.actualizarCapasCarto=actualizarCapasCarto;
   window.cambiarBaseCarto=cambiarBaseCarto;
   window.toggleLayerPanelCarto=toggleLayerPanelCarto;
-
-  document.addEventListener("click",function(e){
-    const panel=document.getElementById("cartoLayerPanel");
-    const btn=document.querySelector(".carto-layer-toggle-btn");
-    if(!panel||!btn)return;
-    if(panel.style.display==="block"&&!panel.contains(e.target)&&!btn.contains(e.target)){
-      panel.style.display="none";
-    }
-  });
 
   const script=document.createElement("script");
   script.src="${FICHA_CARTO_OL_JS}";
@@ -592,17 +648,15 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
 .tabla-scroll{max-height:none;overflow:visible;}
 .sub-head{background:#f5ecee;color:var(--guinda);padding:4px 8px;font-size:8px;font-weight:800;text-transform:uppercase;border-bottom:1px solid var(--guinda-claro);}
 .ficha-carto-vacio{padding:12px;text-align:center;color:#64748b;font-size:9px;}
-.layer-toggle-btn,.carto-layer-toggle-btn{position:absolute;top:8px;right:8px;width:34px;height:34px;border:none;border-radius:6px;background:white;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;z-index:2000;font-size:16px;}
-.layer-panel{position:absolute;top:46px;right:8px;width:240px;background:white;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:10px 12px;z-index:2000;display:none;font-size:12px;}
-.layer-panel h4{margin:0 0 8px;color:#222;font-size:13px;}
-.layer-panel .grupo{margin-bottom:10px;}
-.layer-panel label{display:block;margin:5px 0;cursor:pointer;font-size:11px;color:#334155;}
+.layer-panel{display:none;}
+${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS : ""}
+${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PANEL_CSS : ""}
 .aviso-impresion{text-align:center;font-size:10px;color:#64748b;padding:5px 8px 6px;font-style:italic;}
 .pie{text-align:center;font-size:8px;color:var(--guinda);font-weight:700;padding:3px 6px 4px;border-top:1px solid var(--guinda-claro);}
 @media print{
   @page{size:8.5in 14in portrait;margin:4mm;}
   html,body{background:#fff!important;height:auto!important;}
-  .toolbar,.aviso-impresion,.layer-toggle-btn,.carto-layer-toggle-btn,.layer-panel{display:none!important;}
+  .toolbar,.aviso-impresion,.ficha-preview-layer-panel{display:none!important;}
   .contenedor{
     width:var(--ficha-ancho)!important;max-width:var(--ficha-ancho)!important;
     min-height:calc(var(--ficha-alto) - 0.12in)!important;margin:0 auto!important;
@@ -622,9 +676,12 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
   <div class="toolbar">
     <span class="toolbar-info">Ficha cartografía · Oficio 8.5×14</span>
     <button type="button" onclick="centrarMapaCarto()">Centrar</button>
+    <button type="button" class="sec" onclick="toggleLayerPanelCarto()">Capas</button>
     <button type="button" onclick="imprimirAhoraCarto()">Imprimir / PDF</button>
     <button type="button" class="sec" onclick="window.close()">Cerrar</button>
   </div>
+  ${fichaCartoLayerPanel()}
+  <div class="aviso-impresion">Ajuste capas y zoom del mapa. Pulse «Imprimir / PDF» para guardar como PDF (Oficio 8.5×14).</div>
 
   <div class="contenedor">
     <div class="encabezado">
@@ -655,8 +712,6 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
     <section class="seccion-marco seccion-mapa">
       <div class="media-head">Medición cartográfica</div>
       <div class="media-body" id="cartoMapWrap">
-        <button type="button" class="carto-layer-toggle-btn" onclick="toggleLayerPanelCarto()" title="Capas del mapa">🗂</button>
-        ${fichaCartoLayerPanel()}
         <div id="cartoMap"></div>
       </div>
     </section>
@@ -692,7 +747,6 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
       <div class="tabla-scroll">${htmlConstruccionesCarto(construcciones)}</div>
     </section>
 
-    <div class="aviso-impresion">Use el botón <b>🗂</b> para encender o apagar capas (Construcciones, Predios, Cotas). Ajuste con <b>Centrar</b> antes de imprimir. Formato: Oficio 8.5×14.</div>
     <div class="pie">${fichaCartoEsc(fechaPie)}</div>
   </div>
 

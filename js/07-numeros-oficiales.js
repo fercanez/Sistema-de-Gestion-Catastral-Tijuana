@@ -10,6 +10,25 @@ let popupNumofCapas = null;
 let popupNumofClaveActual = "";
 let popupNumofDatos = null;
 let popupNumofFilaActiva = "";
+let popupNumofCapasManager = null;
+
+const POPUP_NUMOF_CAPA_ORDEN_DEF = {
+  consultado: 35,
+  codigos: 28,
+  otra: 14,
+  misma: 12,
+  predios: 8,
+  colonias: 5
+};
+
+const POPUP_NUMOF_CAPA_PROP = {
+  consultado: "consultado",
+  misma: "mismaCalle",
+  otra: "otraCalle",
+  predios: "prediosWms",
+  codigos: "codigosWms",
+  colonias: "coloniasWms"
+};
 
 function popupNumofSufijoValido(valor) {
   const v = String(valor ?? "").trim();
@@ -138,7 +157,7 @@ function popupNumofCrearCapas() {
     prediosWms: new ol.layer.Tile({
       visible: true,
       opacity: 0.85,
-      zIndex: 8,
+      zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.predios,
       source: new ol.source.TileWMS({
         url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
         params: {
@@ -155,7 +174,7 @@ function popupNumofCrearCapas() {
     coloniasWms: new ol.layer.Tile({
       visible: false,
       opacity: 0.55,
-      zIndex: 9,
+      zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.colonias,
       source: new ol.source.TileWMS({
         url: POPUP_NUMOF_GEONODE_WMS,
         params: {
@@ -172,7 +191,7 @@ function popupNumofCrearCapas() {
     codigosWms: new ol.layer.Tile({
       visible: true,
       opacity: 1,
-      zIndex: 45,
+      zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.codigos,
       source: new ol.source.TileWMS({
         url: POPUP_NUMOF_GEONODE_WMS,
         params: {
@@ -188,7 +207,7 @@ function popupNumofCrearCapas() {
     }),
     consultado: new ol.layer.Vector({
       visible: true,
-      zIndex: 30,
+      zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.consultado,
       source: new ol.source.Vector(),
       style: function(feature) {
         return popupNumofEstiloVector("consultado", feature.getProperties());
@@ -196,7 +215,7 @@ function popupNumofCrearCapas() {
     }),
     mismaCalle: new ol.layer.Vector({
       visible: true,
-      zIndex: 10,
+      zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.misma,
       source: new ol.source.Vector(),
       style: function(feature) {
         return popupNumofEstiloVector("misma", feature.getProperties());
@@ -204,7 +223,7 @@ function popupNumofCrearCapas() {
     }),
     otraCalle: new ol.layer.Vector({
       visible: true,
-      zIndex: 11,
+      zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.otra,
       source: new ol.source.Vector(),
       style: function(feature) {
         return popupNumofEstiloVector("otra", feature.getProperties());
@@ -215,30 +234,79 @@ function popupNumofCrearCapas() {
 }
 
 function htmlMenuCapasPopupNumof() {
-  return `
-    <div class="popup-capas-menu oculto popup-numof-capas-menu" id="popupNumofCapasMenu">
-      <div class="popup-capas-seccion">
-        <strong>Capas</strong>
-        <label><input type="checkbox" id="popupNumofChkConsultado" checked onchange="togglePopupNumofCapa('consultado')"> Predio consultado</label>
-        <label><input type="checkbox" id="popupNumofChkMismaCalle" checked onchange="togglePopupNumofCapa('misma')"> Misma calle</label>
-        <label><input type="checkbox" id="popupNumofChkOtraCalle" checked onchange="togglePopupNumofCapa('otra')"> Otras calles</label>
-        <label><input type="checkbox" id="popupNumofChkPrediosWms" checked onchange="togglePopupNumofCapa('predios')"> Predios (WMS)</label>
-        <label><input type="checkbox" id="popupNumofChkCodigosWms" checked onchange="togglePopupNumofCapa('codigos')"> Códigos postales</label>
-        <label><input type="checkbox" id="popupNumofChkColoniasWms" onchange="togglePopupNumofCapa('colonias')"> Colonias</label>
-      </div>
-      <div class="popup-capas-seccion">
+  const capas = typeof fichaMapaCapasItemsHtml === "function"
+    ? fichaMapaCapasItemsHtml([
+        { id: "consultado", checkboxId: "popupNumofChkConsultado", dotClass: "dot-blue", label: "Predio consultado", checked: true, opacity: 100 },
+        { id: "codigos", checkboxId: "popupNumofChkCodigosWms", dotClass: "dot-orange", label: "Códigos postales", checked: true, opacity: 100 },
+        { id: "otra", checkboxId: "popupNumofChkOtraCalle", dotClass: "dot-amber", label: "Otras calles", checked: true, opacity: 100 },
+        { id: "misma", checkboxId: "popupNumofChkMismaCalle", dotClass: "dot-green", label: "Misma calle", checked: true, opacity: 100 },
+        { id: "predios", checkboxId: "popupNumofChkPrediosWms", dotClass: "dot-red", label: "Predios (WMS)", checked: true, opacity: 85 },
+        { id: "colonias", checkboxId: "popupNumofChkColoniasWms", dotClass: "dot-purple", label: "Colonias", checked: false, opacity: 55 }
+      ], {
+        opPrefix: "popupNumofOp",
+        toggleFn: "togglePopupNumofCapa",
+        opacityFn: "popupNumofCambiarOpacidadCapa",
+        subirFn: "popupNumofSubirCapa",
+        bajarFn: "popupNumofBajarCapa"
+      })
+    : "";
+
+  const basemap = `<div class="popup-capas-seccion">
         <strong>Base mapas</strong>
         <label><input type="radio" name="popupNumofBaseMap" value="googleHybrid" checked onchange="setPopupNumofBaseLayer(this.value)"> Google Satellite &amp; Roads</label>
         <label><input type="radio" name="popupNumofBaseMap" value="googleRoad" onchange="setPopupNumofBaseLayer(this.value)"> Google Road Map</label>
         <label><input type="radio" name="popupNumofBaseMap" value="esri" onchange="setPopupNumofBaseLayer(this.value)"> ESRI Satellite</label>
         <label><input type="radio" name="popupNumofBaseMap" value="osm" onchange="setPopupNumofBaseLayer(this.value)"> Open Street Map</label>
         <label><input type="radio" name="popupNumofBaseMap" value="googleSat" onchange="setPopupNumofBaseLayer(this.value)"> Google Satellite</label>
-      </div>
-    </div>`;
+      </div>`;
+
+  return typeof htmlPopupMapaCapasMenu === "function"
+    ? htmlPopupMapaCapasMenu({
+        menuId: "popupNumofCapasMenu",
+        overlayListId: "popupNumofCapasOverlayList",
+        menuClass: "popup-carta-capas-menu popup-numof-capas-menu",
+        itemsHtml: capas,
+        basemapHtml: basemap
+      })
+    : "";
 }
 
-function togglePopupNumofCapasMenu() {
-  document.getElementById("popupNumofCapasMenu")?.classList.toggle("oculto");
+function popupNumofInicializarCapasManager() {
+  if (typeof crearFichaMapaCapasManager !== "function") return;
+  popupNumofCapasManager = crearFichaMapaCapasManager({
+    ordenDef: POPUP_NUMOF_CAPA_ORDEN_DEF,
+    capaProp: POPUP_NUMOF_CAPA_PROP,
+    chkMap: {
+      consultado: "popupNumofChkConsultado",
+      misma: "popupNumofChkMismaCalle",
+      otra: "popupNumofChkOtraCalle",
+      predios: "popupNumofChkPrediosWms",
+      codigos: "popupNumofChkCodigosWms",
+      colonias: "popupNumofChkColoniasWms"
+    },
+    optionalIds: ["colonias"],
+    getCapas: () => popupNumofCapas,
+    getMap: () => popupNumofMap,
+    overlayListId: "popupNumofCapasOverlayList",
+    opPrefix: "popupNumofOp"
+  });
+  popupNumofCapasManager.inicializar();
+}
+
+function popupNumofCambiarOpacidadCapa(id, valor) {
+  popupNumofCapasManager?.cambiarOpacidad(id, valor);
+}
+
+function popupNumofSubirCapa(id) {
+  popupNumofCapasManager?.subir(id);
+}
+
+function popupNumofBajarCapa(id) {
+  popupNumofCapasManager?.bajar(id);
+}
+
+function togglePopupNumofCapasMenu(ev) {
+  togglePopupMapaCapasMenu("popupNumofCapasMenu", ev);
 }
 
 function setPopupNumofBaseLayer(valor) {
@@ -250,6 +318,10 @@ function setPopupNumofBaseLayer(valor) {
 }
 
 function togglePopupNumofCapa(tipo) {
+  if (popupNumofCapasManager) {
+    popupNumofCapasManager.toggle(tipo);
+    return;
+  }
   if (!popupNumofCapas) return;
   if (tipo === "consultado") {
     popupNumofCapas.consultado.setVisible(
@@ -360,6 +432,7 @@ function destruirPopupNumerosOficiales() {
     popupNumofMap = null;
   }
   popupNumofCapas = null;
+  popupNumofCapasManager = null;
   popupNumofClaveActual = "";
   popupNumofDatos = null;
   popupNumofFilaActiva = "";
@@ -647,6 +720,7 @@ function popupNumofActualizarMapa(data) {
         return [new ol.control.Zoom()];
       })()
     });
+    popupNumofInicializarCapasManager();
   }
 
   const format = new ol.format.GeoJSON({
@@ -798,13 +872,15 @@ async function pintarPopupTabNumerosOficiales(p) {
             <span>Hasta ${POPUP_NUMOF_LIMITE_MISMA} en la misma calle y ${POPUP_NUMOF_LIMITE_OTRAS} repartidos en calles vecinas.</span>
           </div>
           <div class="popup-numof-mapa-head-actions">
-            <button type="button" class="popup-btn-capas" onclick="togglePopupNumofCapasMenu()">Capas</button>
             <button type="button" class="popup-btn-imprimir-ficha popup-btn-numof-ficha" onclick="abrirPreviewFichaNumeroOficial()">Imprimir / Ficha</button>
+            <button type="button" class="popup-btn-capas" onclick="togglePopupNumofCapasMenu(event)">Capas</button>
           </div>
         </div>
-        ${htmlMenuCapasPopupNumof()}
-        <div id="popupNumofMap" class="popup-numof-mapa">
-          <div class="popup-mini-map-vacio">Cargando mapa…</div>
+        <div class="popup-numof-mapa-body">
+          <div id="popupNumofMap" class="popup-numof-mapa">
+            <div class="popup-mini-map-vacio">Cargando mapa…</div>
+          </div>
+          ${htmlMenuCapasPopupNumof()}
         </div>
       </div>
     </div>`;

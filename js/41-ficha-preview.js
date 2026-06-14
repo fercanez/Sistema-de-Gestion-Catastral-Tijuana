@@ -11,24 +11,34 @@ function fichaVentanaEsc(valor) {
 }
 
 function fichaVentanaLayerPanel() {
-  return `<div id="layerPanel" class="layer-panel">
-    <div class="grupo">
-      <h4>Capas</h4>
-      <label><input type="checkbox" id="chkPredioSel" checked onchange="actualizarCapasPreview()"> Predio consultado</label>
-      <label><input type="checkbox" id="chkPrediosWMS" checked onchange="actualizarCapasPreview()"> Predios</label>
-      <label><input type="checkbox" id="chkColoniasWMS" onchange="actualizarCapasPreview()"> Colonias</label>
-      <label><input type="checkbox" id="chkCodigosWMS" onchange="actualizarCapasPreview()"> Códigos postales</label>
-      <label><input type="checkbox" id="chkCotasPreview" checked onchange="actualizarCapasPreview()"> Cotas</label>
-      <label><input type="checkbox" id="chkVerticesPreview" checked onchange="actualizarCapasPreview()"> Vértices</label>
+  const capas = typeof fichaMapaCapasItemsHtml === "function"
+    ? fichaMapaCapasItemsHtml([
+        { id: "predio", checkboxId: "chkPredioSel", dotClass: "dot-blue", label: "Predio consultado", checked: true, opacity: 100 },
+        { id: "cotas", checkboxId: "chkCotasPreview", dotClass: "dot-amber", label: "Cotas", checked: true, opacity: 100 },
+        { id: "vertices", checkboxId: "chkVerticesPreview", dotClass: "dot-cyan", label: "Vértices", checked: true, opacity: 100 },
+        { id: "prediosWms", checkboxId: "chkPrediosWMS", dotClass: "dot-red", label: "Predios (WMS)", checked: true, opacity: 100 },
+        { id: "codigos", checkboxId: "chkCodigosWMS", dotClass: "dot-orange", label: "Códigos postales", checked: false, opacity: 100 },
+        { id: "colonias", checkboxId: "chkColoniasWMS", dotClass: "dot-purple", label: "Colonias", checked: false, opacity: 55 }
+      ], {
+        opPrefix: "fichaGenOp",
+        toggleFn: "toggleCapaFichaGeneral",
+        opacityFn: "cambiarOpacidadCapaFichaGeneral",
+        subirFn: "subirCapaFichaGeneral",
+        bajarFn: "bajarCapaFichaGeneral"
+      })
+    : "";
+
+  const inner = `<div class="grupo ficha-capas-overlay" id="fichaGenCapasOverlayList">
+      <strong>Capas del plano</strong>
+      ${capas}
     </div>
-    <div class="grupo">
-      <h4>Base mapas</h4>
-      <label><input type="radio" name="basemap" value="googleHybrid" checked onchange="cambiarBasePreview()"> Google Hybrid</label>
-      <label><input type="radio" name="basemap" value="googleRoad" onchange="cambiarBasePreview()"> Google Road</label>
-      <label><input type="radio" name="basemap" value="esri" onchange="cambiarBasePreview()"> ESRI Satellite</label>
-      <label><input type="radio" name="basemap" value="osm" onchange="cambiarBasePreview()"> OpenStreetMap</label>
-    </div>
-  </div>`;
+    ${typeof htmlFichaPreviewBasemapRadios === "function"
+      ? htmlFichaPreviewBasemapRadios("basemap", "cambiarBasePreview")
+      : ""}`;
+
+  return typeof htmlFichaPreviewLayerPanel === "function"
+    ? htmlFichaPreviewLayerPanel("fichaGenLayerPanel", inner)
+    : `<div id="fichaGenLayerPanel" class="ficha-preview-layer-panel oculto">${inner}</div>`;
 }
 
 function urlStreetViewFichaVentana(lat, lon, heading, pitch) {
@@ -223,11 +233,52 @@ function buildFichaVentanaStreetScript(lat, lon, headingInicial, pitchInicial) {
 }
 
 function buildFichaVentanaMapScript(featureGeoJSONString) {
+  const capasRuntime = typeof buildFichaMapaCapasRuntimeScript === "function"
+    ? buildFichaMapaCapasRuntimeScript({
+        ordenDef: {
+          predio: 35,
+          cotas: 42,
+          vertices: 42,
+          prediosWms: 12,
+          codigos: 8,
+          colonias: 5
+        },
+        capaProp: {
+          predio: "predioLayer",
+          prediosWms: "capaPredios",
+          colonias: "capaColonias",
+          codigos: "capaCodigos",
+          cotas: "capaCotasPreview",
+          vertices: "capaCotasPreview"
+        },
+        chkMap: {
+          predio: "chkPredioSel",
+          prediosWms: "chkPrediosWMS",
+          colonias: "chkColoniasWMS",
+          codigos: "chkCodigosWMS",
+          cotas: "chkCotasPreview",
+          vertices: "chkVerticesPreview"
+        },
+        optionalIds: ["colonias", "codigos"],
+        linkedZIndexIds: ["cotas", "vertices"],
+        capasVar: "window.__fichaGenCapas",
+        mapVar: "previewMap",
+        overlayListId: "fichaGenCapasOverlayList",
+        opPrefix: "fichaGenOp",
+        toggleFn: "toggleCapaFichaGeneral",
+        opacityFn: "cambiarOpacidadCapaFichaGeneral",
+        subirFn: "subirCapaFichaGeneral",
+        bajarFn: "bajarCapaFichaGeneral",
+        initFn: "inicializarOrdenCapasFichaGeneral"
+      })
+    : "";
+
   return `
   const featureGeoJSON=${featureGeoJSONString};
   let previewMap=null,predioSource=null,capaCotasSource=null,baseGoogleHybrid=null,baseGoogleRoad=null,baseEsri=null,baseOSM=null;
   let capaPredios=null,capaColonias=null,capaCodigos=null,predioLayer=null,capaCotasPreview=null;
   let mostrarCotasPreview=true,mostrarVerticesPreview=true;
+  ${capasRuntime}
 
   function crearCapaWMS(url,layers,visible=true,opacity=1){
     return new ol.layer.Tile({
@@ -360,9 +411,9 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
 
-    capaPredios=crearCapaWMS("${GEOSERVER_CATASTRO_WMS}","catastro_bc:predios_oficial");
-    capaColonias=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","colonias",false);
-    capaCodigos=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","codigos_postales_bc_utm1",false);
+    capaPredios=crearCapaWMS("${GEOSERVER_CATASTRO_WMS}","catastro_bc:predios_oficial",true,1);
+    capaColonias=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","colonias",false,0.55);
+    capaCodigos=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","codigos_postales_bc_utm1",false,1);
 
     predioSource=new ol.source.Vector({
       features:new ol.format.GeoJSON().readFeatures({
@@ -376,6 +427,7 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
 
     predioLayer=new ol.layer.Vector({
       source:predioSource,
+      zIndex:fichaCapaOrdenDef.predio,
       style:[
         new ol.style.Style({stroke:new ol.style.Stroke({color:"#ffffff",width:6})}),
         new ol.style.Style({stroke:new ol.style.Stroke({color:"#003cff",width:4,lineDash:[10,6]}),fill:new ol.style.Fill({color:"rgba(0,60,255,0.12)"})})
@@ -383,13 +435,19 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     });
 
     capaCotasSource=new ol.source.Vector();
-    capaCotasPreview=new ol.layer.Vector({source:capaCotasSource,style:estiloCotas});
+    capaCotasPreview=new ol.layer.Vector({source:capaCotasSource,zIndex:fichaCapaOrdenDef.cotas,style:estiloCotas});
+
+    window.__fichaGenCapas={
+      predioLayer,capaPredios,capaColonias,capaCodigos,capaCotasPreview
+    };
 
     previewMap=new ol.Map({
       target:"previewMap",
       layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaCodigos,capaColonias,capaPredios,predioLayer,capaCotasPreview],
       view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18})
     });
+
+    if(typeof inicializarOrdenCapasFichaGeneral==="function")inicializarOrdenCapasFichaGeneral();
 
     previewMap.getView().on("change:resolution",function(){regenerarCotasPreview();});
     previewMap.on("moveend",function(){regenerarCotasPreview();});
@@ -408,22 +466,29 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
   }
 
   function toggleLayerPanel(){
-    const p=document.getElementById("layerPanel");
-    if(p)p.style.display=p.style.display==="block"?"none":"block";
+    document.getElementById("fichaGenLayerPanel")?.classList.toggle("oculto");
   }
 
   function actualizarCapasPreview(){
     if(!previewMap)return;
-    predioLayer.setVisible(document.getElementById("chkPredioSel")?.checked??true);
-    capaPredios.setVisible(document.getElementById("chkPrediosWMS")?.checked??true);
-    capaColonias.setVisible(document.getElementById("chkColoniasWMS")?.checked??false);
-    capaCodigos.setVisible(document.getElementById("chkCodigosWMS")?.checked??false);
-    mostrarCotasPreview=document.getElementById("chkCotasPreview")?.checked??true;
-    mostrarVerticesPreview=document.getElementById("chkVerticesPreview")?.checked??true;
-    if(capaCotasPreview){
-      capaCotasPreview.setVisible(mostrarCotasPreview||mostrarVerticesPreview);
-      capaCotasPreview.changed();
+    ["predio","prediosWms","colonias","codigos","cotas","vertices"].forEach(function(id){
+      toggleCapaFichaGeneral(id);
+    });
+  }
+
+  const _toggleCapaFichaGeneralBase=toggleCapaFichaGeneral;
+  function toggleCapaFichaGeneral(id){
+    if(id==="cotas"||id==="vertices"){
+      mostrarCotasPreview=document.getElementById("chkCotasPreview")?.checked??true;
+      mostrarVerticesPreview=document.getElementById("chkVerticesPreview")?.checked??true;
+      if(capaCotasPreview){
+        capaCotasPreview.setVisible(mostrarCotasPreview||mostrarVerticesPreview);
+        capaCotasPreview.changed();
+      }
+      previewMap&&previewMap.render();
+      return;
     }
+    _toggleCapaFichaGeneralBase(id);
   }
 
   function cambiarBasePreview(){
@@ -526,13 +591,6 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     if(el) el.innerHTML="<div style='padding:20px;color:#900;'>No se pudo cargar OpenLayers.</div>";
   };
   document.body.appendChild(script);
-
-  document.addEventListener("click",function(e){
-    const panel=document.getElementById("layerPanel");
-    const btn=document.querySelector(".layer-toggle-btn");
-    if(!panel||!btn)return;
-    if(panel.style.display==="block"&&!panel.contains(e.target)&&!btn.contains(e.target))panel.style.display="none";
-  });
   `;
 }
 
@@ -930,16 +988,13 @@ body.ficha-imprimiendo .street-print-snapshot.activo{display:none!important;}
   justify-content:center;
 }
 #previewMapWrap{position:relative;width:100%;height:100%;min-height:var(--ficha-media-map);}
-.layer-toggle-btn{position:absolute;top:8px;right:8px;width:34px;height:34px;border:none;border-radius:6px;background:white;box-shadow:0 2px 8px rgba(0,0,0,.25);cursor:pointer;z-index:2000;font-size:16px;}
-.layer-panel{position:absolute;top:46px;right:8px;width:230px;background:white;border-radius:8px;box-shadow:0 6px 18px rgba(0,0,0,.22);padding:10px 12px;z-index:2000;display:none;font-size:12px;}
-.layer-panel h4{margin:0 0 8px;color:#222;font-size:13px;}
-.layer-panel .grupo{margin-bottom:10px;}
-.layer-panel label{display:block;margin:5px 0;cursor:pointer;}
+${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS : ""}
+${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PANEL_CSS : ""}
 .aviso-impresion{text-align:center;font-size:10px;color:#64748b;padding:5px 8px 6px;font-style:italic;}
 .pie{text-align:center;font-size:8px;color:var(--guinda);font-weight:700;padding:3px 6px 4px;border-top:1px solid var(--guinda-claro);}
 @media print{
   html,body{background:#fff!important;height:auto!important;}
-  .toolbar,.layer-toggle-btn,.layer-panel,.media-tools,.aviso-impresion{display:none!important;}
+  .toolbar,.ficha-preview-layer-panel,.media-tools,.aviso-impresion{display:none!important;}
   .contenedor{
     width:var(--ficha-ancho)!important;
     max-width:var(--ficha-ancho)!important;
@@ -1024,9 +1079,12 @@ body.ficha-imprimiendo .street-print-snapshot.activo{display:none!important;}
         <option value="legal">Legal / Oficio 8.5×14</option>
       </select>
     </label>
+    <button type="button" class="sec" onclick="toggleLayerPanel()">Capas</button>
     <button type="button" onclick="imprimirAhora()">Imprimir / PDF</button>
     <button type="button" class="sec" onclick="window.close()">Cerrar</button>
   </div>
+  ${fichaVentanaLayerPanel()}
+  <div class="aviso-impresion" id="fichaGenMapaEstado">Ajuste la vista de calle (↺ ↻) y el mapa. Cuando esté listo pulse «Imprimir / PDF».</div>
 
   <div class="contenedor">
     <div class="encabezado">
@@ -1076,13 +1134,10 @@ body.ficha-imprimiendo .street-print-snapshot.activo{display:none!important;}
     <section class="seccion-marco seccion-media seccion-mapa">
       <div class="media-head"><span>Localización cartográfica</span></div>
       <div class="media-body" id="previewMapWrap">
-        <button type="button" class="layer-toggle-btn" onclick="toggleLayerPanel()">🗂</button>
-        ${fichaVentanaLayerPanel()}
         <div id="previewMap"></div>
       </div>
     </section>
 
-    <div class="aviso-impresion">Ajuste la vista de calle (↺ ↻) y el mapa. Cuando esté listo pulse «Imprimir / PDF» en la barra superior.</div>
     <div class="pie">${fichaVentanaEsc(fechaPie)}</div>
   </div>
 

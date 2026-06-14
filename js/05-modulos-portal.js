@@ -6,6 +6,19 @@ let popupPredioIndiceActual = -1;
 let popupMiniMap = null;
 let popupMiniMapCapas = null;
 let popupMiniMapClaveActual = "";
+let popupMiniCapasManager = null;
+
+const POPUP_MINI_CAPA_ORDEN_DEF = {
+  consultado: 35,
+  predios: 12,
+  colonias: 5
+};
+
+const POPUP_MINI_CAPA_PROP = {
+  consultado: "predioVector",
+  predios: "prediosWms",
+  colonias: "coloniasWms"
+};
 let popupTitularidadSubTab = "titulares";
 let popupTitularidadCache = null;
 
@@ -521,6 +534,7 @@ function crearCapasPopupMiniMap() {
     prediosWms: new ol.layer.Tile({
       visible: true,
       opacity: 0.9,
+      zIndex: POPUP_MINI_CAPA_ORDEN_DEF.predios,
       source: new ol.source.TileWMS({
         url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
         params: {
@@ -537,6 +551,7 @@ function crearCapasPopupMiniMap() {
     coloniasWms: new ol.layer.Tile({
       visible: false,
       opacity: 0.55,
+      zIndex: POPUP_MINI_CAPA_ORDEN_DEF.colonias,
       source: new ol.source.TileWMS({
         url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
         params: {
@@ -552,6 +567,7 @@ function crearCapasPopupMiniMap() {
     }),
     predioVector: new ol.layer.Vector({
       visible: true,
+      zIndex: POPUP_MINI_CAPA_ORDEN_DEF.consultado,
       source: new ol.source.Vector(),
       style: function(feature) {
         return new ol.style.Style({
@@ -574,6 +590,7 @@ function crearCapasPopupMiniMap() {
     }),
     contorno: new ol.layer.Vector({
       visible: true,
+      zIndex: POPUP_MINI_CAPA_ORDEN_DEF.consultado + 1,
       source: new ol.source.Vector(),
       style: new ol.style.Style({
         stroke: new ol.style.Stroke({
@@ -596,19 +613,45 @@ function destruirPopupMiniMap() {
     popupMiniMap = null;
   }
   popupMiniMapCapas = null;
+  popupMiniCapasManager = null;
   popupMiniMapClaveActual = "";
 }
 
+function popupMiniInicializarCapasManager() {
+  if (typeof crearFichaMapaCapasManager !== "function") return;
+  popupMiniCapasManager = crearFichaMapaCapasManager({
+    ordenDef: POPUP_MINI_CAPA_ORDEN_DEF,
+    capaProp: POPUP_MINI_CAPA_PROP,
+    chkMap: {
+      consultado: "popupChkPredioConsultado",
+      predios: "popupChkPrediosWms",
+      colonias: "popupChkColoniasWms"
+    },
+    optionalIds: ["colonias"],
+    getCapas: () => popupMiniMapCapas,
+    getMap: () => popupMiniMap,
+    overlayListId: "popupMiniCapasOverlayList",
+    opPrefix: "popupMiniOp"
+  });
+  popupMiniCapasManager.inicializar();
+}
+
 function htmlMenuCapasPopupMini() {
-  return `
-    <div class="popup-capas-menu oculto" id="popupMiniCapasMenu">
-      <div class="popup-capas-seccion">
-        <strong>Capas</strong>
-        <label><input type="checkbox" id="popupChkPredioConsultado" checked onchange="togglePopupMiniCapa('consultado')"> Predio consultado</label>
-        <label><input type="checkbox" id="popupChkPrediosWms" checked onchange="togglePopupMiniCapa('predios')"> Predios</label>
-        <label><input type="checkbox" id="popupChkColoniasWms" onchange="togglePopupMiniCapa('colonias')"> Colonias</label>
-      </div>
-      <div class="popup-capas-seccion">
+  const capas = typeof fichaMapaCapasItemsHtml === "function"
+    ? fichaMapaCapasItemsHtml([
+        { id: "consultado", checkboxId: "popupChkPredioConsultado", dotClass: "dot-blue", label: "Predio consultado", checked: true, opacity: 100 },
+        { id: "predios", checkboxId: "popupChkPrediosWms", dotClass: "dot-red", label: "Predios (WMS)", checked: true, opacity: 90 },
+        { id: "colonias", checkboxId: "popupChkColoniasWms", dotClass: "dot-purple", label: "Colonias", checked: false, opacity: 55 }
+      ], {
+        opPrefix: "popupMiniOp",
+        toggleFn: "togglePopupMiniCapa",
+        opacityFn: "popupMiniCambiarOpacidadCapa",
+        subirFn: "popupMiniSubirCapa",
+        bajarFn: "popupMiniBajarCapa"
+      })
+    : "";
+
+  const basemap = `<div class="popup-capas-seccion">
         <strong>Base mapas</strong>
         <label><input type="radio" name="popupBaseMap" value="googleHybrid" checked onchange="setPopupMiniBaseLayer(this.value)"> Google Satellite &amp; Roads</label>
         <label><input type="radio" name="popupBaseMap" value="googleRoad" onchange="setPopupMiniBaseLayer(this.value)"> Google Road Map</label>
@@ -616,13 +659,37 @@ function htmlMenuCapasPopupMini() {
         <label><input type="radio" name="popupBaseMap" value="esri" onchange="setPopupMiniBaseLayer(this.value)"> ESRI Satellite</label>
         <label><input type="radio" name="popupBaseMap" value="osm" onchange="setPopupMiniBaseLayer(this.value)"> Open Street Map</label>
         <label><input type="radio" name="popupBaseMap" value="googleSat" onchange="setPopupMiniBaseLayer(this.value)"> Google Satellite</label>
-      </div>
-    </div>
-  `;
+      </div>`;
+
+  return typeof htmlPopupMapaCapasMenu === "function"
+    ? htmlPopupMapaCapasMenu({
+        menuId: "popupMiniCapasMenu",
+        overlayListId: "popupMiniCapasOverlayList",
+        menuClass: "popup-carta-capas-menu popup-mini-capas-menu",
+        itemsHtml: capas,
+        basemapHtml: basemap
+      })
+    : "";
 }
 
-function togglePopupMiniCapasMenu() {
-  document.getElementById("popupMiniCapasMenu")?.classList.toggle("oculto");
+function togglePopupMiniCapasMenu(ev) {
+  togglePopupMapaCapasMenu("popupMiniCapasMenu", ev);
+}
+
+function popupMiniCambiarOpacidadCapa(id, valor) {
+  popupMiniCapasManager?.cambiarOpacidad(id, valor);
+  if (id === "consultado" && popupMiniMapCapas?.contorno) {
+    popupMiniMapCapas.contorno.setOpacity(Number(valor) / 100);
+    popupMiniMap?.render();
+  }
+}
+
+function popupMiniSubirCapa(id) {
+  popupMiniCapasManager?.subir(id);
+}
+
+function popupMiniBajarCapa(id) {
+  popupMiniCapasManager?.bajar(id);
 }
 
 function setPopupMiniBaseLayer(valor) {
@@ -635,17 +702,13 @@ function setPopupMiniBaseLayer(valor) {
 }
 
 function togglePopupMiniCapa(tipo) {
-  if (!popupMiniMapCapas) return;
   if (tipo === "consultado") {
     const visible = document.getElementById("popupChkPredioConsultado")?.checked !== false;
-    popupMiniMapCapas.contorno.setVisible(visible);
-    popupMiniMapCapas.predioVector.setVisible(visible);
-  } else if (tipo === "predios") {
-    popupMiniMapCapas.prediosWms.setVisible(document.getElementById("popupChkPrediosWms")?.checked !== false);
-  } else if (tipo === "colonias") {
-    popupMiniMapCapas.coloniasWms.setVisible(document.getElementById("popupChkColoniasWms")?.checked === true);
+    if (popupMiniMapCapas?.contorno) popupMiniMapCapas.contorno.setVisible(visible);
+    popupMiniCapasManager?.toggle("consultado");
+    return;
   }
-  if (popupMiniMap) popupMiniMap.render();
+  popupMiniCapasManager?.toggle(tipo);
 }
 
 async function actualizarPopupMiniMap(clave, geometry = null) {
@@ -693,6 +756,7 @@ async function actualizarPopupMiniMap(clave, geometry = null) {
         zoom: 18
       })
     });
+    popupMiniInicializarCapasManager();
     popupMiniMapClaveActual = claveNorm;
   }
 
@@ -826,7 +890,7 @@ async function pintarPopupTabDatosGenerales(p) {
           <span>Localización cartográfica</span>
           <div class="popup-media-head-acciones">
             <button type="button" class="popup-btn-imprimir-ficha" onclick="exportarPdfDesdePreviewFicha()" title="Abrir vista previa de la ficha">🖨️ Imprimir / PDF</button>
-            <button type="button" class="popup-btn-capas" onclick="togglePopupMiniCapasMenu()">Capas</button>
+            <button type="button" class="popup-btn-capas" onclick="togglePopupMiniCapasMenu(event)">Capas</button>
           </div>
         </div>
         <div class="popup-media-body popup-mini-map-wrap">
@@ -1162,18 +1226,6 @@ async function pintarPopupTabArchivo(clave, p) {
   await cargarFotografiasArchivo(claveNorm, p);
 }
 
-function pintarPopupTabColonia(p) {
-  const panel = document.getElementById("popupTabColonia");
-  if (!panel) return;
-  panel.innerHTML = `
-    <div class="popup-placeholder-modulo popup-legacy-panel popup-legacy-centro">
-      <strong>${popupVal(p?.colonia || "Colonia no registrada")}</strong>
-      <p>Colonia o fraccionamiento asociado al predio en el padrón institucional.</p>
-      <p>Active la capa <b>Colonias</b> en el mapa para ver el contexto geográfico.</p>
-    </div>
-  `;
-}
-
 function pintarPopupTabZonaHomogenea(p) {
   const panel = document.getElementById("popupTabZonaHomogenea");
   if (!panel) return;
@@ -1207,6 +1259,9 @@ async function pintarPopupPredioTab(tabId, p) {
   if (tabAnterior === "carta-urbana" && tabId !== "carta-urbana") {
     if (typeof destruirPopupCartaUrbana === "function") destruirPopupCartaUrbana();
   }
+  if (tabAnterior === "colonia" && tabId !== "colonia") {
+    if (typeof destruirPopupColonia === "function") destruirPopupColonia();
+  }
   document.querySelectorAll(".popup-predio-tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tabId);
   });
@@ -1239,8 +1294,14 @@ async function pintarPopupPredioTab(tabId, p) {
       pintarPopupTabPlaceholder("popupTabCartaUrbana", "Carta Urbana 2040",
         "Consulta de zonificación 2040 — recargue la página con Ctrl+F5.");
     }
-  } else if (tabId === "colonia") pintarPopupTabColonia(p);
-  else if (tabId === "zona-homogenea") pintarPopupTabZonaHomogenea(p);
+  } else if (tabId === "colonia") {
+    if (typeof pintarPopupTabColonia === "function") {
+      await pintarPopupTabColonia(p);
+    } else {
+      pintarPopupTabPlaceholder("popupTabColonia", "Colonia/Fraccionamiento",
+        "Ubicación del predio respecto al límite de colonia — recargue con Ctrl+F5.");
+    }
+  } else if (tabId === "zona-homogenea") pintarPopupTabZonaHomogenea(p);
 }
 
 function tabIdToDomId(tabId) {
@@ -1295,6 +1356,9 @@ function cerrarPopupPredioWorkspace() {
   document.body.classList.remove("popup-predio-abierto");
   destruirPopupMiniMap();
   if (typeof destruirPopupConstruccionesMedicion === "function") destruirPopupConstruccionesMedicion();
+  if (typeof destruirPopupNumerosOficiales === "function") destruirPopupNumerosOficiales();
+  if (typeof destruirPopupCartaUrbana === "function") destruirPopupCartaUrbana();
+  if (typeof destruirPopupColonia === "function") destruirPopupColonia();
 }
 
 async function navegarPopupPredio(delta) {
@@ -1335,6 +1399,10 @@ window.navegarPopupPredio = navegarPopupPredio;
 window.capturarPopupMiniMapParaPDF = capturarPopupMiniMapParaPDF;
 window.generarFichaCatastralGeneral = generarFichaCatastralGeneral;
 window.togglePopupMiniCapasMenu = togglePopupMiniCapasMenu;
+window.popupMiniCambiarOpacidadCapa = popupMiniCambiarOpacidadCapa;
+window.popupMiniSubirCapa = popupMiniSubirCapa;
+window.popupMiniBajarCapa = popupMiniBajarCapa;
+window.cerrarPopupMapaCapasMenu = cerrarPopupMapaCapasMenu;
 window.setPopupMiniBaseLayer = setPopupMiniBaseLayer;
 window.togglePopupMiniCapa = togglePopupMiniCapa;
 window.mostrarPopupSubTabTitularidad = mostrarPopupSubTabTitularidad;
