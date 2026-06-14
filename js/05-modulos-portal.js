@@ -1226,27 +1226,6 @@ async function pintarPopupTabArchivo(clave, p) {
   await cargarFotografiasArchivo(claveNorm, p);
 }
 
-function pintarPopupTabZonaHomogenea(p) {
-  const panel = document.getElementById("popupTabZonaHomogenea");
-  if (!panel) return;
-  const zona = popupZonaHomogenea(p);
-  const tasa = p?.porcentaje_tasa;
-  panel.innerHTML = `
-    <div class="popup-datos-grid popup-datos-grid-legacy popup-datos-grid-2col">
-      <div class="popup-datos-form popup-legacy-form">
-        ${popupCampo("Zona homogénea", zona)}
-        ${popupCampo("ID tasa", p?.id_tasa)}
-        ${popupCampo("Tasa", tasa != null ? tasa + "%" : "—")}
-        ${popupCampo("Valor 2026", typeof formatoMoneda === "function" ? formatoMoneda(p?.valor2026) : p?.valor2026)}
-      </div>
-      <div class="popup-mapa-placeholder popup-legacy-panel">
-        <strong>Cédula de zona homogénea</strong>
-        <span>Gráfica de evolución de valores e impresión de cédula — integración con módulo de zonas en curso.</span>
-      </div>
-    </div>
-  `;
-}
-
 async function pintarPopupPredioTab(tabId, p) {
   const tabAnterior = popupPredioTabActiva;
   popupPredioTabActiva = tabId;
@@ -1261,6 +1240,9 @@ async function pintarPopupPredioTab(tabId, p) {
   }
   if (tabAnterior === "colonia" && tabId !== "colonia") {
     if (typeof destruirPopupColonia === "function") destruirPopupColonia();
+  }
+  if (tabAnterior === "zona-homogenea" && tabId !== "zona-homogenea") {
+    if (typeof destruirPopupZonaHomogenea === "function") destruirPopupZonaHomogenea();
   }
   document.querySelectorAll(".popup-predio-tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tabId);
@@ -1301,7 +1283,14 @@ async function pintarPopupPredioTab(tabId, p) {
       pintarPopupTabPlaceholder("popupTabColonia", "Colonia/Fraccionamiento",
         "Ubicación del predio respecto al límite de colonia — recargue con Ctrl+F5.");
     }
-  } else if (tabId === "zona-homogenea") pintarPopupTabZonaHomogenea(p);
+  } else if (tabId === "zona-homogenea") {
+    if (typeof pintarPopupTabZonaHomogenea === "function") {
+      await pintarPopupTabZonaHomogenea(p);
+    } else {
+      pintarPopupTabPlaceholder("popupTabZonaHomogenea", "Zona Homogénea",
+        "Consulta de zona homogénea y evolución de valores — recargue con Ctrl+F5.");
+    }
+  }
 }
 
 function tabIdToDomId(tabId) {
@@ -1359,6 +1348,7 @@ function cerrarPopupPredioWorkspace() {
   if (typeof destruirPopupNumerosOficiales === "function") destruirPopupNumerosOficiales();
   if (typeof destruirPopupCartaUrbana === "function") destruirPopupCartaUrbana();
   if (typeof destruirPopupColonia === "function") destruirPopupColonia();
+  if (typeof destruirPopupZonaHomogenea === "function") destruirPopupZonaHomogenea();
 }
 
 async function navegarPopupPredio(delta) {

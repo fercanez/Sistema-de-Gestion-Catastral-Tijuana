@@ -255,6 +255,42 @@ Implementación completa de la pestaña **Carta Urbana 2040** en popup predio: c
 
 ---
 
+## 2026-06-13 - Pestaña Zona Homogénea (v127–v133)
+
+**Tipo:** despliegue  
+**Responsable:** desarrollo catastral  
+**Entorno:** producción / repositorio
+
+### Resumen
+Implementación de la pestaña **Zona Homogénea** en popup predio (similar a Colonia/Fraccionamiento): mapa WMS `geonode:zonas_homogeneas`, evolución 2024–2026, ficha imprimible, consulta por clic en mapa, corrección de impresión y unificación de fuentes de valor.
+
+### Cambios aplicados
+- Nuevo `js/10-zonas-homogeneas.js` — popup, mapa OL, capas, gráfica evolución, clic WMS GetFeatureInfo, estilos predio negro punteado / zona roja punteada.
+- Nuevo `js/48-ficha-zona-homogenea-preview.js` — vista previa e impresión PDF (mapa + gráfica), layout carta 8.5×11, ajuste altura para evitar recorte al pie.
+- `routers/padron.py` — `GET /padron/{clave}/zona-homogenea` (alias `/predios/...`), intersección GeoNode/WMS, catálogo evolución por `zonah`, búsqueda ampliada por código.
+- `js/05-modulos-portal.js`, `css/55-modulos-portal.css`, `index.html` — integración pestaña, menú Capas, tooltip mapa, estilos compactos panel izquierdo.
+- **v131:** clic en zonas WMS → tooltip con código y valor unitario 2026.
+- **v132:** corrección impresión (cálculo altura mapa + gráfica, `@media print`, snapshot mapa).
+- **v133:** separación de conceptos — valor catastral predio vs valor unitario suelo; catálogo fiscal prioritario sobre etiqueta WMS legacy (`MCU0092 = $ 1877`); carga de catálogo al abrir pestaña.
+
+### Respaldos
+- commit en repositorio Git (rama `main`).
+
+### Validación realizada
+- Prueba visual popup y ficha impresión (predio RN500001 / MCU0092 y otros).
+- Mapa centrado en predio + zona; menú Capas operativo.
+- Usuario confirmó funcionamiento general; discrepancias de datos explicadas y corregidas en UI.
+
+### Resultado
+- exitoso
+
+### Observaciones
+- Reiniciar API tras subir `routers/padron.py`: `systemctl restart catastro-api`.
+- Frontend: subir `index.html`, `css/55-modulos-portal.css`, `js/05-modulos-portal.js`, `js/10-zonas-homogeneas.js`, `js/48-ficha-zona-homogenea-preview.js` + Ctrl+F5 → **SGC v133**.
+- Capa WMS GeoNode puede traer etiquetas con valores históricos; el valor oficial es el del catálogo fiscal (`cat_zonas_homogeneas_detalle`).
+
+---
+
 ## Plantilla en blanco para nuevas entradas
 
 ## YYYY-MM-DD HH:MM - Título corto del cambio

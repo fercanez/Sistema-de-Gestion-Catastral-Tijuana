@@ -1183,6 +1183,287 @@ def colonia_fraccionamiento_predio(
     return _colonia_fraccionamiento_payload(clave)
 
 
+ZONA_HOMOGENEA_WMS_URL = CARTA_URBANA_2040_WMS_URL
+ZONA_HOMOGENEA_WMS_LAYER = "zonas_homogeneas"
+ZONA_HOMOGENEA_WMS_LAYERS = [
+    "zonas_homogeneas",
+    "geonode:zonas_homogeneas",
+]
+ZONA_HOMOGENEA_TABLAS = ["zonas_homogeneas"]
+
+
+def _normalizar_atributos_zona_homogenea(props: Optional[dict]) -> dict:
+    if not props:
+        return {}
+    claves = {str(k).lower(): k for k in props.keys()}
+
+    def tomar(*candidatos: str) -> str:
+        for cand in candidatos:
+            cand_l = cand.lower()
+            for kl, orig in claves.items():
+                if cand_l in kl:
+                    val = props.get(orig)
+                    if val is not None and str(val).strip() not in ("", "NULL", "null"):
+                        return str(val).strip()
+        return ""
+
+    return {
+        "codigo": tomar(
+            "zonah", "codigo_zona", "codigo", "clave", "homogenea",
+            "codigo_zona_homogenea", "secsub"
+        ),
+        "descripcion": tomar(
+            "descripcion", "nombre", "desc", "colonia", "descripcion_col_fracc"
+        ),
+        "zona": tomar("zona", "nom_zona"),
+        "sector": tomar("sector", "nom_sector"),
+        "subsector": tomar("subsector", "nom_subsector"),
+        "homoclave": tomar("homoclave", "homoclave_col_fracc", "fraccion"),
+        "seccion": tomar("seccion", "sec"),
+        "valor_m2": tomar("valor_m2", "valorm2", "valor", "valorley"),
+        "anio": tomar("anio", "year", "ejercicio"),
+        "observaciones": tomar("observ", "nota", "coment", "leyenda"),
+    }
+
+
+def _consultar_zona_homogenea_geonode(cur, ewkt_predio: str, tablas: List[str]) -> Optional[dict]:
+    for tabla in tablas:
+        if not re.fullmatch(r"[a-z0-9_]+", tabla or "", re.I):
+            continue
+        try:
+            cur.execute(
+                f"""
+                SELECT
+                    t.*,
+                    ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry
+                FROM public.{tabla} t
+                WHERE t.geom IS NOT NULL
+                  AND ST_Intersects(
+                        t.geom,
+                        ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                  )
+                ORDER BY ST_Area(
+                    ST_Intersection(
+                        t.geom,
+                        ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                    )
+                ) DESC NULLS LAST
+                LIMIT 1;
+                """,
+                (ewkt_predio, ewkt_predio),
+            )
+            row = cur.fetchone()
+            if not row:
+                continue
+            props = dict(row)
+            geometry = props.pop("geometry", None)
+            props.pop("geom", None)
+            return {
+                "origen": "geonode",
+                "tabla": tabla,
+                "properties": props,
+                "geometry": geometry,
+                "atributos": _normalizar_atributos_zona_homogenea(props),
+            }
+        except Exception:
+            continue
+    return None
+
+
+def _evolucion_zona_por_codigo(cur, codigo: str) -> Optional[dict]:
+    cod_norm = re.sub(r"[^A-Z0-9]", "", str(codigo or "").strip().upper())
+    if not cod_norm:
+        return None
+    anios = _obtener_anios_zh_catalogo(cur)
+    union_sql, union_params = _filas_zh_para_analisis(cur, anios)
+    if not union_sql:
+        return None
+    anio_ref = _anio_referencia(anios)
+    agg_valores = _sql_agg_valores_por_anio(anios)
+    sql = f"""
+        WITH filas AS ({union_sql}),
+        agg AS (
+            SELECT
+                clave_zonah,
+                MAX(codigo_zona_homogenea) FILTER (WHERE anio = {anio_ref}) AS codigo_zona_homogenea,
+                MAX(codigo_zona_homogenea) AS codigo_referencia,
+                MAX(zona) FILTER (WHERE anio = {anio_ref}) AS zona,
+                MAX(sector) FILTER (WHERE anio = {anio_ref}) AS sector,
+                MAX(subsector) FILTER (WHERE anio = {anio_ref}) AS subsector,
+                MAX(homoclave_col_fracc) FILTER (WHERE anio = {anio_ref}) AS homoclave_col_fracc,
+                MAX(seccion) FILTER (WHERE anio = {anio_ref}) AS seccion,
+                MAX(descripcion_col_fracc) FILTER (WHERE anio = {anio_ref}) AS descripcion_col_fracc,
+                {agg_valores},
+                BOOL_OR(es_adicional) AS es_adicional,
+                MAX(tipo_zona) FILTER (WHERE es_adicional) AS tipo_zona
+            FROM filas
+            GROUP BY clave_zonah
+        )
+        SELECT * FROM agg
+        WHERE clave_zonah = %s
+           OR codigo_zona_homogenea = %s
+           OR codigo_referencia = %s
+        LIMIT 1;
+    """
+    params = list(union_params) + [cod_norm, cod_norm, cod_norm]
+    cur.execute(sql, params)
+    row = cur.fetchone()
+    if not row:
+        sql_ilike = f"""
+        WITH filas AS ({union_sql}),
+        agg AS (
+            SELECT
+                clave_zonah,
+                MAX(codigo_zona_homogenea) FILTER (WHERE anio = {anio_ref}) AS codigo_zona_homogenea,
+                MAX(codigo_zona_homogenea) AS codigo_referencia,
+                MAX(zona) FILTER (WHERE anio = {anio_ref}) AS zona,
+                MAX(sector) FILTER (WHERE anio = {anio_ref}) AS sector,
+                MAX(subsector) FILTER (WHERE anio = {anio_ref}) AS subsector,
+                MAX(homoclave_col_fracc) FILTER (WHERE anio = {anio_ref}) AS homoclave_col_fracc,
+                MAX(seccion) FILTER (WHERE anio = {anio_ref}) AS seccion,
+                MAX(descripcion_col_fracc) FILTER (WHERE anio = {anio_ref}) AS descripcion_col_fracc,
+                {agg_valores},
+                BOOL_OR(es_adicional) AS es_adicional,
+                MAX(tipo_zona) FILTER (WHERE es_adicional) AS tipo_zona
+            FROM filas
+            GROUP BY clave_zonah
+        )
+        SELECT * FROM agg
+        WHERE UPPER(TRIM(COALESCE(codigo_zona_homogenea, ''))) = %s
+           OR UPPER(TRIM(COALESCE(clave_zonah, ''))) = %s
+           OR UPPER(TRIM(COALESCE(codigo_referencia, ''))) = %s
+        LIMIT 1;
+        """
+        cur.execute(sql_ilike, list(union_params) + [cod_norm, cod_norm, cod_norm])
+        row = cur.fetchone()
+    if not row:
+        return None
+    return _construir_item_evolucion(dict(row), anios)
+
+
+def _zona_homogenea_payload(clave: str) -> dict:
+    clave_norm = clave.upper().strip()
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral requerida")
+
+    conn = get_conn()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT
+            UPPER(TRIM(p.clave_catastral)) AS clave_catastral,
+            TRIM(COALESCE(p.descripcion_uso, '')) AS uso_padron,
+            TRIM(COALESCE(p.colonia, '')) AS colonia,
+            TRIM(COALESCE(p.delegacion, '')) AS delegacion,
+            TRIM(COALESCE(p.calle, '')) AS calle,
+            TRIM(COALESCE(p.numof, '')) AS numof,
+            UPPER(TRIM(COALESCE(p.zonah, ''))) AS zonah,
+            TRIM(COALESCE(p.id_tasa, '')) AS id_tasa,
+            p.porcentaje_tasa,
+            p.valor2026,
+            ST_AsEWKT(ST_Transform(g.geom, 32611)) AS ewkt_32611,
+            ST_X(ST_Transform(ST_PointOnSurface(g.geom), 4326))::float AS lon,
+            ST_Y(ST_Transform(ST_PointOnSurface(g.geom), 4326))::float AS lat,
+            ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json AS geometry
+        FROM catalogos.padron_2026 p
+        INNER JOIN catastro.predios g
+            ON UPPER(TRIM(g.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
+        WHERE UPPER(TRIM(p.clave_catastral)) = %s
+          AND g.geom IS NOT NULL
+        LIMIT 1;
+    """, (clave_norm,))
+    row = cur.fetchone()
+
+    if not row:
+        cur.close()
+        conn.close()
+        raise HTTPException(status_code=404, detail="Predio no encontrado o sin geometría cartográfica")
+
+    lon = row.get("lon")
+    lat = row.get("lat")
+    ewkt = row.get("ewkt_32611")
+    zonah = row.get("zonah") or ""
+    zona_carto = None
+
+    if get_geonode_conn is not None and ewkt:
+        try:
+            gconn = get_geonode_conn()
+            gcur = gconn.cursor()
+            zona_carto = _consultar_zona_homogenea_geonode(
+                gcur, ewkt, ZONA_HOMOGENEA_TABLAS
+            )
+            gcur.close()
+            gconn.close()
+        except Exception:
+            zona_carto = None
+
+    if zona_carto is None and lon is not None and lat is not None:
+        zona_carto = _consultar_carta_urbana_wms(
+            float(lon), float(lat), ZONA_HOMOGENEA_WMS_LAYERS
+        )
+        if zona_carto:
+            props = zona_carto.get("properties") or {}
+            zona_carto["atributos"] = _normalizar_atributos_zona_homogenea(props)
+
+    catalogo = _evolucion_zona_por_codigo(cur, zonah)
+    if not catalogo and zona_carto:
+        attrs = (zona_carto.get("atributos") or {})
+        cod_carto = attrs.get("codigo") or ""
+        if cod_carto:
+            catalogo = _evolucion_zona_por_codigo(cur, cod_carto)
+
+    anios = _obtener_anios_zh_catalogo(cur)
+    cur.close()
+    conn.close()
+
+    wms_layer = (zona_carto or {}).get("layer") or ZONA_HOMOGENEA_WMS_LAYER
+    mensaje = ""
+    if not zona_carto:
+        mensaje = (
+            "No se intersectó el predio con la capa de zonas homogéneas. "
+            "Verifique geometría del predio o la simbología geonode:zonas_homogeneas."
+        )
+
+    return {
+        "clave_catastral": clave_norm,
+        "uso_padron": row.get("uso_padron") or "",
+        "colonia": row.get("colonia") or "",
+        "delegacion": row.get("delegacion") or "",
+        "calle": row.get("calle") or "",
+        "numof": row.get("numof") or "",
+        "zonah": zonah,
+        "id_tasa": row.get("id_tasa") or "",
+        "porcentaje_tasa": row.get("porcentaje_tasa"),
+        "valor2026": row.get("valor2026"),
+        "centroide": {"lon": lon, "lat": lat},
+        "geometry": row.get("geometry"),
+        "zona_carto": zona_carto,
+        "catalogo": catalogo,
+        "anios": anios,
+        "wms_url": ZONA_HOMOGENEA_WMS_URL,
+        "wms_layer": wms_layer,
+        "wms_layers_intentadas": ZONA_HOMOGENEA_WMS_LAYERS,
+        "mensaje": mensaje,
+    }
+
+
+@router.get("/padron/{clave}/zona-homogenea")
+def zona_homogenea_padron(
+    clave: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Consulta zona homogénea intersectando el predio (GeoNode + catálogo evolución)."""
+    return _zona_homogenea_payload(clave)
+
+
+@router.get("/predios/{clave}/zona-homogenea")
+def zona_homogenea_predio(
+    clave: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Alias de consulta zona homogénea."""
+    return _zona_homogenea_payload(clave)
+
+
 def _numeros_oficiales_cercanos_payload(clave: str, limite_misma_calle: int, limite_otras_calles: int):
     clave_norm = clave.upper().strip()
     if not clave_norm:
