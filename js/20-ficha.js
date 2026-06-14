@@ -599,10 +599,9 @@ function mostrarTab(tabId, boton) {
   actualizarBreadcrumbModulo(tabId);
 
   if (tabId === "tabAdministracion") {
-    setTimeout(() => {
-      if (typeof cargarUsuariosAdmin === "function") cargarUsuariosAdmin();
-      if (typeof cargarAuditoriaAdmin === "function") cargarAuditoriaAdmin();
-    }, 150);
+    setTimeout(function() {
+      if (typeof abrirModuloAdministracion === "function") abrirModuloAdministracion();
+    }, 120);
   }
 
   if (tabId === "tabMovimientos" && typeof sincronizarClavesMovimientoConPredioActivo === "function") {

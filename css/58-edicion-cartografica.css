@@ -1,0 +1,403 @@
+/* Edición cartográfica — panel izquierdo + mapa derecho */
+.edicion-carto-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 11500;
+  background: #0f172a;
+  display: flex;
+  flex-direction: column;
+}
+
+.edicion-carto-overlay.oculto {
+  display: none !important;
+}
+
+.edicion-carto-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 14px;
+  background: linear-gradient(180deg, #7a3a49 0%, #703341 100%);
+  color: #fff;
+  border-bottom: 3px solid #c9a227;
+  flex-shrink: 0;
+}
+
+.edicion-carto-topbar h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.edicion-carto-topbar p {
+  margin: 2px 0 0;
+  font-size: 0.72rem;
+  opacity: 0.9;
+}
+
+.edicion-carto-topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.edicion-carto-topbar-actions button {
+  width: auto !important;
+  margin: 0 !important;
+  border: none;
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff !important;
+  padding: 7px 12px;
+  border-radius: 8px;
+  font-weight: 700;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.edicion-carto-topbar-actions button.edicion-carto-btn-cerrar {
+  background: rgba(255, 255, 255, 0.92);
+  color: #703341 !important;
+}
+
+.edicion-carto-layout {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+}
+
+.edicion-carto-panel {
+  background: #f8fafc;
+  border-right: 1px solid #e2e8f0;
+  overflow: auto;
+  padding: 12px;
+}
+
+.edicion-carto-bloque {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+}
+
+.edicion-carto-bloque-titulo {
+  font-size: 0.68rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #703341;
+  margin-bottom: 8px;
+}
+
+.edicion-carto-pasos {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.74rem;
+  color: #334155;
+  line-height: 1.45;
+}
+
+.edicion-carto-pasos li {
+  margin-bottom: 4px;
+}
+
+.edicion-carto-campo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.edicion-carto-campo span {
+  font-size: 0.65rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.edicion-carto-campo input,
+.edicion-carto-campo textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 0.82rem;
+  text-transform: none;
+  margin-bottom: 0;
+}
+
+.edicion-carto-resumen {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  font-size: 0.72rem;
+}
+
+.edicion-carto-resumen div {
+  background: #f1f5f9;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.edicion-carto-resumen span {
+  display: block;
+  color: #64748b;
+  font-size: 0.62rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.edicion-carto-resumen b {
+  color: #1e293b;
+  font-size: 0.82rem;
+}
+
+.edicion-carto-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.edicion-carto-tools button {
+  width: auto !important;
+  margin: 0 !important;
+  flex: 1 1 calc(50% - 6px);
+  min-width: 120px;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155 !important;
+  padding: 8px 6px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.edicion-carto-tools button.activo {
+  background: #703341;
+  border-color: #703341;
+  color: #fff !important;
+}
+
+.edicion-carto-acciones {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.edicion-carto-acciones button {
+  width: 100% !important;
+  margin: 0 !important;
+  border: none;
+  padding: 10px;
+  border-radius: 8px;
+  font-weight: 800;
+  font-size: 0.78rem;
+  cursor: pointer;
+  text-transform: none;
+}
+
+.edicion-carto-btn-guardar {
+  background: #166534;
+  color: #fff !important;
+}
+
+.edicion-carto-btn-descartar {
+  background: #475569;
+  color: #fff !important;
+}
+
+.edicion-carto-btn-tramite {
+  background: #703341 !important;
+  color: #fff !important;
+}
+
+.edicion-carto-btn-modulos {
+  background: rgba(255, 255, 255, 0.22) !important;
+  color: #fff !important;
+}
+
+.edicion-carto-campo select {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  font-size: 0.78rem;
+  background: #fff;
+  color: #0f172a;
+}
+
+.edicion-carto-nota {
+  font-size: 0.72rem;
+  color: #64748b;
+  margin: 8px 0 0;
+  line-height: 1.35;
+}
+
+.edicion-carto-proc-extra.oculto {
+  display: none !important;
+}
+
+.edicion-carto-mensaje {
+  font-size: 0.74rem;
+  font-weight: 700;
+  min-height: 1.2em;
+}
+
+.edicion-carto-mensaje.ok { color: #166534; }
+.edicion-carto-mensaje.error { color: #991b1b; }
+.edicion-carto-mensaje.info { color: #1d4ed8; }
+
+.edicion-carto-mapa-col {
+  position: relative;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: #1e293b;
+}
+
+.edicion-carto-mapa-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(15, 23, 42, 0.92);
+  color: #e2e8f0;
+  font-size: 0.72rem;
+  flex-shrink: 0;
+}
+
+.edicion-carto-mapa-toolbar button.edicion-carto-mapa-btn-accion {
+  background: #f1f5f9;
+  border-color: #94a3b8;
+}
+
+.edicion-carto-mapa-toolbar button.edicion-carto-mapa-btn-borrar {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b !important;
+}
+
+.edicion-carto-tools-sig .edicion-carto-tool-accion {
+  flex: 1 1 auto;
+  min-width: 88px;
+  background: #f8fafc;
+}
+
+.edicion-carto-tools-sig .edicion-carto-tool-borrar {
+  background: #fef2f2;
+  border-color: #fca5a5;
+  color: #991b1b !important;
+}
+
+.edicion-carto-mapa-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.edicion-carto-mapa-toolbar {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  z-index: 60;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.22);
+  pointer-events: auto;
+}
+
+.edicion-carto-mapa-toolbar-label {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+  margin-right: 2px;
+}
+
+.edicion-carto-mapa-toolbar-sep {
+  width: 1px;
+  height: 22px;
+  background: #cbd5e1;
+  margin: 0 4px;
+}
+
+.edicion-carto-mapa-toolbar button {
+  width: auto !important;
+  margin: 0 !important;
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #334155 !important;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  text-transform: none;
+}
+
+.edicion-carto-mapa-toolbar button.activo {
+  background: #703341;
+  border-color: #703341;
+  color: #fff !important;
+}
+
+.edicion-carto-mapa-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.edicion-carto-mapa {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+.edicion-carto-badge-dirty {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.65rem;
+  font-weight: 800;
+}
+
+@media (max-width: 900px) {
+  .edicion-carto-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: 42vh 1fr;
+  }
+
+  .edicion-carto-mapa-toolbar {
+    top: 8px;
+    left: 8px;
+    right: 8px;
+    max-height: 42%;
+    overflow-y: auto;
+  }
+}
+
+body.edicion-carto-activo,
+body.modo-modulo-cartografico {
+  overflow: hidden;
+  background: #0f172a;
+}
+
+body.modo-modulo-cartografico .edicion-carto-overlay:not(.oculto) {
+  display: flex !important;
+}

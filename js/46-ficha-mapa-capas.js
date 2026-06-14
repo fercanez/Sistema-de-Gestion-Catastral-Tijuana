@@ -378,3 +378,6 @@ const FICHA_PREVIEW_LAYER_PANEL_CSS = `
 .ficha-preview-layer-panel label{display:block;margin:4px 0;cursor:pointer;}
 .ficha-preview-layer-panel strong{display:block;margin-bottom:4px;color:#703341;}
 `;
+
+window.togglePopupMapaCapasMenu = togglePopupMapaCapasMenu;
+window.cerrarPopupMapaCapasMenu = cerrarPopupMapaCapasMenu;

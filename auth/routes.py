@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from config import ACCESS_TOKEN_EXPIRE_MINUTES
 from database import get_conn
 from auth.acl import ACL_BACKEND, normalizar_rol, permisos_por_rol, usuario_tiene_permiso
+from auth.accesos_modulo import modulos_visibles_usuario
 from auth.dependencies import (
     crear_token_acceso,
     obtener_usuario_actual,
@@ -71,6 +72,8 @@ def login(datos: LoginRequest, request: Request):
         )
         conn.commit()
 
+        modulos = modulos_visibles_usuario(cur, row["id"], row["rol"])
+
         token = crear_token_acceso({
             "sub": row["usuario"],
             "rol": row["rol"],
@@ -86,6 +89,7 @@ def login(datos: LoginRequest, request: Request):
             "nombre": row["nombre_completo"],
             "rol": row["rol"],
             "permisos": permisos_por_rol(row["rol"]),
+            "modulos": modulos,
             "expira_minutos": ACCESS_TOKEN_EXPIRE_MINUTES,
         }
 
@@ -109,12 +113,37 @@ def login(datos: LoginRequest, request: Request):
 @router.get("/me")
 def me(usuario_actual: dict = Depends(obtener_usuario_actual)):
     rol = normalizar_rol(usuario_actual.get("rol"))
+    conn = None
+    cur = None
+    modulos = []
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT id FROM seguridad.usuarios WHERE usuario = %s;",
+            (usuario_actual["usuario"],),
+        )
+        urow = cur.fetchone()
+        if urow:
+            modulos = modulos_visibles_usuario(cur, urow["id"], rol)
+            conn.commit()
+    except Exception:
+        modulos = []
+    finally:
+        try:
+            if cur:
+                cur.close()
+            if conn:
+                conn.close()
+        except Exception:
+            pass
     return {
         "autenticado": True,
         "usuario": usuario_actual["usuario"],
         "nombre": usuario_actual["nombre"],
         "rol": rol,
         "permisos": permisos_por_rol(rol),
+        "modulos": modulos,
     }
 
 

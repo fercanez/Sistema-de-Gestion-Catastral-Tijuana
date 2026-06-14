@@ -32,11 +32,28 @@ def normalizar_rol(rol):
     return (rol or "consulta").strip().lower()
 
 
-def permisos_por_rol(rol):
+def _permisos_fallback(rol):
     rol_norm = normalizar_rol(rol)
     return sorted(list(ACL_BACKEND.get(rol_norm, ACL_BACKEND["consulta"])))
 
 
+def permisos_por_rol(rol):
+    try:
+        from database import get_conn
+        from auth.acl_db import ensure_acl_db, permisos_por_rol_db
+
+        conn = get_conn()
+        cur = conn.cursor()
+        ensure_acl_db(cur)
+        conn.commit()
+        perms = permisos_por_rol_db(cur, rol)
+        cur.close()
+        conn.close()
+        return perms
+    except Exception:
+        return _permisos_fallback(rol)
+
+
 def usuario_tiene_permiso(usuario_actual: dict, permiso: str) -> bool:
     rol = normalizar_rol(usuario_actual.get("rol"))
-    return permiso in ACL_BACKEND.get(rol, ACL_BACKEND["consulta"])
+    return permiso in set(permisos_por_rol(rol))

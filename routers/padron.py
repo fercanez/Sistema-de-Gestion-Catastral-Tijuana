@@ -7,13 +7,13 @@ import urllib.parse
 import urllib.request
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
 
 from psycopg2.extras import execute_values
 
-from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_roles
+from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
 from database import get_conn, asegurar_tabla_predio_condominio
 
 try:
@@ -22,6 +22,13 @@ except ImportError:
     get_geonode_conn = None
 
 router = APIRouter(tags=["padron"])
+
+
+class GeometriaPredioActualizar(BaseModel):
+    geometry: dict
+    motivo: str | None = None
+    procedimiento: str | None = None
+    crear_si_ausente: bool = False
 
 # Una fila por predio: padron_2026 + titular principal vigente del catálogo.
 #
@@ -413,6 +420,95 @@ def geojson_predio(clave: str, usuario_actual: dict = Depends(obtener_usuario_ac
         if not geometry:
             raise HTTPException(status_code=404, detail="Predio sin geometría cartográfica")
         return {"type": "Feature", "geometry": geometry, "properties": {"clave_catastral": clave.upper().strip()}}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.put("/predios/{clave}/geometria")
+def actualizar_geometria_predio(
+    clave: str,
+    datos: GeometriaPredioActualizar,
+    request: Request,
+    usuario_actual: dict = Depends(requerir_permiso("editar_cartografia")),
+):
+    """Persiste la geometría editada del predio en catastro.predios (EPSG:32611)."""
+    clave_norm = clave.upper().strip()
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral inválida")
+    geom = datos.geometry
+    if not isinstance(geom, dict) or not geom.get("type"):
+        raise HTTPException(status_code=400, detail="Geometría GeoJSON inválida")
+    tipo = str(geom.get("type") or "").lower()
+    if tipo not in ("polygon", "multipolygon"):
+        raise HTTPException(status_code=400, detail="Solo se admiten polígonos")
+
+    try:
+        geom_json = json.dumps(geom)
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE catastro.predios
+            SET geom = ST_Transform(
+                ST_SetSRID(ST_Multi(ST_GeomFromGeoJSON(%s)), 4326),
+                32611
+            )
+            WHERE UPPER(TRIM(clave_catastral)) = %s
+            RETURNING
+                id,
+                ROUND(ST_Area(geom)::numeric, 2)::float AS area_m2,
+                ROUND(ST_Perimeter(geom)::numeric, 2)::float AS perimetro_m;
+            """,
+            (geom_json, clave_norm),
+        )
+        row = cur.fetchone()
+        accion_auditoria = "ACTUALIZAR_GEOMETRIA_PREDIO"
+        if not row:
+            if not datos.crear_si_ausente:
+                cur.close()
+                conn.close()
+                raise HTTPException(status_code=404, detail="Predio no encontrado en cartografía")
+            cur.execute(
+                """
+                INSERT INTO catastro.predios (clave_catastral, geom)
+                VALUES (
+                    %s,
+                    ST_Transform(ST_SetSRID(ST_Multi(ST_GeomFromGeoJSON(%s)), 4326), 32611)
+                )
+                RETURNING
+                    id,
+                    ROUND(ST_Area(geom)::numeric, 2)::float AS area_m2,
+                    ROUND(ST_Perimeter(geom)::numeric, 2)::float AS perimetro_m;
+                """,
+                (clave_norm, geom_json),
+            )
+            row = cur.fetchone()
+            accion_auditoria = "CREAR_GEOMETRIA_PREDIO"
+
+        conn.commit()
+        ip = request.client.host if request.client else ""
+        proc_txt = (datos.procedimiento or "").strip()
+        motivo_txt = (datos.motivo or "").strip() or "Edición cartográfica"
+        detalle = f"Clave {clave_norm} · {motivo_txt}"
+        if proc_txt:
+            detalle += f" · {proc_txt}"
+        registrar_auditoria(
+            usuario_actual.get("usuario") or "",
+            accion_auditoria,
+            "CARTOGRAFIA",
+            detalle,
+            ip,
+        )
+        cur.close()
+        conn.close()
+        return {
+            "success": True,
+            "clave_catastral": clave_norm,
+            "area_m2": row.get("area_m2"),
+            "perimetro_m": row.get("perimetro_m"),
+        }
     except HTTPException:
         raise
     except Exception as e:

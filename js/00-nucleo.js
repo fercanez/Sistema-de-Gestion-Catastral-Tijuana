@@ -29,6 +29,7 @@ function guardarSesionInstitucional(data) {
     usuario: data.usuario,
     nombre: data.nombre,
     rol: data.rol,
+    modulos: data.modulos || [],
     expira_minutos: data.expira_minutos
   }));
 }
@@ -172,7 +173,8 @@ async function validarSesionInstitucional() {
     const usuario = {
       usuario: data.usuario,
       nombre: data.nombre,
-      rol: data.rol
+      rol: data.rol,
+      modulos: data.modulos || []
     };
 
     localStorage.setItem(USER_KEY_CATASTRO, JSON.stringify(usuario));
@@ -212,6 +214,11 @@ function aplicarPermisosVisuales(rol) {
 
   document.querySelectorAll(".requiere-movimientos").forEach(el => {
     el.style.display = puedeEditarCatastroRol ? "" : "none";
+  });
+
+  document.querySelectorAll(".perm-editar-cartografia").forEach(el => {
+    const puedeCarto = ["admin", "supervisor", "cartografia"].includes(rolNorm);
+    el.style.display = puedeCarto ? "" : "none";
   });
 
   document.querySelectorAll(".perm-editar-catastro").forEach(el => {

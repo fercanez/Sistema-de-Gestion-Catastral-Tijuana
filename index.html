@@ -12,6 +12,8 @@
   <link rel="stylesheet" href="css/40-modales.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v150_panel_ocultar">
   <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260613_v133_zona_datos">
+  <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
+  <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
 </head>
 
 <body>
@@ -269,6 +271,12 @@
     </div>
 
     <div id="ficha"></div>
+
+    <div class="card-panel perm-editar-cartografia">
+      <div class="section-label">Edición cartográfica</div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 8px;">Ajuste el contorno del predio en mapa dedicado (panel izquierdo + mapa derecho).</p>
+      <button type="button" onclick="abrirEdicionCartografica()">✏️ Editar geometría del predio</button>
+    </div>
   </div>
 
   <div id="tabCapas" class="tab-content">
@@ -404,6 +412,7 @@
 
     <div class="card-panel">
       <div class="section-label">Cotas y cuadro de construcción</div>
+      <button type="button" class="perm-editar-cartografia" onclick="abrirEdicionCartografica()">✏️ Editar geometría del predio</button>
       <button type="button" class="perm-editar-cartografia" onclick="alert('Generación de cotas pendiente de integrar')">📐 Generar cotas y cuadro</button>
       <button type="button" class="perm-exportar-excel" onclick="exportarResultadosExcel()">⬇ Excel</button>
     </div>
@@ -484,74 +493,9 @@
 
   <div id="tabAdministracion" class="tab-content">
     <div class="card-panel admin-card">
-      <div class="section-label">Administración institucional</div>
-      <div class="admin-kpi-row">
-        <div class="admin-kpi"><span>Usuarios</span><b id="adminTotalUsuarios">...</b></div>
-        <div class="admin-kpi"><span>Activos</span><b id="adminUsuariosActivos">...</b></div>
-        <div class="admin-kpi"><span>Inactivos</span><b id="adminUsuariosInactivos">...</b></div>
-      </div>
-    </div>
-
-    <div class="card-panel admin-card">
-      <div class="section-label">Crear usuario</div>
-      <div class="admin-form">
-        <input type="text" id="adminNuevoUsuario" placeholder="Usuario">
-        <input type="text" id="adminNuevoNombre" placeholder="Nombre completo">
-        <input type="password" id="adminNuevoPassword" placeholder="Contraseña">
-        <select id="adminNuevoRol">
-          <option value="consulta">consulta</option>
-          <option value="catastro">catastro</option>
-          <option value="cartografia">cartografia</option>
-          <option value="fiscalizacion">fiscalizacion</option>
-          <option value="supervisor">supervisor</option>
-          <option value="admin">admin</option>
-        </select>
-        <button type="button" onclick="crearUsuarioAdmin()">➕ Crear usuario</button>
-      </div>
-      <div id="adminMensaje" class="admin-mensaje"></div>
-    </div>
-
-    <div class="card-panel admin-card">
-      <div class="section-label">Usuarios del sistema</div>
-      <div class="admin-toolbar">
-        <input type="text" id="adminFiltroUsuarios" placeholder="Filtrar..." onkeyup="filtrarUsuariosAdmin()">
-        <button type="button" onclick="cargarUsuariosAdmin()">🔄</button>
-      </div>
-      <div id="adminUsuariosTabla" class="admin-table-wrap">Cargando usuarios...</div>
-    </div>
-
-    
-    <div class="card-panel admin-card">
-      <div class="section-label">Matriz de permisos por rol</div>
-      <div class="permisos-info">
-        Estos permisos controlan qué módulos y acciones se muestran en el frontend.
-        La validación definitiva también debe permanecer protegida en FastAPI.
-      </div>
-      <div class="permisos-matriz-wrap">
-        <table class="permisos-matriz">
-          <thead>
-            <tr>
-              <th>Rol</th><th>Usuarios</th><th>Auditoría</th><th>Cartografía</th><th>Catastro</th><th>Fiscal</th><th>PDF</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr><td>admin</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-            <tr><td>supervisor</td><td>❌</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td></tr>
-            <tr><td>cartografia</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>❌</td><td>✅</td></tr>
-            <tr><td>catastro</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>❌</td><td>✅</td></tr>
-            <tr><td>fiscalizacion</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td><td>✅</td></tr>
-            <tr><td>consulta</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>❌</td><td>✅</td></tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-
-<div class="card-panel admin-card">
-      <div class="section-label">Auditoría institucional</div>
-      <div class="admin-toolbar only-btn">
-        <button type="button" onclick="cargarAuditoriaAdmin()">🔄 Actualizar auditoría</button>
-      </div>
-      <div id="adminAuditoriaTabla" class="admin-table-wrap">Sin datos.</div>
+      <div class="section-label">Administración del Sistema</div>
+      <p class="permisos-info">Este módulo se abre en pantalla completa desde el portal de módulos.</p>
+      <button type="button" class="btn-busqueda-unica" onclick="abrirModuloAdministracion()">Abrir administración</button>
     </div>
   </div>
 
@@ -632,12 +576,131 @@
 <button id="btnMostrarLeyenda" class="btn-mostrar-leyenda oculto" onclick="toggleLeyendaDinamica()">Leyenda</button>
 
 <footer id="footerInstitucional" class="footer-institucional">
-  <span id="footerVersionInst">SGC v133 · Zona datos unificados</span>
+  <span id="footerVersionInst">SGC v150 · Guardar subdivisión</span>
   <span class="footer-inst-copy">© Municipio de Mexicali, Baja California</span>
   <button type="button" class="footer-inst-ayuda" onclick="alert('Manual de usuario en preparación.')">Ayuda</button>
 </footer>
 
 </div><!-- /appInstitucional -->
+
+<!-- Edición cartográfica — panel izquierdo + mapa derecho -->
+<div id="overlayEdicionCartografica" class="edicion-carto-overlay oculto" role="dialog" aria-modal="true" aria-labelledby="edicionCartoTitulo">
+  <header class="edicion-carto-topbar">
+    <div>
+      <h2 id="edicionCartoTitulo">Módulo cartográfico</h2>
+      <p id="edicionCartoSubtitulo">Edición geométrica · alta, subdivisión, fusión y ajustes · Mexicali UTM zona 11</p>
+    </div>
+    <div class="edicion-carto-topbar-actions">
+      <button type="button" id="edicionCartoBtnModulos" class="edicion-carto-btn-modulos oculto" onclick="edCartoVolverModulos()">← Módulos</button>
+      <span id="edicionCartoBadgeDirty" class="edicion-carto-badge-dirty oculto">Cambios sin guardar</span>
+      <button type="button" class="edicion-carto-btn-cerrar" onclick="cerrarEdicionCartografica()">Cerrar</button>
+    </div>
+  </header>
+  <div class="edicion-carto-layout">
+    <aside class="edicion-carto-panel" id="edicionCartoPanel">
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Procedimiento cartográfico</div>
+        <label class="edicion-carto-campo"><span>Tipo de trabajo</span>
+          <select id="edicionCartoProcedimiento" onchange="edCartoCambiarProcedimiento()">
+            <option value="EDICION">Edición de contorno existente</option>
+            <option value="ALTA_CLAVE">Alta de nueva clave catastral</option>
+            <option value="SUBDIVISION">Subdivisión predial</option>
+            <option value="FUSION">Fusión de predios</option>
+          </select>
+        </label>
+        <ol class="edicion-carto-pasos" id="edicionCartoPasos"></ol>
+      </div>
+      <div id="edicionCartoProcSubdivision" class="edicion-carto-bloque edicion-carto-proc-extra oculto">
+        <div class="edicion-carto-bloque-titulo">Subdivisión</div>
+        <label class="edicion-carto-campo"><span>Claves resultantes (coma)</span>
+          <input type="text" id="edicionCartoClavesResultantes" placeholder="CLAVE-1, CLAVE-2, CLAVE-3">
+        </label>
+        <p class="edicion-carto-nota">Cargue la clave origen abajo y dibuje o ajuste el contorno de cada lote resultante en el mapa.</p>
+      </div>
+      <div id="edicionCartoProcFusion" class="edicion-carto-bloque edicion-carto-proc-extra oculto">
+        <div class="edicion-carto-bloque-titulo">Fusión</div>
+        <label class="edicion-carto-campo"><span>Claves a fusionar (coma)</span>
+          <input type="text" id="edicionCartoClavesOrigen" placeholder="CLAVE-A, CLAVE-B">
+        </label>
+        <label class="edicion-carto-campo"><span>Clave destino / resultante</span>
+          <input type="text" id="edicionCartoClaveDestino" placeholder="Clave del predio fusionado">
+        </label>
+        <p class="edicion-carto-nota">Dibuje o ajuste el contorno del predio resultante. Las claves origen se registran en el trámite de padrón.</p>
+      </div>
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Predio</div>
+        <label class="edicion-carto-campo"><span>Clave catastral</span>
+          <input type="text" id="edicionCartoInputClave" placeholder="Ej. ST311-001-001">
+        </label>
+        <div class="edicion-carto-tools" style="margin-bottom:8px;">
+          <button type="button" onclick="edCartoCargarPredio()">Cargar clave</button>
+          <button type="button" id="edicionCartoBtnPredioActual" onclick="edCartoCargarPredioActual()">Predio actual</button>
+        </div>
+        <div class="edicion-carto-resumen">
+          <div><span>Clave activa</span><b id="edicionCartoClaveActiva">—</b></div>
+          <div><span>Área UTM</span><b id="edicionCartoArea">—</b></div>
+          <div><span>Perímetro</span><b id="edicionCartoPerimetro">—</b></div>
+        </div>
+      </div>
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Herramientas</div>
+        <div class="edicion-carto-tools edicion-carto-tools-sig">
+          <button type="button" class="edicion-carto-tool-modo activo" data-modo="select" onclick="edCartoActivarModoSelect()">Seleccionar</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="translate" onclick="edCartoActivarModoTranslate()">Mover</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="rotate" onclick="edCartoActivarModoRotate()">Rotar</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="modify" onclick="edCartoActivarModoModify()">Vértices</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="draw" onclick="edCartoActivarModoDraw()">Dibujar</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="cutline" onclick="edCartoActivarModoCutLine()">Línea corte</button>
+          <button type="button" class="edicion-carto-tool-accion" onclick="edCartoFusionarSeleccionados()">Fusionar ⊕</button>
+          <button type="button" class="edicion-carto-tool-accion edicion-carto-tool-borrar" onclick="edCartoBorrarSeleccion()">Borrar</button>
+          <button type="button" id="edicionCartoBtnSnap" class="activo" onclick="edCartoToggleSnap()">Snap: ON</button>
+          <button type="button" id="edicionCartoBtnVerCambios" class="activo" onclick="edCartoToggleVerCambios()" disabled>👁 Cambios: ON</button>
+        </div>
+        <p class="edicion-carto-nota"><strong>SIG:</strong> Subdivisión: pulse «Línea corte» y trace 2 clics (inicio/fin). No requiere Sel previo. Shift+clic = multi-selección · Fusionar = 2+ polígonos · <span style="color:#ea580c">Naranja</span> original · <span style="color:#0050ff">Azul</span> edición · <span style="color:#facc15">Amarillo</span> selección / corte.</p>
+      </div>
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Guardar</div>
+        <label class="edicion-carto-campo"><span>Motivo (opcional)</span>
+          <textarea id="edicionCartoMotivo" rows="2" placeholder="Ajuste de contorno, alta cartográfica, subdivisión…"></textarea>
+        </label>
+        <div class="edicion-carto-acciones">
+          <button type="button" class="edicion-carto-btn-guardar" onclick="edCartoGuardar()">Guardar en cartografía</button>
+          <button type="button" class="edicion-carto-btn-descartar" onclick="edCartoDescartar()">Descartar cambios</button>
+          <button type="button" id="edicionCartoBtnTramite" class="edicion-carto-btn-tramite oculto" onclick="edCartoAbrirTramitePadron()">Continuar trámite en padrón →</button>
+        </div>
+        <div id="edicionCartoMensaje" class="edicion-carto-mensaje"></div>
+      </div>
+    </aside>
+    <div class="edicion-carto-mapa-col">
+      <div class="edicion-carto-mapa-head">
+        <span>Satélite · Colonias · <b style="color:#ea580c">Naranja</b> original · <b style="color:#60a5fa">Azul</b> edición · <b style="color:#facc15">Amarillo</b> selección</span>
+      </div>
+      <div class="edicion-carto-mapa-wrap">
+        <div class="edicion-carto-mapa-toolbar" id="edicionCartoMapToolbar" role="toolbar" aria-label="Herramientas cartográficas">
+          <span class="edicion-carto-mapa-toolbar-label">Operación</span>
+          <button type="button" class="activo" data-proc="EDICION" title="Editar contorno existente" onclick="edCartoToolbarProcedimiento('EDICION')">✏️ Edición</button>
+          <button type="button" data-proc="ALTA_CLAVE" title="Alta de nueva clave" onclick="edCartoToolbarProcedimiento('ALTA_CLAVE')">➕ Crear</button>
+          <button type="button" data-proc="SUBDIVISION" title="Subdivisión predial" onclick="edCartoToolbarProcedimiento('SUBDIVISION')">✂️ Corte</button>
+          <button type="button" data-proc="FUSION" title="Fusión de predios" onclick="edCartoToolbarProcedimiento('FUSION')">🔗 Fusión</button>
+          <span class="edicion-carto-mapa-toolbar-sep" aria-hidden="true"></span>
+          <span class="edicion-carto-mapa-toolbar-label">SIG</span>
+          <button type="button" class="activo" data-modo="select" title="Seleccionar polígonos (Shift = varios)" onclick="edCartoActivarModoSelect()">🖱 Sel</button>
+          <button type="button" data-modo="translate" title="Mover polígono" onclick="edCartoActivarModoTranslate()">↕ Mover</button>
+          <button type="button" data-modo="rotate" title="Rotar polígono" onclick="edCartoActivarModoRotate()">↻ Rotar</button>
+          <button type="button" data-modo="modify" title="Mover vértices" onclick="edCartoActivarModoModify()">◇ Vértices</button>
+          <button type="button" data-modo="draw" title="Dibujar polígono" onclick="edCartoActivarModoDraw()">⬠ Dibujar</button>
+          <button type="button" data-modo="cutline" title="Dividir con línea (JSTS)" onclick="edCartoActivarModoCutLine()">✂ L.corte</button>
+          <button type="button" class="edicion-carto-mapa-btn-accion" title="Unir polígonos seleccionados" onclick="edCartoFusionarSeleccionados()">⊕ Unir</button>
+          <button type="button" class="edicion-carto-mapa-btn-accion edicion-carto-mapa-btn-borrar" title="Borrar selección" onclick="edCartoBorrarSeleccion()">🗑 Borrar</button>
+          <span class="edicion-carto-mapa-toolbar-sep" aria-hidden="true"></span>
+          <button type="button" id="edicionCartoMapBtnSnap" class="activo" title="Snap a vecinos" onclick="edCartoToggleSnap()">Snap: ON</button>
+          <button type="button" id="edicionCartoMapBtnVerCambios" class="activo" title="Ver/ocultar cambios" onclick="edCartoToggleVerCambios()" disabled>👁 Cambios</button>
+        </div>
+        <div id="edicionCartoMap" class="edicion-carto-mapa"></div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Pop-up de trabajo del predio (Gestión Catastral) -->
 <div id="popupPredioWorkspace" class="popup-predio-workspace oculto" role="dialog" aria-modal="true" aria-labelledby="popupPredioClave">
@@ -948,12 +1011,12 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/00-nucleo.js?v=20260609_v144_mapa_colonias"></script>
+<script src="js/00-nucleo.js?v=20260613_v134_admin_modulo"></script>
 <script src="js/10-mapa.js?v=20260611_v151_panel_ocultar"></script>
-<script src="js/20-ficha.js?v=20260612_v91_foto_lightbox"></script>
+<script src="js/20-ficha.js?v=20260613_v134_admin_modulo"></script>
 <script src="js/40-pdf.js?v=20260613_v105_cedula_map"></script>
 <script src="js/30-busqueda.js?v=20260613_v102_busqueda"></script>
-<script src="js/05-modulos-portal.js?v=20260613_v127_zona_homogenea"></script>
+<script src="js/05-modulos-portal.js?v=20260611_v149_portal_fix"></script>
 <script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
 <script src="js/46-ficha-mapa-capas.js?v=20260613_v121_capas_unif"></script>
 <script src="js/07-numeros-oficiales.js?v=20260613_v121_capas_unif"></script>
@@ -964,7 +1027,9 @@
 <script src="js/47-ficha-colonia-preview.js?v=20260613_v126_colonia_tipo"></script>
 <script src="js/48-ficha-zona-homogenea-preview.js?v=20260613_v132_zona_print"></script>
 <script src="js/43-ficha-numero-oficial.js?v=20260613_v121_capas_unif"></script>
-<script src="js/50-admin.js?v=20260610_v125_portal"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsts@2.11.0/dist/jsts.min.js"></script>
+<script src="js/51-edicion-cartografica.js?v=20260611_v150_guardar_subdiv"></script>
+<script src="js/50-admin.js?v=20260613_v137_vigencia_matriz"></script>
 <script src="js/60-propietarios.js?v=20260609_v143_ficha_rapida"></script>
 <script src="js/70-movimientos.js?v=20260613_v106_cedula_preview"></script>
 <script src="js/44-cedula-numero-oficial-preview.js?v=20260613_v121_capas_unif"></script>
@@ -1173,6 +1238,136 @@
           <button type="button" class="btn-busqueda-unica" onclick="exportarUnidadesCondominioExcel()">⬇ Excel unidades</button>
         </div>
         <div id="analisisCondominiosUnidades" class="analisis-zonas-lista-wrap">Seleccione un tipo del catálogo o pulse Buscar.</div>
+      </section>
+    </div>
+  </div>
+</div>
+
+
+<!-- Módulo Administración del Sistema -->
+<div id="overlayAdministracion" class="overlay-admin-sistema oculto">
+  <div class="overlay-admin-card">
+    <header class="overlay-admin-header">
+      <div>
+        <h2>Administración del Sistema</h2>
+        <p>Usuarios, permisos por módulo con vigencia, renovación y auditoría</p>
+      </div>
+      <div class="overlay-admin-nav">
+        <button type="button" onclick="cargarModuloAdministracion()">Actualizar</button>
+        <button type="button" class="modal-cerrar" onclick="cerrarModuloAdministracion()" title="Cerrar">×</button>
+      </div>
+    </header>
+
+    <div class="overlay-admin-tabs">
+      <button type="button" class="activo" data-seccion="usuarios" onclick="adminCambiarSeccion('usuarios')">Usuarios</button>
+      <button type="button" data-seccion="permisos" onclick="adminCambiarSeccion('permisos')">Permisos y vigencia</button>
+      <button type="button" data-seccion="matriz" onclick="adminCambiarSeccion('matriz')">Matriz ACL</button>
+      <button type="button" data-seccion="auditoria" onclick="adminCambiarSeccion('auditoria')">Auditoría</button>
+    </div>
+
+    <div class="overlay-admin-body">
+      <section class="admin-seccion" data-seccion="usuarios">
+        <div class="admin-kpi-row">
+          <div class="admin-kpi"><span>Usuarios</span><b id="adminTotalUsuarios">0</b></div>
+          <div class="admin-kpi"><span>Activos</span><b id="adminUsuariosActivos">0</b></div>
+          <div class="admin-kpi"><span>Inactivos</span><b id="adminUsuariosInactivos">0</b></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Alta de usuario</div>
+          <div class="admin-form">
+            <input type="text" id="adminNuevoUsuario" placeholder="Usuario">
+            <input type="text" id="adminNuevoNombre" placeholder="Nombre completo">
+            <input type="password" id="adminNuevoPassword" placeholder="Contraseña">
+            <select id="adminNuevoRol">
+              <option value="consulta">consulta</option>
+              <option value="catastro">catastro</option>
+              <option value="cartografia">cartografia</option>
+              <option value="fiscalizacion">fiscalizacion</option>
+              <option value="supervisor">supervisor</option>
+              <option value="admin">admin</option>
+            </select>
+            <button type="button" onclick="crearUsuarioAdmin()">Crear usuario</button>
+          </div>
+          <div id="adminMensaje" class="admin-mensaje"></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Usuarios del sistema</div>
+          <div class="admin-toolbar">
+            <input type="text" id="adminFiltroUsuarios" placeholder="Filtrar..." onkeyup="filtrarUsuariosAdmin()">
+            <button type="button" onclick="cargarUsuariosAdmin()">Actualizar</button>
+          </div>
+          <div id="adminUsuariosTabla" class="admin-table-wrap">Cargando usuarios...</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="permisos">
+        <div class="admin-kpi-row">
+          <div class="admin-kpi"><span>Activos</span><b id="adminAccesosActivos">0</b></div>
+          <div class="admin-kpi"><span>Negados</span><b id="adminAccesosNegados">0</b></div>
+          <div class="admin-kpi"><span>Vencidos</span><b id="adminAccesosVencidos">0</b></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Otorgar acceso a módulo</div>
+          <p class="permisos-info">Define módulo, vigencia (inicio/fin) y motivo. La fecha de fin incluye todo ese día (hasta 23:59 hora de Mexicali). Sin fecha fin = acceso permanente.</p>
+          <div class="admin-accesos-form">
+            <label class="admin-campo-mini"><span>Usuario</span><select id="adminAccesoUsuario"></select></label>
+            <label class="admin-campo-mini"><span>Módulo / permiso</span><select id="adminAccesoModulo"></select></label>
+            <label class="admin-campo-mini"><span>Inicio vigencia</span><input type="date" id="adminAccesoInicio"></label>
+            <label class="admin-campo-mini"><span>Fin vigencia</span><input type="date" id="adminAccesoFin" title="Vacío = permanente"></label>
+            <label class="admin-campo-mini admin-campo-motivo"><span>Motivo</span><input type="text" id="adminAccesoMotivo" placeholder="Fundamento del acceso"></label>
+            <button type="button" onclick="crearAccesoAdmin()">Otorgar permiso</button>
+          </div>
+          <div id="adminMensajeAccesos" class="admin-mensaje"></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Permisos otorgados</div>
+          <div class="admin-toolbar">
+            <select id="adminFiltroUsuarioAccesos" onchange="filtrarAccesosAdmin()"><option value="">Todos los usuarios</option></select>
+            <select id="adminFiltroModuloAccesos" onchange="filtrarAccesosAdmin()"><option value="">Todos los módulos</option></select>
+            <button type="button" onclick="cargarAccesosAdmin()">Actualizar</button>
+          </div>
+          <div id="adminAccesosTabla" class="admin-table-wrap">Cargando permisos...</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="matriz">
+        <div class="admin-card">
+          <div class="section-label">Matriz ACL — roles y permisos</div>
+          <p class="permisos-info">Marque los permisos por rol y pulse «Guardar rol». Puede crear permisos y roles nuevos. Los accesos temporales por módulo siguen en «Permisos y vigencia».</p>
+          <div class="admin-toolbar admin-toolbar-matriz admin-toolbar-flex">
+            <button type="button" onclick="cargarMatrizPermisosAdmin()">Recargar matriz</button>
+            <button type="button" onclick="guardarMatrizAclSeleccionada()">Guardar rol seleccionado</button>
+          </div>
+          <div class="admin-acl-grupo">
+            <div class="admin-acl-grupo-titulo">Crear rol</div>
+            <div class="admin-acl-grupo-campos">
+              <label class="admin-campo-mini"><span>Nombre del rol</span><input type="text" id="adminNuevoRolAcl" placeholder="ej. capturista"></label>
+              <label class="admin-campo-mini"><span>Descripción</span><input type="text" id="adminNuevoRolAclDesc" placeholder="Opcional"></label>
+            </div>
+            <button type="button" class="admin-acl-submit" onclick="crearRolAclAdmin()">Crear rol</button>
+          </div>
+          <div class="admin-acl-grupo">
+            <div class="admin-acl-grupo-titulo">Crear permiso</div>
+            <div class="admin-acl-grupo-campos">
+              <label class="admin-campo-mini"><span>Código del permiso</span><input type="text" id="adminNuevoPermisoAcl" placeholder="ej. editar_padron"></label>
+              <label class="admin-campo-mini"><span>Descripción</span><input type="text" id="adminNuevoPermisoAclDesc" placeholder="Editar padrón"></label>
+            </div>
+            <button type="button" class="admin-acl-submit" onclick="crearPermisoAclAdmin()">Crear permiso</button>
+          </div>
+          <div id="adminMensajeMatriz" class="admin-mensaje"></div>
+          <label class="admin-campo-mini admin-campo-rol-editar"><span>Rol a editar</span><select id="adminMatrizRolSeleccion" onchange="adminMatrizSeleccionarRol()"></select></label>
+          <div id="adminMatrizPermisos" class="permisos-matriz-wrap">Cargando...</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="auditoria">
+        <div class="admin-card">
+          <div class="section-label">Auditoría institucional</div>
+          <div class="admin-toolbar">
+            <button type="button" onclick="cargarAuditoriaAdmin()">Actualizar auditoría</button>
+          </div>
+          <div id="adminAuditoriaTabla" class="admin-table-wrap">Sin datos.</div>
+        </div>
       </section>
     </div>
   </div>

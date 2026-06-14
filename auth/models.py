@@ -21,3 +21,45 @@ class UsuarioActualizar(BaseModel):
 
 class PasswordReset(BaseModel):
     password: str
+
+
+class AccesoModuloNuevo(BaseModel):
+    modulo_id: str
+    permiso: str = "acceso_modulo"
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
+    motivo: str | None = None
+
+
+class AccesoModuloActualizar(BaseModel):
+    modulo_id: str | None = None
+    permiso: str | None = None
+    fecha_inicio: str | None = None
+    fecha_fin: str | None = None
+    estado: str | None = None
+    motivo: str | None = None
+
+
+class AccesoModuloRenovar(BaseModel):
+    dias: int = 30
+    fecha_fin: str | None = None
+    motivo: str | None = None
+
+
+class AccesoModuloNegar(BaseModel):
+    motivo: str | None = None
+
+
+class RolNuevoAcl(BaseModel):
+    nombre: str
+    descripcion: str | None = None
+    permisos: list[str] = []
+
+
+class PermisoNuevoAcl(BaseModel):
+    codigo: str
+    descripcion: str | None = None
+
+
+class RolPermisosAcl(BaseModel):
+    permisos: list[str]

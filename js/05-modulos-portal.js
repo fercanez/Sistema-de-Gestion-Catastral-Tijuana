@@ -64,6 +64,13 @@ const MODULOS_PORTAL_DEF = [
     tabId: "tabMovimientos"
   },
   {
+    id: "modulo-cartografico",
+    titulo: "Módulo Cartográfico",
+    descripcion: "Edición geométrica de predios: alta de clave, subdivisión, fusión y ajustes.",
+    icono: "📐",
+    roles: ["admin", "supervisor", "cartografia"]
+  },
+  {
     id: "administracion",
     titulo: "Administración del Sistema",
     descripcion: "Usuarios, permisos y auditoría institucional.",
@@ -108,9 +115,20 @@ function restaurarTabsExtraPanel() {
   });
 }
 
-function modulosVisiblesParaRol(rol) {
+function modulosVisiblesParaRol(rol, usuarioOpt) {
   const rolNorm = String(rol || "consulta").trim().toLowerCase();
-  return MODULOS_PORTAL_DEF.filter(m => m.roles.includes(rolNorm));
+  const u = usuarioOpt || (typeof obtenerUsuarioSesion === "function" ? obtenerUsuarioSesion() : null);
+  const modulosApi = (u && u.modulos) || [];
+  const grantIds = new Set(
+    (modulosApi || [])
+      .filter(function(m) { return m.origen === "concesion" && m.estado === "activo"; })
+      .map(function(m) { return m.modulo_id; })
+  );
+  return MODULOS_PORTAL_DEF.filter(function(m) {
+    if (m.roles.includes(rolNorm)) return true;
+    if (grantIds.has(m.id)) return true;
+    return false;
+  });
 }
 
 function enModoGestionCatastral() {
@@ -126,7 +144,8 @@ function mostrarSelectorModulos(usuario) {
   if (app) app.classList.add("oculto");
   if (overlay) overlay.classList.remove("oculto");
 
-  document.body.classList.remove("portal-modulo-activo", "modo-gestion-catastral", "modo-portal-completo");
+  document.body.classList.remove("portal-modulo-activo", "modo-gestion-catastral", "modo-portal-completo", "modo-modulo-cartografico");
+  if (typeof cerrarEdicionCartograficaSilencioso === "function") cerrarEdicionCartograficaSilencioso();
   restaurarTabsExtraPanel();
   moduloPortalActivo = null;
 
@@ -139,7 +158,7 @@ function mostrarSelectorModulos(usuario) {
   if (!lista) return;
   lista.innerHTML = "";
 
-  modulosVisiblesParaRol(rol).forEach(mod => {
+  modulosVisiblesParaRol(rol, usuario).forEach(mod => {
     const li = document.createElement("li");
     const btn = document.createElement("button");
     btn.type = "button";
@@ -164,11 +183,34 @@ function entrarModuloPortal(moduloId) {
 
   moduloPortalActivo = moduloId;
   document.getElementById("selectorModulosOverlay")?.classList.add("oculto");
-  document.getElementById("appInstitucional")?.classList.remove("oculto");
   document.body.classList.add("portal-modulo-activo");
-  document.body.classList.remove("modo-gestion-catastral", "modo-portal-completo");
+  document.body.classList.remove("modo-gestion-catastral", "modo-portal-completo", "modo-modulo-cartografico");
 
-  if (moduloId === "gestion-catastral") {
+  if (moduloId === "modulo-cartografico") {
+    document.getElementById("appInstitucional")?.classList.add("oculto");
+    document.body.classList.add("modo-modulo-cartografico");
+    const tituloMod = document.getElementById("breadcrumbModulo");
+    if (tituloMod) tituloMod.textContent = mod.titulo;
+    if (typeof abrirModuloCartograficoDesdePortal === "function") {
+      abrirModuloCartograficoDesdePortal();
+    } else if (typeof abrirEdicionCartografica === "function") {
+      abrirEdicionCartografica({ desdePortal: true });
+    } else {
+      alert("El módulo cartográfico no está cargado. Suba js/51-edicion-cartografica.js e index.html al servidor y recargue con Ctrl+F5.");
+      mostrarSelectorModulos(obtenerUsuarioSesion());
+    }
+    return;
+  }
+
+  document.getElementById("appInstitucional")?.classList.remove("oculto");
+
+  if (moduloId === "administracion") {
+    document.body.classList.add("modo-portal-completo");
+    restaurarTabsExtraPanel();
+    if (typeof abrirModuloAdministracion === "function") {
+      setTimeout(function() { abrirModuloAdministracion(); }, 80);
+    }
+  } else if (moduloId === "gestion-catastral") {
     document.body.classList.add("modo-gestion-catastral");
     document.getElementById("panel")?.classList.remove("panel-oculto");
     document.body.classList.remove("panel-oculto-activo");
@@ -194,6 +236,8 @@ function entrarModuloPortal(moduloId) {
   const tituloMod = document.getElementById("breadcrumbModulo");
   if (tituloMod) tituloMod.textContent = mod.titulo;
 
+  if (moduloId === "modulo-cartografico") return;
+
   setTimeout(() => {
     if (moduloId === "gestion-catastral") ocultarTabsExtraGestionCatastral();
     if (typeof inicializarBotonOcultarPanel === "function") inicializarBotonOcultarPanel();
@@ -210,6 +254,7 @@ function entrarModuloPortal(moduloId) {
 }
 
 function volverSelectorModulos() {
+  if (typeof cerrarEdicionCartograficaSilencioso === "function") cerrarEdicionCartograficaSilencioso();
   if (typeof cerrarPopupPredioWorkspace === "function") cerrarPopupPredioWorkspace();
   if (typeof cerrarFichaFlotante === "function") cerrarFichaFlotante();
   mostrarSelectorModulos(obtenerUsuarioSesion());
@@ -1392,7 +1437,6 @@ window.togglePopupMiniCapasMenu = togglePopupMiniCapasMenu;
 window.popupMiniCambiarOpacidadCapa = popupMiniCambiarOpacidadCapa;
 window.popupMiniSubirCapa = popupMiniSubirCapa;
 window.popupMiniBajarCapa = popupMiniBajarCapa;
-window.cerrarPopupMapaCapasMenu = cerrarPopupMapaCapasMenu;
 window.setPopupMiniBaseLayer = setPopupMiniBaseLayer;
 window.togglePopupMiniCapa = togglePopupMiniCapa;
 window.mostrarPopupSubTabTitularidad = mostrarPopupSubTabTitularidad;

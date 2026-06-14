@@ -78,7 +78,43 @@ Notas adicionales, impacto, pendientes o riesgos identificados.
 
 ## Entradas
 
-## 2026-06-01 00:00 - Inicio de documentación técnica y operativa del sistema
+## 2026-06-13 - Corrección vigencia permisos y matriz ACL (SGC v137)
+
+**Tipo:** despliegue  
+**Entorno:** producción / repositorio
+
+### Resumen
+Los permisos por módulo ya no vencen antes de tiempo: la fecha fin incluye todo el día calendario (America/Tijuana). La matriz ACL se muestra transpuesta (permisos en filas, roles en columnas) sin scroll horizontal.
+
+### Cambios aplicados
+- `auth/accesos_modulo.py`: parseo de fechas en zona MX, fin de día 23:59:59, compatibilidad con registros legacy
+- `routers/admin.py`: `fecha_fin` con `fin_dia=True`, renovación por días calendario
+- `js/50-admin.js`: fechas sin desfase UTC en pantalla, matriz transpuesta
+- `css/57-admin-modulo.css`: tabla compacta sin overflow horizontal
+
+### Despliegue
+- API: `auth/accesos_modulo.py`, `routers/admin.py` → `systemctl restart catastro-api`
+- Frontend: `index.html`, `js/50-admin.js`, `css/57-admin-modulo.css` → Ctrl+F5 (**SGC v137**)
+
+---
+
+**Tipo:** despliegue  
+**Entorno:** producción / repositorio
+
+### Resumen
+La pestaña **Matriz ACL** del módulo Administración permite crear roles, crear permisos y otorgar/revocar permisos por rol desde la interfaz.
+
+### Cambios aplicados
+- Backend: tablas `seguridad.permisos` y `seguridad.rol_permisos` (`auth/acl_db.py`)
+- Endpoints: `GET /admin/acl/matriz`, `POST /admin/acl/roles`, `POST /admin/acl/permisos`, `PUT /admin/acl/roles/{id}/permisos`
+- Frontend: matriz con checkboxes en el rol seleccionado, formularios «Crear rol» / «Crear permiso», selector de rol sincronizado con alta de usuarios
+- SQL documentado: `docs/sql/seguridad-acl-permisos.sql`
+
+### Despliegue
+- API: subir `auth/acl_db.py`, `auth/acl.py`, `auth/models.py`, `routers/admin.py` → `systemctl restart catastro-api`
+- Frontend: `index.html`, `js/50-admin.js`, `css/57-admin-modulo.css` → Ctrl+F5 (pie **SGC v136**)
+
+---
 
 **Tipo:** documentación  
 **Responsable:** por registrar  
