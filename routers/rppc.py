@@ -1422,6 +1422,21 @@ def _consultar_movimientos_folio(folio_real: int, _renovado: bool = False) -> li
     global _rppc_working_movimientos_url, _rppc_working_movimientos_action
     _asegurar_rppc_listo(folio_prueba=folio_real)
     errores: list[str] = []
+
+    # Ruta rápida confirmada. Evita el barrido largo de intentos cuando el endpoint responde bien.
+    try:
+        datos_directos = _consultar_movimientos_folio_directo(folio_real)
+        if datos_directos:
+            _rppc_working_movimientos_url = _url_api_desde_ruta(
+                RPPC_BASE_URL,
+                "Servicios/ConsultaAvanzada/obtenerMovimientosLote",
+                solo_base=True,
+            )
+            _rppc_working_movimientos_action = "obtenerMovimientosLote"
+            return datos_directos
+    except HTTPException as exc:
+        errores.append(f"directo: {exc.detail}")
+
     if _rppc_last_help_error:
         errores.append(f"Help: {_rppc_last_help_error} (usando rutas fallback)")
     # Si no hay cookie manual, sí detenemos cuando falla el login RPPC.
@@ -1603,6 +1618,177 @@ def _guardar_folio_real_en_padron(clave_catastral: str, folio_real: int) -> None
             conn.commit()
 
 
+
+def _asegurar_columnas_rppc_cache(cur, conn) -> None:
+    """Asegura columnas cache para acelerar consultas RPPC posteriores."""
+    try:
+        cur.execute(
+            """
+            ALTER TABLE catalogos.padron_2026
+            ADD COLUMN IF NOT EXISTS folio_real_fuente text,
+            ADD COLUMN IF NOT EXISTS folio_real_fecha_actualizacion timestamp,
+            ADD COLUMN IF NOT EXISTS rppc_doc_tramite_id text,
+            ADD COLUMN IF NOT EXISTS rppc_partida text,
+            ADD COLUMN IF NOT EXISTS rppc_fecha_actualizacion timestamp;
+            """
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+
+
+def _cache_rppc_por_clave_o_folio(
+    *,
+    clave_catastral: str | None = None,
+    folio_real: int | None = None,
+) -> dict[str, Any] | None:
+    """Lee folio_real/partida/doc_id cacheados en padrón."""
+    clave = _normalizar_clave(clave_catastral or "")
+    folio = str(folio_real) if folio_real else ""
+
+    if not clave and not folio:
+        return None
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _asegurar_columnas_rppc_cache(cur, conn)
+            if clave:
+                cur.execute(
+                    """
+                    SELECT
+                        clave_catastral,
+                        NULLIF(NULLIF(TRIM(folio_real::text), ''), '0') AS folio_real,
+                        NULLIF(NULLIF(TRIM(rppc_partida::text), ''), '0') AS rppc_partida,
+                        NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') AS rppc_doc_tramite_id
+                    FROM catalogos.padron_2026
+                    WHERE UPPER(TRIM(clave_catastral)) = %s
+                    LIMIT 1;
+                    """,
+                    (clave,),
+                )
+            else:
+                cur.execute(
+                    """
+                    SELECT
+                        clave_catastral,
+                        NULLIF(NULLIF(TRIM(folio_real::text), ''), '0') AS folio_real,
+                        NULLIF(NULLIF(TRIM(rppc_partida::text), ''), '0') AS rppc_partida,
+                        NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') AS rppc_doc_tramite_id
+                    FROM catalogos.padron_2026
+                    WHERE NULLIF(NULLIF(TRIM(folio_real::text), ''), '0') = %s
+                    LIMIT 1;
+                    """,
+                    (folio,),
+                )
+            row = cur.fetchone()
+
+    return row if row else None
+
+
+def _guardar_cache_rppc_en_padron(
+    *,
+    clave_catastral: str | None = None,
+    folio_real: int | None = None,
+    partida: int | None = None,
+    doc_tramite_id: int | None = None,
+    fuente: str = "RPPC",
+) -> None:
+    """Guarda folio_real, partida y doc_id en padrón para acelerar futuras consultas."""
+    clave = _normalizar_clave(clave_catastral or "")
+    if not clave and not folio_real:
+        return
+
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _asegurar_columnas_rppc_cache(cur, conn)
+
+            sets: list[str] = []
+            params: list[Any] = []
+
+            if folio_real:
+                sets.append("folio_real = %s")
+                params.append(str(folio_real))
+                sets.append("folio_real_fuente = %s")
+                params.append(fuente)
+                sets.append("folio_real_fecha_actualizacion = now()")
+
+            if partida:
+                sets.append("rppc_partida = %s")
+                params.append(str(partida))
+
+            if doc_tramite_id:
+                sets.append("rppc_doc_tramite_id = %s")
+                params.append(str(doc_tramite_id))
+
+            if partida or doc_tramite_id:
+                sets.append("rppc_fecha_actualizacion = now()")
+
+            if not sets:
+                return
+
+            sql = f"""
+                UPDATE catalogos.padron_2026
+                SET {", ".join(sets)}
+                WHERE
+            """
+
+            if clave:
+                sql += " UPPER(TRIM(clave_catastral)) = %s"
+                params.append(clave)
+            else:
+                sql += " NULLIF(NULLIF(TRIM(folio_real::text), ''), '0') = %s"
+                params.append(str(folio_real))
+
+            cur.execute(sql, tuple(params))
+            conn.commit()
+
+
+def _consultar_movimientos_folio_directo(folio_real: int) -> list[dict[str, Any]]:
+    """Consulta rápida usando endpoint confirmado, evitando el barrido de muchos intentos."""
+    url = _url_api_desde_ruta(
+        RPPC_BASE_URL,
+        "Servicios/ConsultaAvanzada/obtenerMovimientosLote",
+        solo_base=True,
+    )
+    payload = {"FOLIO_REAL": folio_real, "infoHistorica": 0}
+    _, body = _request_rppc(
+        "POST",
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        content_type="application/json",
+        timeout=RPPC_TIMEOUT_POST,
+    )
+    return _parsear_datos_rppc(body)
+
+
+def _obtener_doc_id_por_partida_directo(partida: int) -> tuple[int, dict[str, Any]]:
+    """Consulta rápida de inscripción usando endpoint confirmado."""
+    url = _url_api_desde_ruta(
+        RPPC_BASE_URL,
+        "Servicios/Reportes/obtenerInscripcionesPart",
+        solo_base=True,
+    )
+    payload = {"PARTIDA": partida}
+    _, body = _request_rppc(
+        "POST",
+        url,
+        data=json.dumps(payload).encode("utf-8"),
+        content_type="application/json",
+        timeout=RPPC_TIMEOUT_POST,
+    )
+    datos = _parsear_datos_rppc(body)
+
+    if not datos:
+        raise HTTPException(status_code=404, detail="No se encontró documento para esa partida")
+
+    doc_id = _normalizar_numero(datos[0].get("DOC_TRAMITE_ID"))
+    if not doc_id:
+        raise HTTPException(status_code=404, detail="No se encontró DOC_TRAMITE_ID")
+
+    return doc_id, datos[0]
+
+
 def _obtener_folio_por_clave(clave_catastral: str) -> int:
     clave = _normalizar_clave(clave_catastral)
     if not clave:
@@ -1670,6 +1856,13 @@ def _obtener_partida_por_folio(folio_real: int):
 
 
 def _obtener_doc_id_por_partida(partida: int):
+    # Ruta rápida confirmada.
+    try:
+        return _obtener_doc_id_por_partida_directo(partida)
+    except HTTPException:
+        pass
+
+    # Respaldo: lógica anterior por descubrimiento/fallback.
     datos = _post_rppc(
         RPPC_INSCRIPCIONES_ACTION,
         {"PARTIDA": partida},
@@ -1784,9 +1977,38 @@ def _stream_pdf(doc_id: int, filename: str, partida: int | None = None):
     )
 
 
-def _resolver_documento_por_folio(folio_real: int):
+def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None = None):
+    cache = _cache_rppc_por_clave_o_folio(
+        clave_catastral=clave_catastral,
+        folio_real=folio_real,
+    )
+    if cache:
+        doc_cache = _normalizar_numero(cache.get("rppc_doc_tramite_id"))
+        partida_cache = _normalizar_numero(cache.get("rppc_partida"))
+        folio_cache = _normalizar_numero(cache.get("folio_real")) or folio_real
+        if doc_cache:
+            return {
+                "folio_real": folio_cache,
+                "partida": partida_cache,
+                "doc_tramite_id": doc_cache,
+                "movimiento": None,
+                "inscripcion": None,
+                "movimientos_total": None,
+                "pdf_url": f"/rppc/pdf/doc/{doc_cache}",
+                "cache_hit": True,
+            }
+
     partida, movimiento, movimientos = _obtener_partida_por_folio(folio_real)
     doc_id, inscripcion = _obtener_doc_id_por_partida(partida)
+
+    _guardar_cache_rppc_en_padron(
+        clave_catastral=clave_catastral,
+        folio_real=folio_real,
+        partida=partida,
+        doc_tramite_id=doc_id,
+        fuente="RPPC",
+    )
+
     return {
         "folio_real": folio_real,
         "partida": partida,
@@ -1795,6 +2017,7 @@ def _resolver_documento_por_folio(folio_real: int):
         "inscripcion": inscripcion,
         "movimientos_total": len(movimientos),
         "pdf_url": f"/rppc/pdf/doc/{doc_id}",
+        "cache_hit": False,
     }
 
 
@@ -2034,7 +2257,7 @@ def resolver_por_clave(
 ):
     clave = _normalizar_clave(clave_catastral)
     folio_real = _obtener_folio_por_clave(clave)
-    data = _resolver_documento_por_folio(folio_real)
+    data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
     data["clave_catastral"] = clave
     data["clave_rppc"] = _clave_sgc_a_rppc(clave)
     return data
@@ -2047,9 +2270,12 @@ def pdf_por_doc(doc_tramite_id: int):
 
 @router.get("/pdf/folio/{folio_real}")
 def pdf_por_folio(folio_real: int):
-    partida, _, _ = _obtener_partida_por_folio(folio_real)
-    doc_id, _ = _obtener_doc_id_por_partida(partida)
-    return _stream_pdf(doc_id, f"rppc_folio_{folio_real}.pdf", partida=partida)
+    data = _resolver_documento_por_folio(folio_real)
+    return _stream_pdf(
+        data["doc_tramite_id"],
+        f"rppc_folio_{folio_real}.pdf",
+        partida=data.get("partida"),
+    )
 
 @router.get("/pdf/clave/{clave_catastral}")
 def pdf_por_clave(
@@ -2058,10 +2284,13 @@ def pdf_por_clave(
 ):
     clave = _normalizar_clave(clave_catastral)
     folio_real = _obtener_folio_por_clave(clave)
-    partida, _, _ = _obtener_partida_por_folio(folio_real)
-    doc_id, _ = _obtener_doc_id_por_partida(partida)
+    data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
     clave_limpia = re.sub(r"[^A-Za-z0-9_-]", "_", clave)
-    return _stream_pdf(doc_id, f"rppc_{clave_limpia}.pdf", partida=partida)
+    return _stream_pdf(
+        data["doc_tramite_id"],
+        f"rppc_{clave_limpia}.pdf",
+        partida=data.get("partida"),
+    )
 
 @router.get("/visor/pdf/doc/{doc_tramite_id}")
 def visor_pdf_por_doc(doc_tramite_id: int):
