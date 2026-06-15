@@ -19,6 +19,7 @@ Su propósito principal es soportar procesos como:
 - captura y aplicación de movimientos catastrales
 - mantenimiento de catálogos
 - administración de usuarios, roles y permisos
+- consulta de documento registral (RPPC Baja California)
 - validación operativa y soporte técnico básico
 
 ---
@@ -36,6 +37,7 @@ Entre las capacidades identificadas del sistema se encuentran:
 - consulta y mantenimiento de propietarios
 - flujos de captura, revisión y aplicación de movimientos
 - soporte para control cartográfico y componentes geoespaciales
+- consulta de documento registral RPPC (folio real → PDF) desde el visor
 - administración operativa mediante `systemd`
 - integración con visor y documentos en servidor
 
@@ -82,6 +84,7 @@ Componentes principales identificados:
   - movimientos legacy
   - catálogos
   - administración
+  - **RPPC** (`routers/rppc.py`) — proxy al Registro Público de la Propiedad BC
 
 - **Frontend modular (visor catastral)**  
   Interfaz en `index.html` con assets partidos en módulos:
@@ -95,6 +98,7 @@ Componentes principales identificados:
   - `js/07-numeros-oficiales.js` — números oficiales cercanos en popup
   - `js/08-carta-urbana.js` — pestaña Carta Urbana 2040 (mapa WMS, sector, capas)
   - `js/45-ficha-carta-urbana-preview.js` — ficha imprimible Carta Urbana 2040
+  - `js/52-popup-rppc.js` — pestaña **Documento RPPC** (resolver folio + visor PDF)
   - `js/50-admin.js` … `js/99-init.js` — admin, propietarios, movimientos, init
   - Respaldos monolíticos en `respaldo de originales/` (`catastro.js`, `catastro.css`)
 
@@ -118,11 +122,96 @@ Tras cambios en JS/CSS, actualizar el parámetro `?v=` en `index.html`. Referenc
 
 | Archivo | Versión |
 |---------|---------|
-| `css/55-modulos-portal.css` | `v118_carta_predio_g` |
-| `js/05-modulos-portal.js` | `v108_carta_urbana` |
+| `css/55-modulos-portal.css` | `v20260611_v164_rppc_api` |
+| `js/05-modulos-portal.js` | `v20260611_v163_pestana_rppc` |
+| `js/52-popup-rppc.js` | `v20260611_v164_rppc_api` |
 | `js/08-carta-urbana.js` | `v118_carta_predio_g` |
-| `js/45-ficha-carta-urbana-preview.js` | `v118_carta_predio_g` |
-| Pie visor (`footerVersionInst`) | **SGC v118 · Contorno predio grueso** |
+| Pie visor (`footerVersionInst`) | **SGC v164 · RPPC API** |
+
+---
+
+## Integración RPPC — Documento registral (jun 2026)
+
+Consulta al **RPPC de Baja California** (enlace remoto) desde el visor: dado un **folio real** o clave catastral, obtiene movimientos, partida, `DOC_TRAMITE_ID` y muestra el **PDF** en la pestaña **Documento RPPC** del popup predio.
+
+### Arquitectura
+
+| Capa | Rol |
+|------|-----|
+| **Visor** (`js/52-popup-rppc.js`) | Pestaña en popup; `fetch` con JWT SGC; PDF en iframe vía blob URL |
+| **API SGC** (`routers/rppc.py`) | Proxy autenticado; no expone credenciales RPPC al navegador |
+| **RPPC externo** | WebAPI ASP.NET en `rppcweb.ebajacalifornia.gob.mx` |
+
+**Autenticación RPPC:** la sesión válida es la cookie ASP.NET **`.AspNet.ApplicationCookie`** (login del portal enlace remoto), **no** un login REST directo desde la API. La cookie se inyecta en cada request al RPPC.
+
+**Prioridad de cookie:**
+
+1. Archivo runtime: `/opt/catastro_api/.runtime/rppc_cookie.txt` (renovación automática con Playwright)
+2. Respaldo manual: variable `RPPC_COOKIE` en `.env` del servidor
+
+**Script de renovación (solo servidor):** `/opt/catastro_api/rppc_renovar_cookie.py` — usa `RPPC_USUARIO` / `RPPC_PASSWORD` del enlace remoto (cuenta distinta al usuario SGC).
+
+### Variables `.env` (API — no versionar)
+
+| Variable | Uso |
+|----------|-----|
+| `RPPC_USUARIO` / `RPPC_PASSWORD` | Credenciales **enlace remoto RPPC** (Playwright) |
+| `RPPC_COOKIE` | Cookie manual de respaldo (contiene `.AspNet.ApplicationCookie=…`) |
+| `RPPC_BASE_URL` | Base del portal (default producción BC) |
+| `RPPC_SESSION_PATH` | Preflight sesión (`/rppapp/inicio?remoto=1`) |
+| `RPPC_SSL_LEGACY`, `RPPC_SSL_SECLEVEL`, `RPPC_SSL_MIN_TLS` | TLS legacy (OpenSSL 3 / Ubuntu) |
+| `RPPC_RUNTIME_COOKIE_FILE` | Ruta del archivo de cookie (opcional) |
+| `RPPC_RENOVAR_COOKIE_SCRIPT` | Ruta del script Playwright (opcional) |
+
+### Endpoints API (`/api/catastro/rppc/…`, JWT requerido salvo visor PDF)
+
+| Método | Ruta | Descripción |
+|--------|------|-------------|
+| `GET` | `/diagnostico` | Prueba conexión, cookie, consulta folio de prueba |
+| `POST` | `/sesion/renovar` | Renueva cookie vía Playwright |
+| `GET` | `/resolver/folio/{folio}` | Cadena folio → partida → `doc_tramite_id` |
+| `GET` | `/resolver/clave/{clave}` | Igual por clave catastral (padrón) |
+| `GET` | `/inmuebles/clave/{clave}` | Inmuebles RPPC por clave (backfill folios) |
+| `GET` | `/movimientos/folio/{folio}` | Lista movimientos del folio |
+| `GET` | `/pdf/folio/{folio}` | PDF por folio |
+| `GET` | `/pdf/clave/{clave}` | PDF por clave |
+| `GET` | `/pdf/doc/{doc_tramite_id}` | PDF directo (JWT) |
+| `GET` | `/visor/pdf/doc/{doc_tramite_id}` | PDF para iframe del visor |
+
+Flujo interno típico: `ConsultaAvanzada/obtenerMovimientosLote` → `obtenerInscripcionesPart` → PDF por partida o `ObtenerDocumentoPorId`.
+
+### Operación en servidor
+
+```bash
+# Diagnóstico (con token SGC)
+curl -s -H "Authorization: Bearer $TOKEN" \
+  "https://<host>/api/catastro/rppc/diagnostico" | python3 -m json.tool
+
+# Renovar sesión RPPC
+curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  "https://<host>/api/catastro/rppc/sesion/renovar"
+
+# Tras desplegar backend
+sudo systemctl restart catastro-api
+```
+
+**Cron sugerido** (renovar cookie antes de expirar, p. ej. cada 6 h):
+
+```cron
+0 */6 * * * cd /opt/catastro_api && ./venv/bin/python3 rppc_renovar_cookie.py
+```
+
+### Despliegue visor
+
+Subir a `/var/www/catastro/`: `index.html`, `css/55-modulos-portal.css`, `js/05-modulos-portal.js`, `js/52-popup-rppc.js`. Recarga **Ctrl+F5**.
+
+### Validación rápida
+
+- `rppc_cookie_configurada: true` en `/rppc/diagnostico`
+- `post_ok: true` con folio de prueba (ej. `3454`)
+- Popup predio → pestaña **Documento RPPC** → PDF visible
+
+**Archivos clave:** `routers/rppc.py`, `config.py`, `js/52-popup-rppc.js`, `js/05-modulos-portal.js`, `css/55-modulos-portal.css`, `index.html`.
 
 ---
 
@@ -158,6 +247,8 @@ Pestaña **Carta Urbana 2040** en popup predio (Gestión Catastral):
 - Cédula de movimiento con vista previa cartográfica (`js/44-cedula-numero-oficial-preview.js`).
 
 ### Pendiente / mejoras futuras
+- [ ] Cron systemd o timer para `rppc_renovar_cookie.py` en todos los entornos.
+- [ ] Incluir `rppc_renovar_cookie.py` en repo (sin credenciales) y `.env.example`.
 - [ ] Despliegue permanente del endpoint carta urbana en API si aún no está en todos los entornos.
 - [ ] Revisar consulta WFS construcciones (`construccionesmxli`) — timeout GeoServer en algunas claves.
 - [ ] Integrar herramientas del panel de trabajo en fichas del predio según privilegios.
@@ -178,6 +269,15 @@ Variables observadas:
 - `DB_NAME`
 - `DB_USER`
 - `DB_PASSWORD`
+
+### RPPC (Registro Público de la Propiedad BC)
+
+Variables en `config.py` — ver sección [Integración RPPC](#integración-rppc--documento-registral-jun-2026):
+
+- `RPPC_USUARIO`, `RPPC_PASSWORD` — enlace remoto (solo servidor / Playwright)
+- `RPPC_COOKIE` — cookie ASP.NET manual (no subir a Git)
+- `RPPC_BASE_URL`, `RPPC_SESSION_PATH`, `RPPC_SSL_*`, timeouts
+- `RPPC_REPORTES_PREFIX`, acciones de movimientos/inscripciones/documento
 
 ### Recomendaciones
 - no versionar `.env`
@@ -228,6 +328,7 @@ Después de cambios o despliegues, conviene validar al menos:
 - historial de expediente
 - documentos del expediente
 - propietarios por predio
+- documento RPPC (folio con cookie activa)
 
 Rutas críticas identificadas:
 
@@ -236,6 +337,9 @@ GET /padron/{clave}/ficha
 GET /expediente/{clave}/historial
 GET /expediente/{clave}/documentos
 GET /predios/{clave}/propietarios
+GET /rppc/diagnostico
+GET /rppc/resolver/folio/{folio_real}
+GET /rppc/pdf/folio/{folio_real}
 ```
 
 ---
@@ -403,6 +507,7 @@ Responsable de:
 - historial
 - documentos
 - control cartográfico
+- indicador y consulta **Documento RPPC** (folio real / PDF registral)
 
 ### Movimientos
 Responsable de:
