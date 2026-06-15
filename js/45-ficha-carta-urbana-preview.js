@@ -261,7 +261,10 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
       ?document.getElementById(chkId)?.checked===true
       :document.getElementById(chkId)?.checked!==false;
     capa.setVisible(visible);
-    previewMapCarta&&previewMapCarta.render();
+    if(typeof capa.changed==="function")capa.changed();
+    if(previewMapCarta){
+      try{previewMapCarta.renderSync();}catch(e){previewMapCarta.render();}
+    }
   }
 
   function crearWmsCarta(url,layers,visible,opacity,zIndex){
@@ -334,6 +337,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
     window.__cartaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaPredios,capaColonias,capaPredio,capaZona};
     window.__cartaVistaUsuario=false;
     inicializarOrdenCapasFicha();
+    if(typeof actualizarCapasFichaCarta==="function")actualizarCapasFichaCarta();
 
     function marcarVistaUsuarioCarta(){window.__cartaVistaUsuario=true;}
     targetEl.addEventListener("wheel",marcarVistaUsuarioCarta,{passive:true});

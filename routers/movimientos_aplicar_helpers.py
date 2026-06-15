@@ -234,6 +234,114 @@ def aplicar_baja_clave(cur, clave: str):
     return row, "delete_padron"
 
 
+def _validar_porcentaje_propiedad(valor) -> float:
+    pct = round(float(valor or 0), 6)
+    if pct < 0 or pct > 100:
+        raise HTTPException(status_code=400, detail="Porcentaje de propiedad invalido")
+    return pct
+
+
+def _nombre_persona_por_id(cur, id_persona: int) -> Optional[str]:
+    cur.execute("""
+        SELECT COALESCE(NULLIF(TRIM(nombre), ''), NULLIF(TRIM(razon_social), '')) AS nombre
+        FROM catalogos.personas
+        WHERE id_persona = %s
+        LIMIT 1;
+    """, (id_persona,))
+    row = cur.fetchone()
+    return row.get("nombre") if row else None
+
+
+def aplicar_propietarios_desde_movimiento(cur, clave: str, propietarios_raw: list) -> dict:
+    """Reemplaza titulares vigentes del predio desde payload del movimiento."""
+    if not propietarios_raw:
+        return {}
+
+    clave_norm = (clave or "").strip().upper()
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral invalida")
+
+    propietarios = []
+    for item in propietarios_raw:
+        if not isinstance(item, dict):
+            continue
+        id_persona = item.get("id_persona")
+        if id_persona is None:
+            continue
+        propietarios.append({
+            "id_persona": int(id_persona),
+            "porcentaje_propiedad": _validar_porcentaje_propiedad(item.get("porcentaje_propiedad")),
+            "tipo_titularidad": str(item.get("tipo_titularidad") or "PROPIETARIO").strip().upper() or "PROPIETARIO",
+        })
+
+    if not propietarios:
+        raise HTTPException(status_code=400, detail="Debe incluir al menos un propietario")
+
+    ids = [p["id_persona"] for p in propietarios]
+    if len(ids) != len(set(ids)):
+        raise HTTPException(status_code=400, detail="No puede repetir el mismo propietario")
+
+    suma = round(sum(p["porcentaje_propiedad"] for p in propietarios), 6)
+    if abs(suma - 100) > 0.000001:
+        raise HTTPException(
+            status_code=400,
+            detail=f"La suma de copropiedad debe ser exactamente 100%. Suma actual: {suma}",
+        )
+
+    cur.execute(
+        "SELECT id_persona FROM catalogos.personas WHERE id_persona = ANY(%s) AND COALESCE(activo, TRUE)=TRUE;",
+        (ids,),
+    )
+    existentes = {r["id_persona"] for r in cur.fetchall()}
+    faltantes = [i for i in ids if i not in existentes]
+    if faltantes:
+        raise HTTPException(status_code=404, detail=f"Personas no encontradas o inactivas: {faltantes}")
+
+    cols_pp = columnas_tabla(cur, "catastro", "predio_propietario")
+    if "vigente" in cols_pp:
+        cur.execute("""
+            UPDATE catastro.predio_propietario
+            SET vigente = FALSE,
+                fecha_fin = CURRENT_DATE
+            WHERE UPPER(TRIM(clave_catastral::text)) = UPPER(TRIM(%s))
+              AND vigente = TRUE;
+        """, (clave_norm,))
+    else:
+        cur.execute("""
+            DELETE FROM catastro.predio_propietario
+            WHERE UPPER(TRIM(clave_catastral::text)) = UPPER(TRIM(%s));
+        """, (clave_norm,))
+
+    insertados = []
+    for p in propietarios:
+        cols = ["clave_catastral", "id_persona", "porcentaje_propiedad", "tipo_titularidad"]
+        vals = [clave_norm, p["id_persona"], p["porcentaje_propiedad"], p["tipo_titularidad"]]
+        ph = ["%s", "%s", "%s", "%s"]
+        if "vigente" in cols_pp:
+            cols.append("vigente")
+            vals.append(True)
+            ph.append("%s")
+        if "fecha_inicio" in cols_pp:
+            cols.append("fecha_inicio")
+            ph.append("CURRENT_DATE")
+        cur.execute(f"""
+            INSERT INTO catastro.predio_propietario ({", ".join(cols)})
+            VALUES ({", ".join(ph)})
+            RETURNING id_persona, porcentaje_propiedad, tipo_titularidad;
+        """, vals)
+        insertados.append(cur.fetchone())
+
+    principal = max(propietarios, key=lambda x: (x["porcentaje_propiedad"], -propietarios.index(x)))
+    nombre_principal = _nombre_persona_por_id(cur, principal["id_persona"])
+
+    return {
+        "propietarios_aplicados": len(insertados),
+        "suma_porcentaje": suma,
+        "nombre_principal": nombre_principal,
+        "id_persona_principal": principal["id_persona"],
+    }
+
+
 def aplicar_titularidad_desde_relaciones(cur, clave: str) -> Optional[str]:
     cols_pp = columnas_tabla(cur, "catastro", "predio_propietario")
     if "vigente" not in cols_pp:

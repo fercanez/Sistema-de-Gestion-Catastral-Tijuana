@@ -1,0 +1,509 @@
+/* Módulo Movimientos Catastrales — mapa + panel flotante */
+
+body.modo-movimientos-catastrales #panel,
+body.modo-movimientos-catastrales #btnMostrarPanel {
+  display: none !important;
+}
+
+body.modo-movimientos-catastrales #cuerpoInstitucional {
+  flex: 1;
+  min-height: 0;
+}
+
+body.modo-movimientos-catastrales .area-central-inst {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+}
+
+body.modo-movimientos-catastrales #zonaMapaInstitucional {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: calc(100vh - 132px);
+}
+
+body.modo-movimientos-catastrales #map {
+  width: 100%;
+  height: 100%;
+}
+
+body.modo-movimientos-catastrales #dashboardCartografico {
+  display: none !important;
+}
+
+/* Panel flotante movimientos */
+.movimientos-modulo-workspace {
+  position: absolute;
+  inset: 0;
+  z-index: 130;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.movimientos-modulo-workspace.oculto {
+  display: none !important;
+}
+
+.movimientos-modulo-card {
+  position: absolute;
+  left: 14px;
+  top: 14px;
+  pointer-events: auto;
+  width: min(520px, calc(100vw - 28px));
+  max-height: calc(100vh - 160px);
+  display: flex;
+  flex-direction: column;
+  background: rgba(255, 255, 255, 0.97);
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 14px 40px rgba(15, 23, 42, 0.28);
+  overflow: hidden;
+}
+
+.movimientos-modulo-card.arrastrando {
+  opacity: 0.96;
+  box-shadow: 0 20px 48px rgba(15, 23, 42, 0.35);
+}
+
+.movimientos-modulo-card.minimizado {
+  width: auto;
+  min-width: 240px;
+  max-height: none;
+}
+
+.movimientos-modulo-card.minimizado .movimientos-modulo-body {
+  display: none;
+}
+
+.movimientos-modulo-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: linear-gradient(180deg, #fdf2f4 0%, #fff 100%);
+  border-bottom: 1px solid #e2e8f0;
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+
+.movimientos-modulo-head h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #703341;
+}
+
+.movimientos-modulo-head-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.mov-modulo-head-btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #334155;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+
+.mov-modulo-head-btn:hover {
+  background: #f1f5f9;
+  border-color: #703341;
+}
+
+.movimientos-modulo-body {
+  overflow-y: auto;
+  padding: 8px 10px 10px;
+  min-height: 0;
+}
+
+/* Búsqueda compacta */
+.movimientos-modulo-busqueda.colapsada {
+  display: none;
+}
+
+.movimientos-modulo-busqueda #tabConsulta {
+  display: block !important;
+  padding: 0;
+  margin-bottom: 8px;
+}
+
+.movimientos-modulo-busqueda #tabConsulta #ficha,
+.movimientos-modulo-busqueda #tabConsulta #panelLeyendaIntegrada,
+.movimientos-modulo-busqueda #tabConsulta .perm-editar-cartografia {
+  display: none !important;
+}
+
+.movimientos-modulo-busqueda .consulta-unificada {
+  padding: 8px !important;
+  margin-bottom: 0 !important;
+}
+
+.movimientos-modulo-busqueda .consulta-unificada .section-label {
+  font-size: 0.68rem;
+  margin-bottom: 4px;
+}
+
+.movimientos-modulo-busqueda .consulta-unificada input[type="text"] {
+  padding: 5px 7px !important;
+  font-size: 11px !important;
+  margin-bottom: 4px !important;
+}
+
+.movimientos-modulo-busqueda .busqueda-grid-2 {
+  gap: 4px !important;
+  margin-bottom: 4px !important;
+}
+
+.movimientos-modulo-busqueda .busqueda-acciones {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.movimientos-modulo-busqueda .busqueda-acciones button {
+  flex: 1;
+  padding: 6px 8px !important;
+  font-size: 11px !important;
+  margin: 0 !important;
+}
+
+.movimientos-modulo-busqueda .contador-busqueda {
+  font-size: 10px !important;
+  padding: 4px 0 !important;
+  margin: 2px 0 !important;
+}
+
+.movimientos-modulo-busqueda #resultadosBusqueda {
+  max-height: 88px;
+  overflow-y: auto;
+  font-size: 11px;
+}
+
+.movimientos-modulo-busqueda #resultadosBusqueda .resultado-item,
+.movimientos-modulo-busqueda #resultadosBusqueda button {
+  font-size: 11px !important;
+  padding: 4px 6px !important;
+}
+
+/* Movimientos + catálogos + historial */
+.movimientos-modulo-host #tabMovimientos {
+  display: block !important;
+  padding: 0;
+}
+
+.movimientos-modulo-host .movimientos-card {
+  margin-bottom: 8px;
+  padding: 8px 10px !important;
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
+}
+
+.movimientos-modulo-host .movimientos-card .section-label {
+  font-size: 0.68rem;
+  margin-bottom: 6px;
+}
+
+.movimientos-modulo-host .movimientos-card > p,
+.movimientos-modulo-host .solo-lectura-catastro {
+  display: none !important;
+}
+
+.movimientos-modulo-host .mov-botones-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  margin-bottom: 0;
+}
+
+.movimientos-modulo-host .btn-mov-tipo {
+  padding: 7px 5px;
+  font-size: 10px;
+  text-align: center;
+}
+
+.movimientos-modulo-host .catalogos-mant-btn-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.movimientos-modulo-host .admin-toolbar-mov-acciones {
+  margin-bottom: 6px;
+}
+
+.movimientos-modulo-host #movimientosTabla {
+  max-height: 140px;
+  overflow: auto;
+  font-size: 11px;
+}
+
+.movimientos-modulo-busqueda #resultadosBusqueda .resultado-item,
+.movimientos-modulo-busqueda #resultadosBusqueda button {
+  font-size: 11px !important;
+  padding: 4px 6px !important;
+}
+
+.mov-predio-acciones {
+  margin: 4px 0 8px;
+}
+
+.mov-predio-acciones.oculto {
+  display: none !important;
+}
+
+.mov-predio-acciones .btn-expediente-externo {
+  width: 100%;
+  font-size: 11px !important;
+  padding: 7px 8px !important;
+}
+
+.mov-predio-acciones .solo-lectura-catastro {
+  font-size: 10px !important;
+  margin-top: 4px !important;
+}
+
+/* Capas flotantes en mapa */
+.mov-capas-mapa {
+  position: absolute;
+  right: 14px;
+  top: 14px;
+  z-index: 125;
+  pointer-events: auto;
+  max-width: min(280px, calc(100vw - 28px));
+}
+
+.mov-capas-mapa.oculto {
+  display: none !important;
+}
+
+.mov-capas-mapa-btn {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #334155;
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
+}
+
+.mov-capas-mapa-btn.oculto {
+  display: none !important;
+}
+
+.mov-capas-mapa-btn:hover {
+  border-color: #703341;
+  color: #703341;
+}
+
+.mov-capas-panel-full {
+  position: relative;
+  top: 0;
+  right: 0;
+  width: min(272px, calc(100vw - 28px));
+  max-height: calc(100vh - 180px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding: 0;
+  border-radius: 10px;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.22);
+}
+
+.mov-capas-panel-full.oculto {
+  display: none !important;
+}
+
+.mov-capas-panel-full .mov-capas-panel-head {
+  padding: 8px 10px;
+  margin-bottom: 0;
+  flex: 0 0 auto;
+}
+
+.mov-capas-host {
+  overflow-y: auto;
+  padding: 0 8px 8px;
+  min-height: 0;
+}
+
+.mov-capas-host #tabCapas {
+  display: block !important;
+  padding: 0 !important;
+  margin: 0 !important;
+}
+
+.mov-capas-host #tabCapas .card-panel {
+  margin-bottom: 8px !important;
+  box-shadow: none;
+  border: 1px solid #e2e8f0;
+}
+
+.mov-capas-host #tabCapas .card-panel:last-child {
+  margin-bottom: 0 !important;
+}
+
+.mov-capas-host #tabCapas .dashboard-toggle-row,
+.mov-capas-host #tabCapas .check-row:not(.dashboard-toggle-row) {
+  display: none !important;
+}
+
+.mov-capas-host #tabCapas .fiscal-legend {
+  margin-top: 4px;
+  font-size: 10px;
+}
+
+.mov-capas-host #tabCapas select {
+  width: 100%;
+  font-size: 11px;
+}
+
+/* Ficha del predio compacta y flotante (no tapa capas del mapa) */
+body.modo-movimientos-catastrales #fichaFlotante.ficha-sobre-mapa:not(.ficha-libre) {
+  position: absolute !important;
+  top: 168px !important;
+  right: 14px !important;
+  left: auto !important;
+  bottom: auto !important;
+  width: min(300px, calc(100vw - 560px)) !important;
+  max-width: 300px !important;
+  max-height: min(42vh, 360px) !important;
+  height: auto !important;
+  z-index: 124 !important;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante.ficha-sobre-mapa.ficha-libre {
+  position: absolute !important;
+  right: auto !important;
+  bottom: auto !important;
+  min-width: 240px !important;
+  min-height: 160px !important;
+  max-width: calc(100% - 16px) !important;
+  max-height: calc(100% - 16px) !important;
+  z-index: 124 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante.ficha-sobre-mapa.ficha-libre .ficha-flotante-body {
+  max-height: none !important;
+  flex: 1 1 auto !important;
+  min-height: 0 !important;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante.ficha-arrastrando,
+body.modo-movimientos-catastrales #fichaFlotante.ficha-redimensionando {
+  user-select: none !important;
+  transition: none !important;
+}
+
+body.modo-movimientos-catastrales #movimientosCapasMapa {
+  z-index: 126;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-flotante-body {
+  max-height: calc(42vh - 52px);
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-status-box {
+  padding: 6px 8px;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-status-box .big {
+  font-size: 13px;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-tabs {
+  gap: 2px;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-tab-btn {
+  font-size: 9px;
+  padding: 4px 3px;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-mini-row {
+  padding: 3px 0;
+  font-size: 10px;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-mini-row-folio {
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px dashed rgba(112, 51, 65, 0.25);
+  font-weight: 600;
+}
+
+body.modo-movimientos-catastrales #fichaFlotante .ficha-mini-row-folio .value {
+  color: #703341;
+}
+
+@media (max-width: 1100px) {
+  body.modo-movimientos-catastrales #fichaFlotante.ficha-sobre-mapa:not(.ficha-libre) {
+    width: min(280px, calc(100vw - 28px)) !important;
+    top: 150px !important;
+  }
+}
+
+@media (max-width: 820px) {
+  .movimientos-modulo-card {
+    width: min(96vw, 420px);
+  }
+
+  .movimientos-modulo-host .mov-botones-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Arrastre y redimensionamiento de la ficha sobre el mapa */
+.ficha-flotante.ficha-sobre-mapa {
+  box-sizing: border-box;
+}
+
+.ficha-flotante-resize {
+  position: absolute;
+  z-index: 3;
+  touch-action: none;
+}
+
+.ficha-resize-e {
+  top: 36px;
+  right: 0;
+  width: 8px;
+  bottom: 14px;
+  cursor: ew-resize;
+}
+
+.ficha-resize-s {
+  left: 0;
+  right: 14px;
+  bottom: 0;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.ficha-resize-se {
+  right: 0;
+  bottom: 0;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 0 45%, rgba(112, 51, 65, .35) 45% 100%);
+  border-bottom-right-radius: 12px;
+}
+
+.ficha-flotante.ficha-libre .ficha-flotante-header {
+  cursor: move;
+}
+
+.ficha-flotante.minimizada .ficha-flotante-resize {
+  display: none;
+}

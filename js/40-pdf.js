@@ -439,9 +439,12 @@ async function cargarDatosFichaCatastral(clave) {
 
   const centroide = await resolverCentroidePredioFicha(claveNorm, feature);
   const usuario = typeof obtenerUsuarioSesion === "function" ? obtenerUsuarioSesion() : null;
+  const folioRaw = String(p.folio_real ?? "").trim();
+  const folioReal = folioRaw && folioRaw !== "0" ? folioRaw : "—";
 
   return {
     clave: claveNorm,
+    folioReal,
     feature,
     p,
     seg,
@@ -507,6 +510,8 @@ async function exportarFichaCatastralPdf(datos, imagenes = {}) {
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.text("Clave Catastral: " + datos.clave, pageW - margen, 12, { align: "right" });
+  doc.setFontSize(8);
+  doc.text("Folio Real: " + (datos.folioReal || "—"), pageW - margen, 17, { align: "right" });
 
   doc.setTextColor(...grisTexto);
   doc.setFont("helvetica", "normal");

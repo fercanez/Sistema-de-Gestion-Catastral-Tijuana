@@ -8,6 +8,12 @@ MODULOS_SISTEMA = [
         "roles_base": ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion", "consulta"],
     },
     {
+        "id": "movimientos",
+        "titulo": "Movimientos Catastrales",
+        "descripcion": "Solicitudes y aplicación al padrón.",
+        "roles_base": ["admin", "supervisor", "catastro"],
+    },
+    {
         "id": "zonas-homogeneas",
         "titulo": "Análisis de Zonas Homogéneas",
         "descripcion": "Catálogo y evolución de valores.",
@@ -18,12 +24,6 @@ MODULOS_SISTEMA = [
         "titulo": "Régimen en Condominio",
         "descripcion": "Consulta y análisis de condominios.",
         "roles_base": ["admin", "supervisor", "catastro", "fiscalizacion", "cartografia", "consulta"],
-    },
-    {
-        "id": "movimientos",
-        "titulo": "Movimientos Catastrales",
-        "descripcion": "Solicitudes y aplicación al padrón.",
-        "roles_base": ["admin", "supervisor", "catastro"],
     },
     {
         "id": "modulo-cartografico",

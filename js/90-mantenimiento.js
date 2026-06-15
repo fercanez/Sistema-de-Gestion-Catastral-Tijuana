@@ -2052,3 +2052,219 @@ async function importarAdeudosMantenimiento() {
   }
 }
 window.importarAdeudosMantenimiento = importarAdeudosMantenimiento;
+
+/* --- Importación de folio real (clave mas folio real.xlsx) --- */
+
+const MANT_FOLIOS_BATCH = 10000;
+let _mantFoliosFilas = [];
+let _mantFoliosParseErrores = [];
+
+function filasDesdeRawFolios(rawRows) {
+  const map = new Map();
+  const errores = [];
+  (rawRows || []).forEach(function(raw, idx) {
+    const r = normalizarKeysImportAdeudo(raw);
+    const clave = String(r.CLAVE_CATASTRAL || r.CLAVECATASTRAL || r.CLAVE || "").trim().toUpperCase().replace(/\s+/g, "");
+    if (!clave) return;
+    const folioRaw = r.FOLIO_REAL != null ? r.FOLIO_REAL : (r.FOLIO != null ? r.FOLIO : "");
+    map.set(clave, { clave_catastral: clave, folio_real: folioRaw == null ? "" : String(folioRaw).trim() });
+  });
+  return { filas: Array.from(map.values()), errores: errores };
+}
+
+function parsearArchivoFoliosMantenimiento(file) {
+  return parsearArchivoAdeudosMantenimiento(file);
+}
+
+function setMantFoliosMsg(texto, ok) {
+  const msg = document.getElementById("mantFoliosMsg");
+  if (!msg) return;
+  msg.textContent = texto || "";
+  msg.className = "mant-prop-msg" + (ok === true ? " ok" : ok === false ? " error" : "");
+}
+
+function renderResumenFoliosMantenimiento(filas) {
+  const el = document.getElementById("mantFoliosResumen");
+  if (!el) return;
+  if (!filas.length) {
+    el.innerHTML = "";
+    return;
+  }
+  let conFolio = 0;
+  let sinFolio = 0;
+  filas.forEach(function(f) {
+    const t = String(f.folio_real || "").trim();
+    if (t && t !== "0") conFolio += 1;
+    else sinFolio += 1;
+  });
+  el.innerHTML =
+    "<b>Resumen:</b> " + filas.length.toLocaleString("es-MX") + " claves · " +
+    conFolio.toLocaleString("es-MX") + " con folio · " +
+    sinFolio.toLocaleString("es-MX") + " sin folio (0 o vacío)";
+}
+
+function renderPreviewFoliosMantenimiento(filas) {
+  const el = document.getElementById("mantFoliosPreview");
+  if (!el) return;
+  const muestra = (filas || []).slice(0, 12);
+  if (!muestra.length) {
+    el.innerHTML = "";
+    return;
+  }
+  let html = "<table class=\"mant-prop-grid\"><thead><tr><th>Clave</th><th>Folio real</th></tr></thead><tbody>";
+  muestra.forEach(function(f) {
+    html += "<tr><td>" + escapeHtml(f.clave_catastral) + "</td><td>" + escapeHtml(f.folio_real || "0") + "</td></tr>";
+  });
+  html += "</tbody></table>";
+  if (filas.length > muestra.length) {
+    html += "<div class=\"mant-adeudos-more\">… y " + (filas.length - muestra.length).toLocaleString("es-MX") + " más</div>";
+  }
+  el.innerHTML = html;
+}
+
+function abrirMantenimientoFolios() {
+  if (typeof puedeEditarCatastro === "function" && !puedeEditarCatastro()) {
+    alert("No tiene permisos para importar folios.");
+    return;
+  }
+  document.getElementById("modalMantenimientoFolios")?.classList.remove("oculto");
+}
+window.abrirMantenimientoFolios = abrirMantenimientoFolios;
+
+function cerrarMantenimientoFolios() {
+  document.getElementById("modalMantenimientoFolios")?.classList.add("oculto");
+}
+window.cerrarMantenimientoFolios = cerrarMantenimientoFolios;
+
+async function vistaPreviaFoliosMantenimiento() {
+  const file = document.getElementById("mantFoliosFile")?.files?.[0];
+  if (!file) {
+    alert("Seleccione el archivo Excel o CSV.");
+    return;
+  }
+  setMantFoliosMsg("Leyendo archivo...", null);
+  try {
+    const rawRows = await parsearArchivoFoliosMantenimiento(file);
+    const parsed = filasDesdeRawFolios(rawRows);
+    _mantFoliosFilas = parsed.filas;
+    _mantFoliosParseErrores = parsed.errores;
+    if (!_mantFoliosFilas.length) {
+      throw new Error("No se encontraron filas válidas. Verifique columnas CLAVE_CATASTRAL y Folio Real.");
+    }
+    renderResumenFoliosMantenimiento(_mantFoliosFilas);
+    renderPreviewFoliosMantenimiento(_mantFoliosFilas);
+    setMantFoliosMsg("Vista previa lista. Revise el resumen antes de importar.", true);
+  } catch (e) {
+    _mantFoliosFilas = [];
+    renderResumenFoliosMantenimiento([]);
+    renderPreviewFoliosMantenimiento([]);
+    setMantFoliosMsg(e.message || String(e), false);
+  }
+}
+window.vistaPreviaFoliosMantenimiento = vistaPreviaFoliosMantenimiento;
+
+async function descargarPlantillaFoliosMantenimiento() {
+  try {
+    const r = await fetch(`${API}/padron/mantenimiento/folios/plantilla.csv?_=${Date.now()}`, {
+      cache: "no-store",
+      headers: typeof authHeaders === "function" ? authHeaders() : {}
+    });
+    if (!r.ok) {
+      const data = await r.json().catch(function() { return {}; });
+      throw new Error(data.detail || data.message || "No se pudo descargar la plantilla");
+    }
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "plantilla_folios_reales.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  } catch (e) {
+    alert(e.message || String(e));
+  }
+}
+window.descargarPlantillaFoliosMantenimiento = descargarPlantillaFoliosMantenimiento;
+
+function actualizarProgresoFoliosMantenimiento(actual, total) {
+  const wrap = document.getElementById("mantFoliosProgress");
+  const bar = document.getElementById("mantFoliosProgressBar");
+  if (!wrap || !bar) return;
+  wrap.classList.remove("oculto");
+  const pct = total > 0 ? Math.min(100, Math.round((actual / total) * 100)) : 0;
+  bar.style.width = pct + "%";
+  bar.textContent = pct + "%";
+}
+
+async function importarFoliosMantenimiento() {
+  if (typeof puedeEditarCatastro === "function" && !puedeEditarCatastro()) {
+    alert("No tiene permisos para importar folios.");
+    return;
+  }
+  if (!_mantFoliosFilas.length) {
+    await vistaPreviaFoliosMantenimiento();
+    if (!_mantFoliosFilas.length) return;
+  }
+  const total = _mantFoliosFilas.length;
+  const lotes = Math.ceil(total / MANT_FOLIOS_BATCH);
+  const confirmMsg =
+    "¿Importar folio real de " + total.toLocaleString("es-MX") + " predios al padrón 2026?\n\n" +
+    "Los valores 0 o vacíos quedarán sin folio.\n" +
+    "El proceso se enviará en " + lotes + " lote(s).";
+  if (!confirm(confirmMsg)) return;
+
+  setMantFoliosMsg("Importando...", null);
+  actualizarProgresoFoliosMantenimiento(0, total);
+
+  const acum = {
+    actualizados: 0,
+    no_encontrados: 0,
+    con_folio: 0,
+    sin_folio: 0,
+    omitidos: 0,
+    no_encontrados_muestra: []
+  };
+
+  try {
+    for (let i = 0; i < total; i += MANT_FOLIOS_BATCH) {
+      const chunk = _mantFoliosFilas.slice(i, i + MANT_FOLIOS_BATCH);
+      const r = await fetch(`${API}/padron/mantenimiento/folios/importar`, {
+        method: "POST",
+        headers: Object.assign(
+          { "Content-Type": "application/json" },
+          typeof authHeaders === "function" ? authHeaders() : {}
+        ),
+        body: JSON.stringify({ filas: chunk })
+      });
+      const data = await r.json().catch(function() { return {}; });
+      if (!r.ok) throw new Error(data.detail || data.message || "Error en importación");
+
+      acum.actualizados += Number(data.actualizados || 0);
+      acum.no_encontrados += Number(data.no_encontrados || 0);
+      acum.con_folio += Number(data.con_folio || 0);
+      acum.sin_folio += Number(data.sin_folio || 0);
+      acum.omitidos += Number(data.omitidos || 0);
+      if (data.no_encontrados_muestra && data.no_encontrados_muestra.length) {
+        acum.no_encontrados_muestra = acum.no_encontrados_muestra.concat(data.no_encontrados_muestra);
+      }
+      actualizarProgresoFoliosMantenimiento(Math.min(i + chunk.length, total), total);
+    }
+
+    const detNoEnc = acum.no_encontrados_muestra.length
+      ? " · Ej. no encontradas: " + acum.no_encontrados_muestra.slice(0, 5).join(", ")
+      : "";
+    setMantFoliosMsg(
+      "Importación completada: " +
+        acum.actualizados.toLocaleString("es-MX") + " actualizados, " +
+        acum.con_folio.toLocaleString("es-MX") + " con folio, " +
+        acum.no_encontrados.toLocaleString("es-MX") + " claves no encontradas en padrón" +
+        detNoEnc,
+      true
+    );
+  } catch (e) {
+    setMantFoliosMsg(e.message || String(e), false);
+  }
+}
+window.importarFoliosMantenimiento = importarFoliosMantenimiento;

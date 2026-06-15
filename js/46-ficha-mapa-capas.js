@@ -179,7 +179,7 @@ function buildFichaMapaCapasRuntimeScript(cfg) {
     ${mapVar}&&${mapVar}.render();
   }
 
-  function ${toggleFn}(id){
+  function ${toggleFn}Core(id){
     const capa=obtenerCapaFichaMapa(id);
     const chkId=fichaCapaChkMap[id];
     if(!chkId)return;
@@ -187,9 +187,16 @@ function buildFichaMapaCapasRuntimeScript(cfg) {
     const visible=esOpcional
       ?document.getElementById(chkId)?.checked===true
       :document.getElementById(chkId)?.checked!==false;
-    if(capa)capa.setVisible(visible);
-    ${mapVar}&&${mapVar}.render();
+    if(capa){
+      capa.setVisible(visible);
+      if(typeof capa.changed==="function")capa.changed();
+    }
+    const mapRef=${mapVar};
+    if(mapRef){
+      try{mapRef.renderSync();}catch(e){mapRef.render();}
+    }
   }
+  var ${toggleFn}=${toggleFn}Core;
   `;
 }
 
@@ -294,8 +301,14 @@ function crearFichaMapaCapasManager(opts) {
     const visible = esOpcional
       ? document.getElementById(chkId)?.checked === true
       : document.getElementById(chkId)?.checked !== false;
-    if (capa) capa.setVisible(visible);
-    getMap()?.render();
+    if (capa) {
+      capa.setVisible(visible);
+      if (typeof capa.changed === "function") capa.changed();
+    }
+    const mapRef = getMap();
+    if (mapRef) {
+      try { mapRef.renderSync(); } catch (e) { mapRef.render(); }
+    }
   }
 
   function reset() {

@@ -40,6 +40,14 @@ const MODULOS_PORTAL_DEF = [
     roles: ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion", "consulta"]
   },
   {
+    id: "movimientos",
+    titulo: "Movimientos Catastrales",
+    descripcion: "Solicitudes, autorización y aplicación de movimientos al padrón.",
+    icono: "📝",
+    roles: ["admin", "supervisor", "catastro"],
+    tabId: "tabMovimientos"
+  },
+  {
     id: "zonas-homogeneas",
     titulo: "Análisis de Zonas Homogéneas",
     descripcion: "Catálogo, evolución de valores y cédulas de zona homogénea.",
@@ -54,14 +62,6 @@ const MODULOS_PORTAL_DEF = [
     icono: "🏢",
     roles: ["admin", "supervisor", "catastro", "fiscalizacion", "cartografia", "consulta"],
     tabId: "tabCondominios"
-  },
-  {
-    id: "movimientos",
-    titulo: "Movimientos Catastrales",
-    descripcion: "Solicitudes, autorización y aplicación de movimientos al padrón.",
-    icono: "📝",
-    roles: ["admin", "supervisor", "catastro"],
-    tabId: "tabMovimientos"
   },
   {
     id: "modulo-cartografico",
@@ -144,7 +144,18 @@ function mostrarSelectorModulos(usuario) {
   if (app) app.classList.add("oculto");
   if (overlay) overlay.classList.remove("oculto");
 
-  document.body.classList.remove("portal-modulo-activo", "modo-gestion-catastral", "modo-portal-completo", "modo-modulo-cartografico");
+  document.body.classList.remove(
+    "portal-modulo-activo",
+    "modo-gestion-catastral",
+    "modo-portal-completo",
+    "modo-modulo-cartografico",
+    "modo-movimientos-catastrales",
+    "panel-oculto-activo"
+  );
+  if (typeof desactivarModuloMovimientosCatastrales === "function") {
+    desactivarModuloMovimientosCatastrales();
+  }
+  document.getElementById("panel")?.classList.remove("panel-oculto");
   if (typeof cerrarEdicionCartograficaSilencioso === "function") cerrarEdicionCartograficaSilencioso();
   restaurarTabsExtraPanel();
   moduloPortalActivo = null;
@@ -184,7 +195,7 @@ function entrarModuloPortal(moduloId) {
   moduloPortalActivo = moduloId;
   document.getElementById("selectorModulosOverlay")?.classList.add("oculto");
   document.body.classList.add("portal-modulo-activo");
-  document.body.classList.remove("modo-gestion-catastral", "modo-portal-completo", "modo-modulo-cartografico");
+  document.body.classList.remove("modo-gestion-catastral", "modo-portal-completo", "modo-modulo-cartografico", "modo-movimientos-catastrales");
 
   if (moduloId === "modulo-cartografico") {
     document.getElementById("appInstitucional")?.classList.add("oculto");
@@ -220,6 +231,19 @@ function entrarModuloPortal(moduloId) {
     if (typeof cerrarFichaFlotante === "function") cerrarFichaFlotante();
     if (typeof aplicarCapasVistaGeneral === "function") aplicarCapasVistaGeneral();
     ocultarTabsExtraGestionCatastral();
+  } else if (moduloId === "movimientos") {
+  document.body.classList.add("modo-movimientos-catastrales", "panel-oculto-activo");
+  document.getElementById("panel")?.classList.add("panel-oculto");
+    if (typeof cerrarPopupPredioWorkspace === "function") cerrarPopupPredioWorkspace();
+    if (typeof cerrarFichaFlotante === "function") cerrarFichaFlotante();
+    if (typeof activarModuloMovimientosCatastrales === "function") {
+      activarModuloMovimientosCatastrales();
+    } else {
+      document.body.classList.add("modo-portal-completo");
+      restaurarTabsExtraPanel();
+      const btn = document.querySelector('.tab-btn[onclick*="tabMovimientos"]');
+      if (typeof mostrarTab === "function") mostrarTab("tabMovimientos", btn);
+    }
   } else {
     document.body.classList.add("modo-portal-completo");
     restaurarTabsExtraPanel();
@@ -247,7 +271,11 @@ function entrarModuloPortal(moduloId) {
       _iniciarDashboardsPostLogin(obtenerUsuarioSesion());
     }
     actualizarLeyendaDinamica();
-    if (document.getElementById("chkLeyenda")?.checked !== false && typeof aplicarVisibilidadLeyendaIntegrada === "function") {
+    if (
+      moduloId !== "movimientos" &&
+      document.getElementById("chkLeyenda")?.checked !== false &&
+      typeof aplicarVisibilidadLeyendaIntegrada === "function"
+    ) {
       aplicarVisibilidadLeyendaIntegrada(true);
     }
   }, 280);
@@ -255,6 +283,7 @@ function entrarModuloPortal(moduloId) {
 
 function volverSelectorModulos() {
   if (typeof cerrarEdicionCartograficaSilencioso === "function") cerrarEdicionCartograficaSilencioso();
+  if (typeof desactivarModuloMovimientosCatastrales === "function") desactivarModuloMovimientosCatastrales();
   if (typeof cerrarPopupPredioWorkspace === "function") cerrarPopupPredioWorkspace();
   if (typeof cerrarFichaFlotante === "function") cerrarFichaFlotante();
   mostrarSelectorModulos(obtenerUsuarioSesion());
@@ -920,6 +949,7 @@ async function pintarPopupTabDatosGenerales(p) {
           ${popupCampo("Adeudo total", adeudo)}
           ${popupCampo("Uso de suelo predial", p?.descripcion_uso)}
           ${popupCampo("Zona homogénea", popupZonaHomogenea(p))}
+          ${popupCampo("Folio real", typeof textoFolioReal === "function" ? textoFolioReal(p) : (p?.folio_real || "—"))}
         </div>
         ${htmlSeccionTitularidadPopup()}
       </div>

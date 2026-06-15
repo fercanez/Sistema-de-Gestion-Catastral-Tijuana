@@ -12,9 +12,9 @@ const ADMIN_ROLES = ["consulta", "catastro", "cartografia", "fiscalizacion", "su
 
 const ADMIN_MODULOS_FALLBACK = [
   { id: "gestion-catastral", titulo: "Gestión Catastral" },
+  { id: "movimientos", titulo: "Movimientos Catastrales" },
   { id: "zonas-homogeneas", titulo: "Análisis de Zonas Homogéneas" },
   { id: "condominios", titulo: "Régimen en Condominio" },
-  { id: "movimientos", titulo: "Movimientos Catastrales" },
   { id: "modulo-cartografico", titulo: "Módulo Cartográfico" },
   { id: "administracion", titulo: "Administración del Sistema" },
   { id: "portal-completo", titulo: "Portal Integral (vista clásica)" }

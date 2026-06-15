@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 
 from auth.dependencies import obtener_usuario_actual, requerir_permiso, registrar_auditoria
-from database import get_conn
+from database import get_conn, asegurar_columna_folio_real_padron
 
 router = APIRouter(tags=["expediente"])
 
@@ -220,6 +220,7 @@ def obtener_expediente_integral(clave: str, usuario_actual: dict = Depends(obten
     try:
         conn = get_conn()
         cur = conn.cursor()
+        asegurar_columna_folio_real_padron(cur, conn)
 
         cur.execute("""
             SELECT
@@ -248,6 +249,7 @@ def obtener_expediente_integral(clave: str, usuario_actual: dict = Depends(obten
                 vei.sup_const,
                 vei.adeudo_2026,
                 vei.adeudo_total,
+                NULLIF(NULLIF(TRIM(pad.folio_real::text), ''), '0') AS folio_real,
                 vei.predio_id,
                 vei.estado_cartografico,
                 vei.dibujado,
@@ -276,6 +278,8 @@ def obtener_expediente_integral(clave: str, usuario_actual: dict = Depends(obten
                     ELSE ST_AsGeoJSON(ST_Transform(vei.geom, 4326))::json
                 END AS geometry
             FROM catastro.v_expediente_integral vei
+            LEFT JOIN catalogos.padron_2026 pad
+                ON UPPER(TRIM(pad.clave_catastral)) = UPPER(TRIM(vei.clave_catastral))
             LEFT JOIN catastro.expedientes ex
                 ON UPPER(TRIM(ex.clave_catastral)) = UPPER(TRIM(vei.clave_catastral))
             LEFT JOIN catastro.v_titularidad_predio tit

@@ -8,16 +8,41 @@ function toggleHistorial() {
   toggleSection("timeline-expediente");
 }
 
+function textoFolioReal(p) {
+  const f = String(p?.folio_real ?? "").trim();
+  if (!f || f === "0") return "---";
+  return f;
+}
+
+
+function obtenerContenedorFichaFlotante() {
+  return document.getElementById("zonaMapaInstitucional") || document.body;
+}
+
+function aplicarPosicionDefaultFichaFlotante(ficha) {
+  if (!ficha || ficha.classList.contains("ficha-libre")) return;
+
+  ficha.style.left = "";
+  ficha.style.top = "";
+  ficha.style.right = "";
+  ficha.style.bottom = "";
+  ficha.style.width = "";
+  ficha.style.height = "";
+
+  if (typeof enModoMovimientosCatastrales === "function" && enModoMovimientosCatastrales()) {
+    ficha.style.left = "auto";
+    ficha.style.top = "168px";
+    ficha.style.right = "14px";
+    ficha.style.bottom = "auto";
+  }
+}
 
 function abrirFichaFlotante() {
   const ficha = document.getElementById("fichaFlotante");
   if (!ficha) return;
   ficha.classList.remove("oculto");
   ficha.classList.remove("minimizada");
-  ficha.style.left = "";
-  ficha.style.top = "";
-  ficha.style.right = "";
-  ficha.style.bottom = "";
+  aplicarPosicionDefaultFichaFlotante(ficha);
   actualizarLayoutPrincipal();
 }
 
@@ -26,10 +51,13 @@ function cerrarFichaFlotante() {
   if (!ficha) return;
   ficha.classList.add("oculto");
   ficha.classList.remove("minimizada");
+  ficha.classList.remove("ficha-libre");
   ficha.style.left = "";
   ficha.style.top = "";
   ficha.style.right = "";
   ficha.style.bottom = "";
+  ficha.style.width = "";
+  ficha.style.height = "";
   actualizarBreadcrumbPredio(null);
   actualizarLayoutPrincipal();
 }
@@ -39,14 +67,9 @@ function minimizarFichaFlotante() {
   if (!ficha) return;
   ficha.classList.toggle("minimizada");
   if (ficha.classList.contains("minimizada")) {
-    ficha.style.bottom = "auto";
-    ficha.style.height = "auto";
-  } else {
-    ficha.style.left = "";
-    ficha.style.top = "";
-    ficha.style.right = "";
-    ficha.style.bottom = "";
-    ficha.style.height = "";
+    ficha.dataset.alturaAntesMin = ficha.style.height || "";
+  } else if (ficha.classList.contains("ficha-libre") && ficha.dataset.alturaAntesMin) {
+    ficha.style.height = ficha.dataset.alturaAntesMin;
   }
   setTimeout(() => {
     if (typeof map !== "undefined" && map) map.updateSize();
@@ -61,45 +84,188 @@ function mostrarFichaTab(tabId, boton) {
   if (boton) boton.classList.add("active");
 }
 
+function fichaFlotanteLimites() {
+  const ficha = document.getElementById("fichaFlotante");
+  const cont = obtenerContenedorFichaFlotante();
+  const cRect = cont.getBoundingClientRect();
+  const margen = 8;
+  return {
+    minW: 240,
+    minH: 160,
+    maxW: Math.max(240, cRect.width - margen * 2),
+    maxH: Math.max(160, cRect.height - margen * 2),
+    maxLeft: Math.max(margen, cRect.width - margen),
+    maxTop: Math.max(margen, cRect.height - margen),
+    margen: margen,
+    contRect: cRect
+  };
+}
+
+function fichaFlotanteAsegurarPosicionLibre(ficha) {
+  if (!ficha) return;
+  const cont = obtenerContenedorFichaFlotante();
+  const cRect = cont.getBoundingClientRect();
+  const fRect = ficha.getBoundingClientRect();
+  const limites = fichaFlotanteLimites();
+
+  ficha.style.right = "auto";
+  ficha.style.bottom = "auto";
+  ficha.style.left = Math.max(limites.margen, fRect.left - cRect.left) + "px";
+  ficha.style.top = Math.max(limites.margen, fRect.top - cRect.top) + "px";
+
+  if (!ficha.style.width) ficha.style.width = fRect.width + "px";
+  if (!ficha.style.height && !ficha.classList.contains("minimizada")) {
+    ficha.style.height = fRect.height + "px";
+  }
+
+  ficha.classList.add("ficha-libre");
+}
+
+function fichaFlotanteAjustarDentroContenedor(ficha) {
+  if (!ficha || !ficha.classList.contains("ficha-libre")) return;
+  const limites = fichaFlotanteLimites();
+  let w = parseFloat(ficha.style.width) || ficha.offsetWidth;
+  let h = parseFloat(ficha.style.height) || ficha.offsetHeight;
+  let left = parseFloat(ficha.style.left) || limites.margen;
+  let top = parseFloat(ficha.style.top) || limites.margen;
+
+  w = Math.min(limites.maxW, Math.max(limites.minW, w));
+  h = Math.min(limites.maxH, Math.max(limites.minH, h));
+  left = Math.min(limites.maxLeft - w, Math.max(limites.margen, left));
+  top = Math.min(limites.maxTop - h, Math.max(limites.margen, top));
+
+  ficha.style.width = Math.round(w) + "px";
+  if (!ficha.classList.contains("minimizada")) {
+    ficha.style.height = Math.round(h) + "px";
+  }
+  ficha.style.left = Math.round(left) + "px";
+  ficha.style.top = Math.round(top) + "px";
+}
+
 function inicializarFichaDraggable() {
   const ficha = document.getElementById("fichaFlotante");
   const header = document.getElementById("fichaFlotanteHeader");
   if (!ficha || !header || ficha.dataset.dragReady === "1") return;
   ficha.dataset.dragReady = "1";
 
-  let offsetX = 0;
-  let offsetY = 0;
-  let dragging = false;
+  let dragState = null;
+  let resizeState = null;
 
-  header.addEventListener("mousedown", function(e) {
-    if (e.target.tagName === "BUTTON") return;
-    dragging = true;
-    const rect = ficha.getBoundingClientRect();
-    offsetX = e.clientX - rect.left;
-    offsetY = e.clientY - rect.top;
-    document.body.style.userSelect = "none";
+  header.addEventListener("pointerdown", function(e) {
+    if (e.button !== 0 || e.target.closest("button")) return;
+    fichaFlotanteAsegurarPosicionLibre(ficha);
+    const cRect = obtenerContenedorFichaFlotante().getBoundingClientRect();
+    dragState = {
+      pointerId: e.pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      left: parseFloat(ficha.style.left) || 0,
+      top: parseFloat(ficha.style.top) || 0
+    };
+    ficha.classList.add("ficha-arrastrando");
+    header.setPointerCapture(e.pointerId);
+    e.preventDefault();
   });
 
-  document.addEventListener("mousemove", function(e) {
-    if (!dragging) return;
-    const maxX = window.innerWidth - ficha.offsetWidth - 8;
-    const maxY = window.innerHeight - 45;
-    let x = e.clientX - offsetX;
-    let y = e.clientY - offsetY;
-    x = Math.max(8, Math.min(x, maxX));
-    y = Math.max(8, Math.min(y, maxY));
-    ficha.style.left = x + "px";
-    ficha.style.top = y + "px";
-    ficha.style.right = "auto";
+  header.addEventListener("pointermove", function(e) {
+    if (!dragState || dragState.pointerId !== e.pointerId) return;
+    const limites = fichaFlotanteLimites();
+    const dx = e.clientX - dragState.startX;
+    const dy = e.clientY - dragState.startY;
+    const w = ficha.offsetWidth;
+    const h = ficha.offsetHeight;
+    const left = Math.min(limites.maxLeft - w, Math.max(limites.margen, dragState.left + dx));
+    const top = Math.min(limites.maxTop - h, Math.max(limites.margen, dragState.top + dy));
+    ficha.style.left = left + "px";
+    ficha.style.top = top + "px";
   });
 
-  document.addEventListener("mouseup", function() {
-    dragging = false;
-    document.body.style.userSelect = "";
+  function finDrag(e) {
+    if (!dragState || dragState.pointerId !== e.pointerId) return;
+    dragState = null;
+    ficha.classList.remove("ficha-arrastrando");
+    try { header.releasePointerCapture(e.pointerId); } catch (err) {}
+  }
+
+  header.addEventListener("pointerup", finDrag);
+  header.addEventListener("pointercancel", finDrag);
+
+  ficha.querySelectorAll(".ficha-flotante-resize").forEach(function(handle) {
+    handle.addEventListener("pointerdown", function(e) {
+      if (e.button !== 0) return;
+      fichaFlotanteAsegurarPosicionLibre(ficha);
+      resizeState = {
+        pointerId: e.pointerId,
+        mode: handle.dataset.resize || "se",
+        startX: e.clientX,
+        startY: e.clientY,
+        left: parseFloat(ficha.style.left) || 0,
+        top: parseFloat(ficha.style.top) || 0,
+        width: ficha.offsetWidth,
+        height: ficha.offsetHeight
+      };
+      ficha.classList.add("ficha-redimensionando");
+      handle.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      e.stopPropagation();
+    });
+
+    handle.addEventListener("pointermove", function(e) {
+      if (!resizeState || resizeState.pointerId !== e.pointerId) return;
+      const limites = fichaFlotanteLimites();
+      const dx = e.clientX - resizeState.startX;
+      const dy = e.clientY - resizeState.startY;
+      let w = resizeState.width;
+      let h = resizeState.height;
+
+      if (resizeState.mode === "e" || resizeState.mode === "se") {
+        w = resizeState.width + dx;
+      }
+      if (resizeState.mode === "s" || resizeState.mode === "se") {
+        h = resizeState.height + dy;
+      }
+
+      w = Math.min(limites.maxW, Math.max(limites.minW, w));
+      h = Math.min(limites.maxH, Math.max(limites.minH, h));
+
+      ficha.style.width = Math.round(w) + "px";
+      if (!ficha.classList.contains("minimizada")) {
+        ficha.style.height = Math.round(h) + "px";
+      }
+
+      const maxLeft = limites.maxLeft - w;
+      if (parseFloat(ficha.style.left) > maxLeft) {
+        ficha.style.left = Math.max(limites.margen, maxLeft) + "px";
+      }
+      const maxTop = limites.maxTop - h;
+      if (parseFloat(ficha.style.top) > maxTop) {
+        ficha.style.top = Math.max(limites.margen, maxTop) + "px";
+      }
+    });
+
+    function finResize(e) {
+      if (!resizeState || resizeState.pointerId !== e.pointerId) return;
+      resizeState = null;
+      ficha.classList.remove("ficha-redimensionando");
+      try { handle.releasePointerCapture(e.pointerId); } catch (err) {}
+      if (typeof map !== "undefined" && map) map.updateSize();
+    }
+
+    handle.addEventListener("pointerup", finResize);
+    handle.addEventListener("pointercancel", finResize);
+  });
+
+  window.addEventListener("resize", function() {
+    fichaFlotanteAjustarDentroContenedor(ficha);
+    if (typeof map !== "undefined" && map) map.updateSize();
   });
 }
 
-function htmlAdministrarCopropietariosFicha(clave, styleExtra = "margin-top:8px;") {
+function htmlAdministrarCopropietariosFicha(clave, styleExtra = "margin-top:8px;", opciones) {
+  opciones = opciones || {};
+  if (document.body.classList.contains("modo-movimientos-catastrales") && !opciones.forMovimientosBusqueda) {
+    return "";
+  }
   const c = String(clave || "").replace(/'/g, "\\'");
   return `
     <button type="button" class="btn-expediente-externo perm-editar-catastro" style="${styleExtra}" onclick="abrirModalCopropietarios('${c}')">
@@ -159,6 +325,7 @@ function pintarFichaFlotante(p) {
       <div class="ficha-mini-row"><div class="label">RFC</div><div class="value">${val(p.rfc)}</div></div>
       <div class="ficha-mini-row"><div class="label">Titularidad</div><div class="value">${val(p.tipo_titularidad)}</div></div>
       <div class="ficha-mini-row"><div class="label">% Propiedad</div><div class="value">${val(p.porcentaje_propiedad)}</div></div>
+      <div class="ficha-mini-row ficha-mini-row-folio"><div class="label">Folio real</div><div class="value">${textoFolioReal(p)}</div></div>
       ${htmlAdministrarCopropietariosFicha(p.clave_catastral, "margin-top:10px;width:100%;")}
     </div>
 
@@ -199,13 +366,14 @@ function pintarFichaFlotante(p) {
     </div>
 
     <div id="fichaTabExpediente" class="ficha-tab-panel">
+      <div class="ficha-mini-row"><div class="label">Folio real</div><div class="value">${textoFolioReal(p)}</div></div>
       <div class="ficha-mini-row"><div class="label">Avance</div><div class="value"><span class="${claseAvanceExpediente(avance)}">${avance}% - ${textoAvanceExpediente(avance)}</span></div></div>
       <div class="ficha-mini-row"><div class="label">Documentos</div><div class="value">${indicador(p.tiene_documentos)}</div></div>
       <div class="ficha-mini-row"><div class="label">Cartografía</div><div class="value">${indicador(p.tiene_cartografia)}</div></div>
       <div class="ficha-mini-row"><div class="label">Construcción</div><div class="value">${indicador(p.tiene_construccion)}</div></div>
       <div class="ficha-mini-row"><div class="label">Avalúo</div><div class="value">${indicador(p.tiene_avaluo)}</div></div>
       <div class="ficha-mini-row"><div class="label">Inspección</div><div class="value">${indicador(p.tiene_inspeccion)}</div></div>
-      <div class="ficha-mini-row"><div class="label">RPPC</div><div class="value">${indicador(p.tiene_rppc)}</div></div>
+      <div class="ficha-mini-row"><div class="label">RPPC</div><div class="value">${typeof indicadorRppcExpediente === "function" ? indicadorRppcExpediente(p) : indicador(p.tiene_rppc)}</div></div>
       <div class="ficha-mini-row"><div class="label">Fotografía</div><div class="value">${indicador(p.tiene_fotografia)}</div></div>
       <div class="ficha-mini-row"><div class="label">Cédula</div><div class="value">${indicador(p.tiene_cedula)}</div></div>
     </div>
@@ -244,6 +412,7 @@ function pintarFicha(p) {
         <div class="ficha-row"><b>Propietario:</b><span>${val(p.nombre_completo || p.propietario)}</span></div>
         <div class="ficha-row"><b>Tipo persona:</b><span>${val(p.tipo_persona)}</span></div>
         <div class="ficha-row"><b>RFC:</b><span>${val(p.rfc)}</span></div>
+        <div class="ficha-row"><b>Folio real:</b><span>${textoFolioReal(p)}</span></div>
       </div>
     </div>
 
@@ -294,13 +463,14 @@ function pintarFicha(p) {
     <div class="ficha-section">
       <div class="ficha-subtitle" onclick="toggleSection('sec-expediente')" style="cursor:pointer;">Expediente integral ▼</div>
       <div id="sec-expediente" style="display:none;">
+        <div class="ficha-row"><b>Folio real:</b><span>${textoFolioReal(p)}</span></div>
         <div class="ficha-row"><b>Avance expediente:</b><span><span class="${claseAvanceExpediente(porcentajeExpediente(p))}">${porcentajeExpediente(p)}% - ${textoAvanceExpediente(porcentajeExpediente(p))}</span></span></div>
         <div class="ficha-row"><b>Documentos:</b><span>${indicador(p.tiene_documentos)}</span></div>
         <div class="ficha-row"><b>Cartografía:</b><span>${indicador(p.tiene_cartografia)}</span></div>
         <div class="ficha-row"><b>Construcción:</b><span>${indicador(p.tiene_construccion)}</span></div>
         <div class="ficha-row"><b>Avalúo:</b><span>${indicador(p.tiene_avaluo)}</span></div>
         <div class="ficha-row"><b>Inspección:</b><span>${indicador(p.tiene_inspeccion)}</span></div>
-        <div class="ficha-row"><b>RPPC:</b><span>${indicador(p.tiene_rppc)}</span></div>
+        <div class="ficha-row"><b>RPPC:</b><span>${typeof indicadorRppcExpediente === "function" ? indicadorRppcExpediente(p) : indicador(p.tiene_rppc)}</span></div>
         <div class="ficha-row"><b>Fotografía:</b><span>${indicador(p.tiene_fotografia)}</span></div>
         <div class="ficha-row"><b>Cédula:</b><span>${indicador(p.tiene_cedula)}</span></div>
         <div class="ficha-row"><b>Historial:</b><span>${indicador(p.tiene_historial)}</span></div>

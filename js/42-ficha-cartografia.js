@@ -450,7 +450,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
     });
   }
 
-  const _toggleCapaFichaCartoBase=toggleCapaFichaCarto;
+  const _toggleCapaFichaCartoBase=toggleCapaFichaCartoCore;
   function toggleCapaFichaCarto(id){
     if(id==="cotas"||id==="vertices"){
       mostrarCotasCarto=document.getElementById("chkCartoCotas")?.checked??true;

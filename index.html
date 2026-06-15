@@ -9,10 +9,11 @@
   <link rel="stylesheet" href="css/10-mapa.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/20-ficha.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
-  <link rel="stylesheet" href="css/40-modales.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/40-modales.css?v=20260614_v157_ficha_movible">
   <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v150_panel_ocultar">
   <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260613_v133_zona_datos">
   <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
+  <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
   <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
 </head>
 
@@ -247,6 +248,8 @@
 
       <input type="text" id="coloniaInput" placeholder="COLONIA">
 
+      <input type="text" id="folioRealInput" inputmode="numeric" pattern="[0-9]*" placeholder="FOLIO REAL (NUMÉRICO)">
+
       <div class="busqueda-acciones">
         <button type="button" class="btn-busqueda-unica" onclick="buscarAvanzado()">🔎 Buscar</button>
         <button type="button" class="btn-busqueda-limpiar" onclick="limpiarBusquedaCatastral()">Limpiar</button>
@@ -261,6 +264,8 @@
     </div>
 
     <div id="resultadosBusqueda"></div>
+
+    <div id="movimientosPredioAcciones" class="mov-predio-acciones oculto" aria-label="Acciones del predio encontrado"></div>
 
     <div id="panelLeyendaIntegrada" class="panel-leyenda-integrada">
       <button type="button" class="panel-leyenda-bar" onclick="toggleLeyendaIntegradaPanel()">
@@ -451,6 +456,7 @@
         <button type="button" class="btn-mov-tipo btn-mant-cat" onclick="abrirMantenimientoCalles()">🛣️ Calles</button>
         <button type="button" class="btn-mov-tipo btn-mant-cat" onclick="abrirMantenimientoColonias()">🏘️ Colonias</button>
         <button type="button" class="btn-mov-tipo btn-mant-adeudos perm-editar-catastro" onclick="abrirMantenimientoAdeudos()">💰 Adeudos 2026</button>
+        <button type="button" class="btn-mov-tipo btn-mant-folios perm-editar-catastro" onclick="abrirMantenimientoFolios()">📁 Folios reales</button>
       </div>
     </div>
 
@@ -506,8 +512,35 @@
 <div class="area-central-inst">
   <div id="zonaMapaInstitucional" class="zona-mapa-institucional">
     <div id="map"></div>
+    <div id="movimientosModuloWorkspace" class="movimientos-modulo-workspace oculto" aria-label="Módulo movimientos catastrales">
+      <div id="movimientosModuloCard" class="movimientos-modulo-card">
+        <div id="movimientosModuloDragHandle" class="movimientos-modulo-head" title="Arrastrar panel">
+          <div class="movimientos-modulo-head-text">
+            <h2>Movimientos catastrales</h2>
+          </div>
+          <div class="movimientos-modulo-head-actions">
+            <button type="button" class="mov-modulo-head-btn" onclick="movModuloToggleBusqueda()" title="Mostrar u ocultar búsqueda">🔍</button>
+            <button type="button" id="movimientosModuloBtnMin" class="mov-modulo-head-btn" onclick="movModuloToggleMinimizar()" title="Minimizar panel">—</button>
+          </div>
+        </div>
+        <div id="movimientosModuloBody" class="movimientos-modulo-body">
+          <div id="movimientosModuloBusqueda" class="movimientos-modulo-busqueda mov-busqueda-compacta"></div>
+          <div id="movimientosModuloHost" class="movimientos-modulo-host"></div>
+        </div>
+      </div>
+    </div>
+    <div id="movimientosCapasMapa" class="mov-capas-mapa oculto" aria-label="Capas del mapa">
+      <button type="button" id="movCapasBtnMostrar" class="mov-capas-mapa-btn" onclick="movModuloToggleCapasPanel()" title="Mostrar capas del mapa">🗺 Capas</button>
+      <div id="movimientosCapasPanel" class="mov-capas-panel-full popup-capas-menu mov-capas-main-panel oculto">
+        <div class="popup-capas-menu-head mov-capas-panel-head">
+          <strong>Capas del plano</strong>
+          <button type="button" class="popup-capas-cerrar" onclick="movModuloToggleCapasPanel()" title="Ocultar capas">−</button>
+        </div>
+        <div id="movimientosCapasHost" class="mov-capas-host"></div>
+      </div>
+    </div>
     <div id="fichaFlotante" class="ficha-flotante ficha-sobre-mapa oculto">
-      <div id="fichaFlotanteHeader" class="ficha-flotante-header">
+      <div id="fichaFlotanteHeader" class="ficha-flotante-header" title="Arrastrar para mover">
         <div>
           <div class="ficha-flotante-title">Información del predio</div>
           <div id="fichaFlotanteClave" class="ficha-flotante-clave">Sin selección</div>
@@ -518,6 +551,9 @@
         </div>
       </div>
       <div id="fichaFlotanteBody" class="ficha-flotante-body"></div>
+      <div class="ficha-flotante-resize ficha-resize-e" data-resize="e" title="Ancho"></div>
+      <div class="ficha-flotante-resize ficha-resize-s" data-resize="s" title="Alto"></div>
+      <div class="ficha-flotante-resize ficha-resize-se" data-resize="se" title="Redimensionar"></div>
     </div>
   </div>
 
@@ -576,7 +612,7 @@
 <button id="btnMostrarLeyenda" class="btn-mostrar-leyenda oculto" onclick="toggleLeyendaDinamica()">Leyenda</button>
 
 <footer id="footerInstitucional" class="footer-institucional">
-  <span id="footerVersionInst">SGC v150 · Guardar subdivisión</span>
+  <span id="footerVersionInst">SGC v162 · Capas fichas audit</span>
   <span class="footer-inst-copy">© Municipio de Mexicali, Baja California</span>
   <button type="button" class="footer-inst-ayuda" onclick="alert('Manual de usuario en preparación.')">Ayuda</button>
 </footer>
@@ -1006,38 +1042,75 @@
   </div>
 </div>
 
+<div id="modalMantenimientoFolios" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window mant-adeudos-window">
+    <div class="mant-prop-titlebar">
+      <h2>📁 Importar folio real</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoFolios()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-adeudos-body">
+      <p class="mant-adeudos-intro">
+        Cargue <b>clave mas folio real.xlsx</b> (o CSV) con columnas
+        <b>CLAVE_CATASTRAL</b> y <b>Folio Real</b>.
+        Los valores <b>0</b> o vacíos se guardan como sin folio.
+      </p>
+
+      <div class="analisis-zonas-import-block">
+        <label class="input-label-mini">Archivo Excel o CSV</label>
+        <input type="file" id="mantFoliosFile" accept=".xlsx,.xls,.csv,.txt" onchange="vistaPreviaFoliosMantenimiento()">
+        <div class="overlay-analisis-zonas-acciones">
+          <button type="button" class="btn-busqueda-unica" onclick="vistaPreviaFoliosMantenimiento()">👁️ Vista previa</button>
+          <button type="button" onclick="descargarPlantillaFoliosMantenimiento()">Plantilla CSV</button>
+        </div>
+      </div>
+
+      <div id="mantFoliosResumen" class="mant-adeudos-resumen"></div>
+      <div id="mantFoliosPreview" class="mant-adeudos-preview"></div>
+      <div id="mantFoliosProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar" id="mantFoliosProgressBar"></div></div>
+      <div id="mantFoliosMsg" class="mant-prop-msg"></div>
+    </div>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn ok" onclick="importarFoliosMantenimiento()">📥 Importar al padrón</button>
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoFolios()">Salir</button>
+    </div>
+  </div>
+</div>
+
 <script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.12.1/proj4.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
 <script src="js/00-nucleo.js?v=20260613_v134_admin_modulo"></script>
-<script src="js/10-mapa.js?v=20260611_v151_panel_ocultar"></script>
-<script src="js/20-ficha.js?v=20260613_v134_admin_modulo"></script>
-<script src="js/40-pdf.js?v=20260613_v105_cedula_map"></script>
-<script src="js/30-busqueda.js?v=20260613_v102_busqueda"></script>
-<script src="js/05-modulos-portal.js?v=20260611_v149_portal_fix"></script>
+<script src="js/10-mapa.js?v=20260611_v159_folio_rppc"></script>
+<script src="js/20-ficha.js?v=20260611_v159_folio_rppc"></script>
+<script src="js/40-pdf.js?v=20260611_v160_ficha_folio"></script>
+<script src="js/30-busqueda.js?v=20260611_v159_folio_busqueda"></script>
+<script src="js/05-modulos-portal.js?v=20260611_v159_folio_popup"></script>
 <script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
-<script src="js/46-ficha-mapa-capas.js?v=20260613_v121_capas_unif"></script>
+<script src="js/46-ficha-mapa-capas.js?v=20260611_v162_capas_audit"></script>
 <script src="js/07-numeros-oficiales.js?v=20260613_v121_capas_unif"></script>
 <script src="js/08-carta-urbana.js?v=20260613_v121_capas_unif"></script>
 <script src="js/09-colonias-fraccionamiento.js?v=20260613_v124_predio_fill"></script>
 <script src="js/10-zonas-homogeneas.js?v=20260613_v133_zona_datos"></script>
-<script src="js/45-ficha-carta-urbana-preview.js?v=20260613_v121_capas_unif"></script>
-<script src="js/47-ficha-colonia-preview.js?v=20260613_v126_colonia_tipo"></script>
-<script src="js/48-ficha-zona-homogenea-preview.js?v=20260613_v132_zona_print"></script>
-<script src="js/43-ficha-numero-oficial.js?v=20260613_v121_capas_unif"></script>
+<script src="js/45-ficha-carta-urbana-preview.js?v=20260611_v162_capas_audit"></script>
+<script src="js/47-ficha-colonia-preview.js?v=20260611_v162_capas_audit"></script>
+<script src="js/48-ficha-zona-homogenea-preview.js?v=20260611_v162_capas_audit"></script>
+<script src="js/43-ficha-numero-oficial.js?v=20260611_v162_capas_audit"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsts@2.11.0/dist/jsts.min.js"></script>
 <script src="js/51-edicion-cartografica.js?v=20260611_v150_guardar_subdiv"></script>
 <script src="js/50-admin.js?v=20260613_v137_vigencia_matriz"></script>
-<script src="js/60-propietarios.js?v=20260609_v143_ficha_rapida"></script>
-<script src="js/70-movimientos.js?v=20260613_v106_cedula_preview"></script>
+<script src="js/60-propietarios.js?v=20260614_v154_mov_titular"></script>
+<script src="js/72-movimientos-modulo.js?v=20260611_v159_capas_min"></script>
+<script src="js/70-movimientos.js?v=20260614_v156_seguimiento_modal"></script>
 <script src="js/44-cedula-numero-oficial-preview.js?v=20260613_v121_capas_unif"></script>
-<script src="js/41-ficha-preview.js?v=20260613_v121_capas_unif"></script>
-<script src="js/42-ficha-cartografia.js?v=20260613_v121_capas_unif"></script>
+<script src="js/41-ficha-preview.js?v=20260611_v161_capas_toggle"></script>
+<script src="js/42-ficha-cartografia.js?v=20260611_v161_capas_toggle"></script>
 <script src="js/80-zonas.js?v=20260610_v125_portal"></script>
 <script src="js/85-condominios.js?v=20260610_v125_portal"></script>
-<script src="js/90-mantenimiento.js?v=20260609_v141_adeudos"></script>
+<script src="js/90-mantenimiento.js?v=20260614_v158_folios"></script>
 <script src="js/99-init.js?v=20260610_v125_portal"></script>
 
 <!-- Modal edición / alta zona homogénea (z-index sobre módulo análisis) -->

@@ -70,3 +70,12 @@ def asegurar_tabla_predio_condominio(cur, conn) -> None:
           AND NULLIF(TRIM(regimen_catastro), '') IS NULL;
     """)
     conn.commit()
+
+
+def asegurar_columna_folio_real_padron(cur, conn) -> None:
+    """Agrega catalogos.padron_2026.folio_real si aún no existe."""
+    cols = columnas_tabla(cur, "catalogos", "padron_2026")
+    if "folio_real" in cols:
+        return
+    cur.execute("ALTER TABLE catalogos.padron_2026 ADD COLUMN folio_real VARCHAR(32);")
+    conn.commit()

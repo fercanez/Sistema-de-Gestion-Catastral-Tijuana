@@ -448,6 +448,7 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     });
 
     if(typeof inicializarOrdenCapasFichaGeneral==="function")inicializarOrdenCapasFichaGeneral();
+    if(typeof actualizarCapasPreview==="function")actualizarCapasPreview();
 
     previewMap.getView().on("change:resolution",function(){regenerarCotasPreview();});
     previewMap.on("moveend",function(){regenerarCotasPreview();});
@@ -476,7 +477,7 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     });
   }
 
-  const _toggleCapaFichaGeneralBase=toggleCapaFichaGeneral;
+  const _toggleCapaFichaGeneralBase=toggleCapaFichaGeneralCore;
   function toggleCapaFichaGeneral(id){
     if(id==="cotas"||id==="vertices"){
       mostrarCotasPreview=document.getElementById("chkCotasPreview")?.checked??true;
@@ -908,8 +909,9 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
 .enc-centro{text-align:center;justify-self:center;padding:0 6px;max-width:62%;}
 .enc-centro h1{margin:0;font-size:15px;font-weight:800;color:#fff!important;letter-spacing:.55px;line-height:1.15;}
 .enc-centro h2{margin:3px 0 0;font-size:9px;font-weight:600;color:#fff!important;opacity:.95;letter-spacing:.25px;}
-.enc-der{justify-self:end;text-align:right;font-size:9px;font-weight:700;color:#fff!important;line-height:1.25;text-transform:uppercase;letter-spacing:.3px;}
-.enc-der b{display:block;font-size:14px;margin-top:2px;text-transform:none;letter-spacing:.5px;}
+.enc-der{justify-self:end;display:flex;flex-direction:column;align-items:flex-end;gap:5px;}
+.enc-id-item{text-align:right;font-size:9px;font-weight:700;color:#fff!important;line-height:1.25;text-transform:uppercase;letter-spacing:.3px;}
+.enc-id-item b{display:block;font-size:14px;margin-top:2px;text-transform:none;letter-spacing:.5px;}
 .seccion-marco{
   margin:4px 6px 5px;
   border:1px solid var(--guinda-claro);
@@ -1095,7 +1097,10 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
         <h1>FICHA CATASTRAL GENERAL</h1>
         <h2>Catastro Mexicali</h2>
       </div>
-      <div class="enc-der">Clave Catastral<b>${fichaVentanaEsc(datos.clave)}</b></div>
+      <div class="enc-der">
+        <div class="enc-id-item">Clave Catastral<b>${fichaVentanaEsc(datos.clave)}</b></div>
+        <div class="enc-id-item">Folio Real<b>${fichaVentanaEsc(datos.folioReal || "—")}</b></div>
+      </div>
     </div>
 
     <section class="seccion-marco seccion-datos">

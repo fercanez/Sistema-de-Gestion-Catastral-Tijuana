@@ -12,8 +12,181 @@ const copropEstado = {
   catalogoResultados: [],
   titularPadron: null,
   padronSincronizado: false,
-  condominio: null
+  condominio: null,
+  baseline: null
 };
+
+function requiereSolicitudMovimientoTitularidad() {
+  return true;
+}
+
+function snapshotPropietariosMovimiento(props) {
+  return (props || []).map(function(p, idx) {
+    return {
+      id_persona: Number(p.id_persona),
+      porcentaje_propiedad: Number(p.porcentaje_propiedad || 0),
+      tipo_titularidad: p.tipo_titularidad || (idx === 0 ? "PROPIETARIO" : "COPROPIETARIO"),
+      nombre_completo: p.nombre_completo || (typeof nombrePersonaCatalogo === "function" ? nombrePersonaCatalogo(p) : "")
+    };
+  }).sort(function(a, b) { return a.id_persona - b.id_persona; });
+}
+
+function obtenerTenenciaCopropUi() {
+  return String(document.getElementById("copropTenenciaPadron")?.value || copropEstado.baseline?.tenencia || "").trim().toUpperCase();
+}
+
+function hayCambiosPendientesCoprop() {
+  if (!copropEstado.baseline) return false;
+  const base = snapshotPropietariosMovimiento(copropEstado.baseline.propietarios);
+  const actual = snapshotPropietariosMovimiento(copropEstado.propietarios);
+  const tenBase = String(copropEstado.baseline.tenencia || "").trim().toUpperCase();
+  const tenAct = obtenerTenenciaCopropUi();
+  return JSON.stringify(base) !== JSON.stringify(actual) || tenBase !== tenAct;
+}
+
+function nombreTitularPrincipalCoprop(props) {
+  const lista = props || copropEstado.propietarios || [];
+  if (!lista.length) return "";
+  const principal = [...lista].sort(function(a, b) {
+    return Number(b.porcentaje_propiedad || 0) - Number(a.porcentaje_propiedad || 0);
+  })[0];
+  return principal.nombre_completo || (typeof nombrePersonaCatalogo === "function" ? nombrePersonaCatalogo(principal) : "");
+}
+
+function construirDetallesMovimientoTitularidad(anterior, nuevo, tenAnt, tenNueva) {
+  const detalles = [];
+  const antTxt = (anterior || []).map(function(p) {
+    return `${p.nombre_completo || p.id_persona} (${Number(p.porcentaje_propiedad || 0).toFixed(2)}%)`;
+  }).join("; ");
+  const nueTxt = (nuevo || []).map(function(p) {
+    return `${p.nombre_completo || p.id_persona} (${Number(p.porcentaje_propiedad || 0).toFixed(2)}%)`;
+  }).join("; ");
+  if (antTxt !== nueTxt) {
+    detalles.push({
+      grupo: "TITULARIDAD",
+      campo: "propietarios",
+      etiqueta: "Titulares / copropietarios",
+      valor_anterior: antTxt || "Sin titulares",
+      valor_nuevo: nueTxt || "Sin titulares",
+      tipo_dato: "json",
+      requiere_validacion: true
+    });
+  }
+  if (tenAnt !== tenNueva) {
+    detalles.push({
+      grupo: "TITULARIDAD",
+      campo: "tenencia",
+      etiqueta: "Tipo de tenencia",
+      valor_anterior: tenAnt || "—",
+      valor_nuevo: tenNueva || "—",
+      tipo_dato: "texto",
+      requiere_validacion: true
+    });
+  }
+  const nombreAnt = copropEstado.baseline?.nombre_padron || "";
+  const nombreNuevo = nombreTitularPrincipalCoprop(nuevo);
+  if (nombreNuevo && nombreAnt !== nombreNuevo) {
+    detalles.push({
+      grupo: "TITULARIDAD",
+      campo: "nombre_completo",
+      etiqueta: "Nombre visible en padrón",
+      valor_anterior: nombreAnt,
+      valor_nuevo: nombreNuevo,
+      tipo_dato: "texto",
+      requiere_validacion: true
+    });
+  }
+  return detalles;
+}
+
+async function solicitarMovimientoTitularidadCoprop() {
+  const clave = copropEstado.clave;
+  if (!clave) {
+    msgCoprop("copropMsgPredio", "No hay predio seleccionado.", false);
+    return;
+  }
+  if (!hayCambiosPendientesCoprop()) {
+    msgCoprop("copropMsgPredio", "No hay cambios pendientes para registrar.", false);
+    return;
+  }
+
+  const suma = sumaCopropiedadLocal();
+  if (Math.abs(suma - 100) >= 0.01) {
+    msgCoprop("copropMsgPredio", "La suma de copropiedad debe ser exactamente 100%.", false);
+    return;
+  }
+
+  const propAnterior = snapshotPropietariosMovimiento(copropEstado.baseline?.propietarios);
+  const propNuevo = snapshotPropietariosMovimiento(copropEstado.propietarios);
+  if (!propNuevo.length) {
+    msgCoprop("copropMsgPredio", "Debe haber al menos un titular en el predio.", false);
+    return;
+  }
+
+  const tenAnt = String(copropEstado.baseline?.tenencia || "").trim().toUpperCase();
+  const tenNueva = obtenerTenenciaCopropUi();
+  const motivo = String(document.getElementById("copropMovMotivo")?.value || "ACTUALIZACION TITULARIDAD").trim().toUpperCase();
+  const observaciones = String(document.getElementById("copropMovObservaciones")?.value || "").trim().toUpperCase();
+  const nombreNuevo = nombreTitularPrincipalCoprop(propNuevo);
+
+  const payload = {
+    clave_catastral: clave,
+    clave_catastral_anterior: clave,
+    clave_catastral_nueva: null,
+    tipo_movimiento: "CAMBIO_TITULARIDAD",
+    motivo: motivo,
+    observaciones: observaciones,
+    datos_anteriores: {
+      propietarios: propAnterior,
+      tenencia: tenAnt || null,
+      nombre_completo: copropEstado.baseline?.nombre_padron || null
+    },
+    datos_nuevos: {
+      propietarios: propNuevo.map(function(p) {
+        return {
+          id_persona: p.id_persona,
+          porcentaje_propiedad: p.porcentaje_propiedad,
+          tipo_titularidad: p.tipo_titularidad
+        };
+      }),
+      tenencia: tenNueva || null,
+      nombre_completo: nombreNuevo || null,
+      nombre_propietario: nombreNuevo || null
+    },
+    detalles: construirDetallesMovimientoTitularidad(propAnterior, propNuevo, tenAnt, tenNueva)
+  };
+
+  if (!payload.detalles.length) {
+    msgCoprop("copropMsgPredio", "No hay cambios para registrar.", false);
+    return;
+  }
+
+  try {
+    msgCoprop("copropMsgPredio", "Registrando solicitud de movimiento...", true);
+    const r = await fetch(`${API}/movimientos`, {
+      method: "POST",
+      headers: authJsonHeaders(),
+      body: JSON.stringify(payload)
+    });
+    const data = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(extraerMensajeApi(data, "No se pudo registrar la solicitud."));
+
+    const mov = data.movimiento || data;
+    msgCoprop(
+      "copropMsgPredio",
+      `Solicitud registrada: ${mov.folio || ("ID " + mov.id)}. Pendiente de autorización y aplicación.`,
+      true
+    );
+
+    if (typeof cargarMovimientosPadron === "function") await cargarMovimientosPadron(clave);
+    if (typeof abrirModalSeguimientoMovimiento === "function") abrirModalSeguimientoMovimiento(mov);
+
+    await cargarCopropietariosPredio(clave);
+  } catch (e) {
+    msgCoprop("copropMsgPredio", e.message || "Error al registrar solicitud.", false);
+  }
+}
+window.solicitarMovimientoTitularidadCoprop = solicitarMovimientoTitularidadCoprop;
 
 const MODALIDADES_CONDOMINIO_UI = {
   VERTICAL: { codigo: "VERTICAL", nombre: "Vertical", desc: "Unidades en pisos (edificio, torre)." },
@@ -400,7 +573,7 @@ function renderCondominioInfoCoprop(data = null) {
         <label for="copropTenenciaPadron"><b>Tipo de tenencia</b></label>
         <div class="coprop-row" style="margin-bottom:6px;flex-wrap:wrap;">
           <select id="copropTenenciaPadron" onchange="toggleCopropTenenciaCondominio()">${opcionesTenencia}</select>
-          <button type="button" class="coprop-btn ok" onclick="guardarTenenciaPredio()">Guardar tenencia</button>
+          <button type="button" class="coprop-btn ok" onclick="guardarTenenciaPredio()">Capturar tenencia</button>
         </div>
         <div id="copropBloqueCondominioC" class="${tenenciaActual === "C" || tieneClasifCatastro ? "" : "oculto"}">
         <label for="copropNombreCondominio"><b>Nombre del condominio</b></label>
@@ -463,6 +636,14 @@ async function guardarTenenciaPredio() {
   const tenencia = document.getElementById("copropTenenciaPadron")?.value || "";
   if (!tenencia) {
     msgCoprop("copropMsgCondominio", "Seleccione un tipo de tenencia.", false);
+    return;
+  }
+  if (requiereSolicitudMovimientoTitularidad()) {
+    msgCoprop(
+      "copropMsgCondominio",
+      "Tenencia capturada en borrador. Registre la solicitud de movimiento para enviarla a autorización.",
+      true
+    );
     return;
   }
   const etiq = etiquetaTipoCondominio(tenencia).nombre;
@@ -842,7 +1023,7 @@ function sumaCopropiedadLocal() {
 }
 
 function asegurarModalCopropietarios() {
-  const versionModal = "v50";
+  const versionModal = "v51_mov_solicitud";
   const existente = document.getElementById("modalCopropietarios");
   if (existente && existente.dataset.version !== versionModal) {
     existente.remove();
@@ -867,6 +1048,11 @@ function asegurarModalCopropietarios() {
     .coprop-close-btn:hover{background:#ffe4e6!important;color:#b91c1c!important;border-color:#fecdd3!important;}
     .coprop-acciones-predio{display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap;margin-top:8px;}
     .coprop-acciones-predio .coprop-btn{font-size:12px;padding:6px 10px;}
+    .coprop-solicitud-mov{margin-top:10px;padding-top:10px;border-top:1px dashed #cbd5e1;}
+    .coprop-solicitud-mov label{display:block;font-size:11px;font-weight:bold;color:#475569;margin:6px 0 3px;}
+    .coprop-solicitud-mov input,.coprop-solicitud-mov textarea{width:100%;padding:6px;border:1px solid #cbd5e1;border-radius:6px;font-size:12px;box-sizing:border-box;}
+    .coprop-solicitud-mov textarea{min-height:52px;resize:vertical;}
+    .coprop-solicitud-nota{font-size:10px;color:#64748b;margin:6px 0 8px;line-height:1.35;}
     .coprop-padron-ok{background:#ecfdf5;border:1px solid #86efac;color:#166534;border-radius:8px;padding:8px;font-size:11px;margin-bottom:8px;}
     .coprop-padron-alerta{background:#fff7ed;border:1px solid #fdba74;color:#9a3412;border-radius:8px;padding:8px;font-size:11px;margin-bottom:8px;}
     .coprop-padron-alerta small{display:block;margin-top:3px;color:#7c2d12;}
@@ -958,7 +1144,16 @@ function asegurarModalCopropietarios() {
           <div id="copropTotal" class="coprop-total">TOTAL: 0%</div>
           <div class="coprop-acciones-predio">
             <button type="button" class="coprop-btn sec" onclick="repartirPorcentajesCopropiedad()">Repartir automático</button>
-            <button type="button" class="coprop-btn ok" onclick="guardarPorcentajesCopropiedad()">Guardar porcentajes</button>
+          </div>
+          <div class="coprop-solicitud-mov">
+            <div class="coprop-solicitud-nota">Los cambios de titularidad, copropietarios y tenencia se registran como movimiento catastral. Un supervisor/administrador debe autorizar y aplicar al padrón.</div>
+            <label for="copropMovMotivo">Motivo</label>
+            <input type="text" id="copropMovMotivo" placeholder="ACTUALIZACION TITULARIDAD" maxlength="120">
+            <label for="copropMovObservaciones">Observaciones</label>
+            <textarea id="copropMovObservaciones" placeholder="Notas para revisión y autorización..."></textarea>
+            <div class="coprop-acciones-predio" style="margin-top:8px;">
+              <button type="button" class="coprop-btn ok" onclick="solicitarMovimientoTitularidadCoprop()">📋 Registrar solicitud de movimiento</button>
+            </div>
           </div>
           <div id="copropMsgPredio" class="coprop-msg"></div>
         </div>
@@ -1103,6 +1298,17 @@ async function cargarCopropietariosPredio(clave = copropEstado.clave) {
     copropEstado.titularPadron = data.titular_padron || null;
     copropEstado.padronSincronizado = !!data.padron_sincronizado;
     copropEstado.condominio = data.condominio || null;
+    const tenenciaBase = String(
+      data.condominio?.regimen_padron?.tipo_codigo
+      || data.condominio?.regimen_padron?.valor_padron
+      || data.condominio?.tenencia
+      || "P"
+    ).trim().toUpperCase();
+    copropEstado.baseline = {
+      propietarios: JSON.parse(JSON.stringify(data.propietarios || [])),
+      tenencia: tenenciaBase,
+      nombre_padron: data.titular_padron?.nombre_completo || data.titular_padron?.nombre || ""
+    };
     renderCopropietariosPredio(data);
     renderCondominioInfoCoprop(data);
     renderPadronInfoCoprop(data);
@@ -1209,13 +1415,72 @@ async function sincronizarCopropietariosPredio() {
 }
 
 async function guardarPorcentajesCopropiedad() {
+  return solicitarMovimientoTitularidadCoprop();
+}
+
+async function agregarCopropietarioPredio(idPersona, porcentaje = null) {
   try {
-    await sincronizarCopropietariosPredio();
-    msgCoprop("copropMsgPredio", "Porcentajes guardados correctamente.", true);
-    await cargarCopropietariosPredio(copropEstado.clave);
-    await refrescarVistaPredioActivo(copropEstado.clave);
+    const id = Number(idPersona);
+    if ((copropEstado.propietarios || []).some(p => Number(p.id_persona) === id)) {
+      msgCoprop("copropMsgPredio", "Esta persona ya está asignada al predio.", false);
+      return;
+    }
+
+    const persona = await resolverPersonaCatalogo(id);
+    copropEstado.seleccionCatalogo = persona;
+    const nuevo = Object.assign({}, persona, { id_persona: id });
+    const props = copropEstado.propietarios || [];
+
+    if (!props.length) {
+      nuevo.tipo_titularidad = "PROPIETARIO";
+      nuevo.porcentaje_propiedad = porcentaje ?? 100;
+      props.push(nuevo);
+    } else {
+      nuevo.tipo_titularidad = "COPROPIETARIO";
+      if (sumaCopropiedadLocal() >= 99.99) {
+        nuevo.porcentaje_propiedad = 0;
+        props.push(nuevo);
+        repartirPorcentajesCopropiedad();
+      } else {
+        nuevo.porcentaje_propiedad = porcentaje ?? porcentajeDefaultNuevoCopropietario();
+        props.push(nuevo);
+      }
+    }
+
+    copropEstado.propietarios = props;
+    renderCopropietariosPredio();
+    msgCoprop(
+      "copropMsgPredio",
+      requiereSolicitudMovimientoTitularidad()
+        ? "Titular agregado en borrador. Registre la solicitud de movimiento para aplicar."
+        : "Propietario agregado. Revisa que el total sea 100%.",
+      true
+    );
   } catch (e) {
-    msgCoprop("copropMsgPredio", e.message || "Error al guardar porcentajes.", false);
+    msgCoprop("copropMsgPredio", e.message || "Error al agregar propietario.", false);
+  }
+}
+
+async function quitarCopropietarioPredio(idPersona) {
+  if (!confirm("¿Quitar este propietario del borrador del predio?")) return;
+
+  try {
+    const id = Number(idPersona);
+    copropEstado.propietarios = (copropEstado.propietarios || []).filter(p => Number(p.id_persona) !== id);
+    if (copropEstado.propietarios.length === 1) {
+      copropEstado.propietarios[0].tipo_titularidad = "PROPIETARIO";
+      copropEstado.propietarios[0].porcentaje_propiedad = 100;
+    }
+    renderCopropietariosPredio();
+    msgCoprop(
+      "copropMsgPredio",
+      requiereSolicitudMovimientoTitularidad()
+        ? "Titular quitado del borrador. Registre la solicitud de movimiento para aplicar."
+        : "Propietario quitado. Revisa porcentajes.",
+      true
+    );
+  } catch (e) {
+    msgCoprop("copropMsgPredio", e.message || "Error al quitar propietario.", false);
   }
 }
 
@@ -1376,83 +1641,6 @@ async function resolverPersonaCatalogo(idPersona) {
   } catch (e) {}
 
   return { id_persona: id };
-}
-
-async function agregarCopropietarioPredio(idPersona, porcentaje = null) {
-  try {
-    const id = Number(idPersona);
-    if ((copropEstado.propietarios || []).some(p => Number(p.id_persona) === id)) {
-      msgCoprop("copropMsgPredio", "Esta persona ya está asignada al predio.", false);
-      return;
-    }
-
-    const sumaActual = sumaCopropiedadLocal();
-    const yaHayTitularAl100 = sumaActual >= 99.99 && (copropEstado.propietarios || []).length > 0;
-
-    if (yaHayTitularAl100) {
-      const prev = [...(copropEstado.propietarios || [])];
-      const persona = await resolverPersonaCatalogo(id);
-      copropEstado.seleccionCatalogo = persona;
-      const nuevo = { ...persona };
-      nuevo.id_persona = id;
-      nuevo.tipo_titularidad = "COPROPIETARIO";
-      nuevo.porcentaje_propiedad = 0;
-      copropEstado.propietarios.push(nuevo);
-      repartirPorcentajesCopropiedad();
-      try {
-        await sincronizarCopropietariosPredio();
-      } catch (syncErr) {
-        copropEstado.propietarios = prev;
-        renderCopropietariosPredio();
-        throw syncErr;
-      }
-      msgCoprop("copropMsgPredio", "Copropietario agregado. Porcentajes repartidos automáticamente al 100%.", true);
-      await cargarCopropietariosPredio(copropEstado.clave);
-      await refrescarVistaPredioActivo(copropEstado.clave);
-      return;
-    }
-
-    const pct = porcentaje ?? porcentajeDefaultNuevoCopropietario();
-    const tipo = (copropEstado.propietarios || []).length === 0 ? "PROPIETARIO" : "COPROPIETARIO";
-
-    const r = await fetch(`${API}/predios/${encodeURIComponent(copropEstado.clave)}/propietarios`, {
-      method: "POST",
-      headers: authJsonHeaders(),
-      body: JSON.stringify({
-        id_persona: id,
-        porcentaje_propiedad: Number(pct),
-        tipo_titularidad: tipo
-      })
-    });
-
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(extraerMensajeApi(data, "No se pudo agregar propietario al predio."));
-
-    msgCoprop("copropMsgPredio", "Propietario agregado. Revisa que el total sea 100%.", true);
-    await cargarCopropietariosPredio(copropEstado.clave);
-    await refrescarVistaPredioActivo(copropEstado.clave);
-  } catch (e) {
-    msgCoprop("copropMsgPredio", e.message || "Error al agregar propietario.", false);
-  }
-}
-
-async function quitarCopropietarioPredio(idPersona) {
-  if (!confirm("¿Quitar este propietario del predio?")) return;
-
-  try {
-    const r = await fetch(`${API}/predios/${encodeURIComponent(copropEstado.clave)}/propietarios/${encodeURIComponent(idPersona)}`, {
-      method: "DELETE",
-      headers: authHeaders()
-    });
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) throw new Error(extraerMensajeApi(data, "No se pudo quitar propietario."));
-
-    msgCoprop("copropMsgPredio", "Propietario quitado. Revisa porcentajes.", true);
-    await cargarCopropietariosPredio(copropEstado.clave);
-    await refrescarVistaPredioActivo(copropEstado.clave);
-  } catch (e) {
-    msgCoprop("copropMsgPredio", e.message || "Error al quitar propietario.", false);
-  }
 }
 
 function cambiarTipoPersonaCoprop() {

@@ -214,6 +214,7 @@ function buildFichaColoniaMapScript(featuresJson, mapaInicialJson) {
     window.__coloniaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaColoniasWms,capaPredios,capaPredio,capaColonia};
     window.__coloniaVistaUsuario=false;
     if(typeof inicializarOrdenCapasFichaColonia==="function")inicializarOrdenCapasFichaColonia();
+    if(typeof actualizarCapasFichaColonia==="function")actualizarCapasFichaColonia();
 
     function marcarVistaUsuarioColonia(){window.__coloniaVistaUsuario=true;}
     targetEl.addEventListener("wheel",marcarVistaUsuarioColonia,{passive:true});

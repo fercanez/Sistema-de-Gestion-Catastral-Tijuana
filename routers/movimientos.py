@@ -12,7 +12,8 @@ from pydantic import BaseModel
 from auth.acl import normalizar_rol
 from auth.dependencies import obtener_usuario_actual
 from database import get_conn, columnas_tabla, asegurar_tabla_predio_condominio
-from routers.padron import CODIGOS_TENENCIA_PADRON, normalizar_codigo_tenencia
+from routers.movimientos_aplicar_helpers import aplicar_propietarios_desde_movimiento
+from routers.padron import CODIGOS_TENENCIA_PADRON, _aplicar_tenencia_predio, normalizar_codigo_tenencia
 
 router = APIRouter(tags=["movimientos"])
 
@@ -790,17 +791,36 @@ def aplicar_movimiento_padron(
                 estado_ant = mov["estado"]
 
                 if tipo in ["CAMBIO_NOMBRE", "CAMBIO_TITULARIDAD"]:
+                    datos_nuevos_aplica = _json_dict(mov.get("datos_nuevos"))
+                    datos_anteriores_aplica = _json_dict(mov.get("datos_anteriores"))
+                    res_propietarios = {}
+
+                    if tipo == "CAMBIO_TITULARIDAD":
+                        lista_prop = datos_nuevos_aplica.get("propietarios")
+                        if isinstance(lista_prop, list) and lista_prop:
+                            res_propietarios = aplicar_propietarios_desde_movimiento(cur, clave, lista_prop)
+
+                        tenencia_nueva = datos_nuevos_aplica.get("tenencia")
+                        if tenencia_nueva:
+                            asegurar_tabla_predio_condominio(cur, conn)
+                            _aplicar_tenencia_predio(
+                                cur,
+                                clave,
+                                normalizar_codigo_tenencia(str(tenencia_nueva)),
+                                usuario,
+                            )
+
                     nuevo_nombre = (
                         valor_detalle(detalles, "nombre_propietario")
                         or valor_detalle(detalles, "nombre_completo")
                         or valor_detalle(detalles, "propietario")
                     )
                     if not nuevo_nombre:
-                        datos_nuevos = _json_dict(mov.get("datos_nuevos"))
                         nuevo_nombre = (
-                            datos_nuevos.get("nombre_propietario")
-                            or datos_nuevos.get("nombre_completo")
-                            or datos_nuevos.get("propietario")
+                            datos_nuevos_aplica.get("nombre_propietario")
+                            or datos_nuevos_aplica.get("nombre_completo")
+                            or datos_nuevos_aplica.get("propietario")
+                            or res_propietarios.get("nombre_principal")
                         )
                     if tipo == "CAMBIO_TITULARIDAD" and not nuevo_nombre and clave:
                         nuevo_nombre = _aplicar_titularidad_desde_relaciones(cur, clave)
@@ -823,7 +843,6 @@ def aplicar_movimiento_padron(
 
                     rfc_nuevo = valor_detalle(detalles, "rfc")
                     tipo_persona_nuevo = valor_detalle(detalles, "tipo_persona")
-                    datos_nuevos_aplica = _json_dict(mov.get("datos_nuevos"))
                     if not rfc_nuevo:
                         rfc_nuevo = datos_nuevos_aplica.get("rfc")
                     if not tipo_persona_nuevo:
@@ -886,15 +905,32 @@ def aplicar_movimiento_padron(
                         ) VALUES (%s,%s,%s,%s,%s,%s,%s);
                     """, (clave, movimiento_id, tipo, anterior.get("nombre_completo"), nuevo_nombre, mov.get("motivo"), usuario))
 
+                    accion_aud = "APLICAR_CAMBIO_TITULARIDAD" if tipo == "CAMBIO_TITULARIDAD" else "APLICAR_CAMBIO_NOMBRE"
+                    detalle_aud = (
+                        "Titularidad/copropietarios aplicados al predio"
+                        if tipo == "CAMBIO_TITULARIDAD"
+                        else "Cambio aplicado a padron_2026.nombre_completo"
+                    )
                     _registrar_auditoria_aplicar(
-                        cur, movimiento_id, clave, "APLICAR_CAMBIO_NOMBRE", estado_ant,
-                        "Cambio aplicado a padron_2026.nombre_completo",
-                        {"valor_anterior": anterior.get("nombre_completo"), "valor_nuevo": nuevo_nombre},
+                        cur, movimiento_id, clave, accion_aud, estado_ant,
+                        detalle_aud,
+                        {
+                            "valor_anterior": anterior.get("nombre_completo"),
+                            "valor_nuevo": nuevo_nombre,
+                            "propietarios": res_propietarios,
+                            "tenencia_anterior": datos_anteriores_aplica.get("tenencia"),
+                            "tenencia_nueva": datos_nuevos_aplica.get("tenencia"),
+                        },
                         usuario, ip,
                     )
                     mov_final = actualizar_estado_aplicado(cur, movimiento_id, usuario)
                     conn.commit()
-                    return _ok_aplicar("Cambio de nombre aplicado al padron", mov_final, actualizado)
+                    msg_ok = (
+                        "Cambio de titularidad aplicado al padron"
+                        if tipo == "CAMBIO_TITULARIDAD"
+                        else "Cambio de nombre aplicado al padron"
+                    )
+                    return _ok_aplicar(msg_ok, mov_final, actualizado)
 
                 if tipo in [
                     "CAMBIO_SUPERFICIE", "CAMBIO_CONSTRUCCION", "CAMBIO_USO_SUELO",

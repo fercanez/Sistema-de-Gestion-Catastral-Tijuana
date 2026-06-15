@@ -143,6 +143,7 @@ async function crearMovimientoPadron() {
 
     await cargarMovimientosPadron(clave);
 
+    cerrarModalMovimientoPadron();
     if (typeof abrirModalSeguimientoMovimiento === "function") {
       abrirModalSeguimientoMovimiento(mov);
     }
@@ -591,9 +592,17 @@ function pintarEtapasSeguimiento(estado) {
   });
 }
 
+function cerrarModalesBloqueoSeguimiento() {
+  document.getElementById("modalAplicarMovimiento")?.classList.add("oculto");
+  document.getElementById("modalMovimientoPadron")?.classList.add("oculto");
+  document.getElementById("modalCopropietarios")?.classList.add("oculto");
+}
+
 function abrirModalSeguimientoMovimiento(mov) {
   const modal = document.getElementById("modalSeguimientoMovimiento");
   if (!modal) return;
+
+  cerrarModalesBloqueoSeguimiento();
 
   movimientoSeguimientoActual = mov || {};
   registrarMovimientoEnCache(mov);
@@ -675,6 +684,7 @@ function abrirModalAplicarMovimiento(mov) {
   const modal = document.getElementById("modalAplicarMovimiento");
   if (!modal) return;
 
+  document.getElementById("modalMovimientoPadron")?.classList.add("oculto");
   movimientoAplicarActual = mov || {};
 
   const setTxt = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v || "---"; };
@@ -750,6 +760,9 @@ async function confirmarAplicarMovimientoModal() {
       "ok"
     );
 
+    const movActualizado = Object.assign({}, mov, data.movimiento || {}, { estado: "APLICADO" });
+    registrarMovimientoEnCache(movActualizado);
+
     await cargarMovimientosPadron(mov.clave_catastral || null);
 
     if (document.getElementById("modalGestorMovimientos") && !document.getElementById("modalGestorMovimientos").classList.contains("oculto")) {
@@ -769,7 +782,14 @@ async function confirmarAplicarMovimientoModal() {
       }, 400);
     }
 
-    setTimeout(cerrarModalAplicarMovimiento, 1200);
+    cerrarModalAplicarMovimiento();
+    cerrarModalMovimientoPadron();
+    document.getElementById("modalCopropietarios")?.classList.add("oculto");
+
+    if (typeof abrirModalSeguimientoMovimiento === "function") {
+      abrirModalSeguimientoMovimiento(movActualizado);
+      if (mov.id) await cargarDetalleSeguimientoMovimiento(mov.id);
+    }
 
   } catch (e) {
     console.error("Error aplicando movimiento:", e);
@@ -1893,12 +1913,10 @@ async function guardarModalMovimientoPadron() {
       await cargarMovimientosPadron(clave || datosNuevos.clave_catastral);
     }
 
-    setTimeout(function() {
-      cerrarModalMovimientoPadron();
-      if (typeof abrirModalSeguimientoMovimiento === "function") {
-        abrirModalSeguimientoMovimiento(mov);
-      }
-    }, 700);
+    cerrarModalMovimientoPadron();
+    if (typeof abrirModalSeguimientoMovimiento === "function") {
+      abrirModalSeguimientoMovimiento(mov);
+    }
 
   } catch (e) {
     setMovPadronMensaje(e.message || String(e), false);

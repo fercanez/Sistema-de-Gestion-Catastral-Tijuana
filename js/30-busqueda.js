@@ -103,7 +103,9 @@ function detectarTipoBusquedaActiva() {
   const calle = (document.getElementById("calleInput")?.value || "").trim();
   const numero = (document.getElementById("numeroInput")?.value || "").trim();
   const colonia = (document.getElementById("coloniaInput")?.value || "").trim();
+  const folio = (document.getElementById("folioRealInput")?.value || "").trim();
 
+  if (folio) return "folio";
   if (clave) return "clave";
   if (nombre) return "nombre";
   if (calle || numero || colonia) return "direccion";
@@ -169,18 +171,19 @@ function mostrarAvisoTotalResultados(total, cargados, limiteUsado = null) {
   }
 }
 
-function construirUrlBusqueda(clave, nombre, colonia, calle, numero, limite) {
+function construirUrlBusqueda(clave, nombre, colonia, calle, numero, folio, limite) {
   return `${API}/padron/busqueda-avanzada?` +
     `clave=${encodeURIComponent(clave)}` +
     `&nombre=${encodeURIComponent(nombre)}` +
     `&colonia=${encodeURIComponent(colonia)}` +
     `&calle=${encodeURIComponent(calle)}` +
     `&numero=${encodeURIComponent(numero)}` +
+    `&folio_real=${encodeURIComponent(folio)}` +
     `&limite=${limite}`;
 }
 
-async function pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, limite) {
-  const url = construirUrlBusqueda(clave, nombre, colonia, calle, numero, limite);
+async function pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, limite) {
+  const url = construirUrlBusqueda(clave, nombre, colonia, calle, numero, folio, limite);
   const r = await fetch(url, { cache: "no-store", headers: authHeaders() });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const data = await r.json();
@@ -189,7 +192,7 @@ async function pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, limi
 }
 
 function limpiarBusquedaCatastral() {
-  ["claveInput", "nombreInput", "coloniaInput", "calleInput", "numeroInput"].forEach(function(id) {
+  ["claveInput", "nombreInput", "coloniaInput", "calleInput", "numeroInput", "folioRealInput"].forEach(function(id) {
     const el = document.getElementById(id);
     if (el) el.value = "";
   });
@@ -239,6 +242,7 @@ function limpiarBusquedaCatastral() {
   if (typeof sincronizarClavesMovimientoConPredioActivo === "function") {
     sincronizarClavesMovimientoConPredioActivo();
   }
+  if (typeof limpiarMovimientosPredioAcciones === "function") limpiarMovimientosPredioAcciones();
 
   document.getElementById("claveInput")?.focus();
 }
@@ -249,6 +253,7 @@ async function buscarAvanzado() {
   const colonia = document.getElementById("coloniaInput").value.trim();
   const calle = document.getElementById("calleInput").value.trim();
   const numero = document.getElementById("numeroInput").value.trim();
+  const folio = document.getElementById("folioRealInput")?.value?.trim().replace(/\s+/g, "") || "";
 
   const tipoBusqueda = detectarTipoBusquedaActiva();
   limpiarContornoSeleccion();
@@ -257,10 +262,10 @@ async function buscarAvanzado() {
     let data = null;
 
     try {
-      data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, 5000);
+      data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, 5000);
     } catch (e5000) {
       console.warn("Búsqueda con límite 5000 falló; reintentando con 100.", e5000);
-      data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, 100);
+      data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, 100);
     }
 
     let resultados = deduplicarResultadosPadron(data.resultados || []);
@@ -272,7 +277,7 @@ async function buscarAvanzado() {
     // Si el backend respondió 0 con 5000, reintenta con 100 para evitar falso negativo.
     if (data.__limite_usado === 5000 && total === 0 && resultados.length === 0) {
       try {
-        const data100 = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, 100);
+        const data100 = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, 100);
         if ((data100.resultados || []).length > 0 || Number(data100.total || 0) > 0) {
           data = data100;
           resultados = deduplicarResultadosPadron(data100.resultados || []);
@@ -339,7 +344,7 @@ async function buscarAvanzado() {
 }
 
 function registrarEnterBusquedas() {
-  ["claveInput", "nombreInput", "coloniaInput", "calleInput", "numeroInput"].forEach(function(id) {
+  ["claveInput", "nombreInput", "coloniaInput", "calleInput", "numeroInput", "folioRealInput"].forEach(function(id) {
     const input = document.getElementById(id);
     if (input) {
       input.addEventListener("keyup", function(e) {
@@ -472,8 +477,11 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
         claveSeleccionadaActual = claveNorm;
         const debeZoomPre = claveNorm !== claveAnterior && !geometriaVisibleEnVista(geomPre);
         if (debeZoomPre) {
-          programarZoomPredioSeleccionado(geomPre, {}, seq);
-          zoomYaAplicado = true;
+          const enMovPre = typeof enModoMovimientosCatastrales === "function" && enModoMovimientosCatastrales();
+          if (!enMovPre) {
+            programarZoomPredioSeleccionado(geomPre, {}, seq);
+            zoomYaAplicado = true;
+          }
         }
       }
     } catch (e) {
@@ -537,6 +545,9 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
   if (seq !== seleccionPredioSeq) return;
 
   document.getElementById("claveInput").value = claveNorm;
+  if (typeof actualizarMovimientosPredioAcciones === "function") {
+    actualizarMovimientosPredioAcciones(claveNorm);
+  }
   sincronizarClavesMovimientoConPredioActivo();
   actualizarBreadcrumbPredio(claveNorm, window.predioSeleccionado || ficha);
 
@@ -554,7 +565,12 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
   }
 
   if (debeHacerZoom && geomParaZoom) {
-    programarZoomPredioSeleccionado(geomParaZoom, {}, seq);
+    const enMov = typeof enModoMovimientosCatastrales === "function" && enModoMovimientosCatastrales();
+    if (enMov && typeof activarVistaContextoPredioMovimientos === "function") {
+      await activarVistaContextoPredioMovimientos(geomParaZoom, claveNorm, window.predioSeleccionado || ficha);
+    } else {
+      programarZoomPredioSeleccionado(geomParaZoom, {}, seq);
+    }
   }
 
   if (typeof activarCapasPredioSeleccionado === "function" &&

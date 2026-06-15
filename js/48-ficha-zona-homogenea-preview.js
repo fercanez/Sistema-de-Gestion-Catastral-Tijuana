@@ -313,6 +313,7 @@ function buildFichaZonaMapScript(featuresJson, mapaInicialJson) {
     window.__zonaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaZonasWms,capaPredios,capaPredio,capaZona};
     window.__zonaVistaUsuario=false;
     if(typeof inicializarOrdenCapasFichaZona==="function")inicializarOrdenCapasFichaZona();
+    if(typeof actualizarCapasFichaZona==="function")actualizarCapasFichaZona();
     initClickZonaPreview();
     function marcarVistaUsuarioZona(){window.__zonaVistaUsuario=true;}
     targetEl.addEventListener("wheel",marcarVistaUsuarioZona,{passive:true});
@@ -378,6 +379,10 @@ function buildFichaZonaMapScript(featuresJson, mapaInicialJson) {
     document.body.appendChild(s);
   }
   function toggleLayerPanelZona(){document.getElementById("zonaLayerPanel")?.classList.toggle("oculto");}
+  function actualizarCapasFichaZona(){
+    ["predio","zona","zonasWms","prediosWms"].forEach(toggleCapaFichaZona);
+  }
+  window.actualizarCapasFichaZona=actualizarCapasFichaZona;
   function cambiarBaseFichaZona(){
     const c=window.__zonaPreviewCapas;if(!c)return;
     const v=document.querySelector('input[name="zonaBasemap"]:checked')?.value||"googleHybrid";

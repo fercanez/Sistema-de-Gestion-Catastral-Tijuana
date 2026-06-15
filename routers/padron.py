@@ -14,7 +14,7 @@ from pydantic import BaseModel, Field
 from psycopg2.extras import execute_values
 
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
-from database import get_conn, asegurar_tabla_predio_condominio
+from database import get_conn, asegurar_tabla_predio_condominio, asegurar_columna_folio_real_padron
 
 try:
     from database import get_geonode_conn
@@ -64,6 +64,7 @@ SQL_SELECT_PADRON_UNICO = """
         p.porcentaje_tasa,
         p.condominio,
         p.descripcion_uso,
+        NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') AS folio_real,
         CASE WHEN g.id IS NOT NULL AND g.geom IS NOT NULL THEN TRUE ELSE FALSE END AS dibujado
 """
 
@@ -118,6 +119,7 @@ def busqueda_avanzada(
     colonia: str = Query("", max_length=150),
     calle: str = Query("", max_length=150),
     numero: str = Query("", max_length=50),
+    folio_real: str = Query("", max_length=32),
     limite: int = Query(100, ge=1, le=5000),
     usuario_actual: dict = Depends(obtener_usuario_actual)
 ):
@@ -128,6 +130,9 @@ def busqueda_avanzada(
         colonia_stripped = (colonia or "").strip()
         calle_stripped = (calle or "").strip()
         numero_txt = (numero or "").strip()
+        folio_stripped = re.sub(r"\s+", "", str(folio_real or "").strip())
+        if folio_stripped.endswith(".0") and folio_stripped[:-2].isdigit():
+            folio_stripped = folio_stripped[:-2]
 
         # Búsqueda por nombre tolerante: cada palabra debe aparecer (en cualquier
         # orden) dentro del titular/razón social. Evita fallos por orden de
@@ -143,8 +148,43 @@ def busqueda_avanzada(
 
         conn = get_conn()
         cur = conn.cursor()
+        asegurar_columna_folio_real_padron(cur, conn)
 
-        # Atajo: solo clave (sin nombre/colonia/calle/número) → igualdad exacta,
+        # Atajo: solo folio real (numérico exacto).
+        solo_folio = (
+            folio_stripped
+            and not clave_stripped
+            and not nombre_tokens
+            and not colonia_stripped
+            and not calle_stripped
+            and not numero_txt
+        )
+        if solo_folio:
+            cur.execute(f"""
+                {SQL_SELECT_PADRON_UNICO}
+                {SQL_FROM_PADRON_UNICO}
+                WHERE NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') = %s
+                ORDER BY p.clave_catastral
+                LIMIT %s;
+            """, (folio_stripped, limite))
+            rows = cur.fetchall()
+            cur.execute(f"""
+                SELECT COUNT(*) AS total
+                {SQL_FROM_PADRON_UNICO}
+                WHERE NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') = %s;
+            """, (folio_stripped,))
+            total_row = cur.fetchone()
+            total = total_row["total"] if total_row else 0
+            cur.close()
+            conn.close()
+            return {
+                "total": total,
+                "limite": limite,
+                "cargados": len(rows),
+                "resultados": rows,
+            }
+
+        # Atajo: solo clave (sin nombre/colonia/calle/número/folio) → igualdad exacta,
         # sin COUNT(*) sobre ~441k filas (evita 10–20 s de espera).
         solo_clave = (
             clave_stripped
@@ -152,6 +192,7 @@ def busqueda_avanzada(
             and not colonia_stripped
             and not calle_stripped
             and not numero_txt
+            and not folio_stripped
         )
         if solo_clave:
             clave_norm = clave_stripped.upper()
@@ -216,6 +257,7 @@ def busqueda_avanzada(
                 AND (%s = '' OR UPPER(p.colonia) LIKE UPPER(%s))
                 AND (%s = '' OR UPPER(p.calle) LIKE UPPER(%s))
                 AND (%s = '' OR CAST(p.numof AS TEXT) = %s)
+                AND (%s = '' OR NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') = %s)
         """
 
         params_where = (
@@ -223,7 +265,8 @@ def busqueda_avanzada(
             *nombre_params,
             colonia_stripped, colonia_like,
             calle_stripped, calle_like,
-            numero_txt, numero_txt
+            numero_txt, numero_txt,
+            folio_stripped, folio_stripped
         )
 
         # Total real SIN LIMIT para que el frontend conozca todos los predios encontrados.
@@ -263,6 +306,7 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
     try:
         conn = get_conn()
         cur = conn.cursor()
+        asegurar_columna_folio_real_padron(cur, conn)
 
         cur.execute(f"""
             SELECT
@@ -295,6 +339,7 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
                 p.condominio,
                 p.adeudo_2026,
                 p.adeudo_total,
+                NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') AS folio_real,
                 tit.id_persona,
                 tit.tipo_persona,
                 tit.rfc,
@@ -347,6 +392,7 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
                     NULL::TEXT AS condominio,
                     NULL::NUMERIC AS adeudo_2026,
                     NULL::NUMERIC AS adeudo_total,
+                    NULL::TEXT AS folio_real,
                     NULL::INTEGER AS id_persona,
                     NULL::TEXT AS tipo_persona,
                     NULL::TEXT AS rfc,
@@ -667,6 +713,8 @@ def predios_cercanos(
                 TRIM(COALESCE(pad.calle, '')) AS calle,
                 TRIM(COALESCE(pad.numint, '')) AS numint,
                 TRIM(COALESCE(pad.letra, '')) AS letra,
+                COALESCE(pad.adeudo_total, 0) AS adeudo_total,
+                COALESCE(pad.adeudo_2026, 0) AS adeudo_2026,
                 ROUND(ST_Distance(ST_PointOnSurface(p.geom), pt.geom)::numeric, 1)::float AS distancia_m,
                 p.sup_documental AS superficie,
                 ST_AsGeoJSON(ST_Transform(p.geom, 4326))::json AS geometry
@@ -2944,6 +2992,187 @@ def plantilla_import_adeudos(
         content=contenido,
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="plantilla_adeudos_2026.csv"'},
+    )
+
+
+class ImportFolioFila(BaseModel):
+    clave_catastral: str
+    folio_real: Optional[str] = None
+
+
+class ImportFoliosPayload(BaseModel):
+    filas: List[ImportFolioFila]
+
+
+def _normalizar_clave_folio(clave: str) -> str:
+    return re.sub(r"\s+", "", str(clave or "").strip().upper())
+
+
+def _parsear_folio_real(raw) -> Optional[str]:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s or s in ("0", "0.0", "000000", "---", "N/A", "NA", "S/N"):
+        return None
+    if s.endswith(".0") and s[:-2].isdigit():
+        s = s[:-2]
+    return s[:32]
+
+
+def _importar_lote_folios(cur, filas: list):
+    valores = []
+    omitidos = 0
+    errores = []
+
+    for i, raw in enumerate(filas):
+        if isinstance(raw, dict):
+            clave = _normalizar_clave_folio(raw.get("clave_catastral") or "")
+            folio_raw = raw.get("folio_real")
+        else:
+            clave = _normalizar_clave_folio(getattr(raw, "clave_catastral", "") or "")
+            folio_raw = getattr(raw, "folio_real", None)
+
+        if not clave:
+            omitidos += 1
+            continue
+
+        folio = _parsear_folio_real(folio_raw)
+        valores.append((clave, folio))
+
+    if not valores:
+        return {
+            "actualizados": 0,
+            "no_encontrados": 0,
+            "no_encontrados_muestra": [],
+            "con_folio": 0,
+            "sin_folio": 0,
+            "omitidos": omitidos,
+            "errores": errores,
+            "procesados": len(filas),
+            "unicos": 0,
+        }
+
+    cur.execute("""
+        CREATE TEMP TABLE tmp_folios_import (
+            clave_catastral VARCHAR(30) PRIMARY KEY,
+            folio_real VARCHAR(32)
+        ) ON COMMIT DROP;
+    """)
+
+    execute_values(
+        cur,
+        """
+        INSERT INTO tmp_folios_import (clave_catastral, folio_real)
+        VALUES %s
+        ON CONFLICT (clave_catastral) DO UPDATE
+            SET folio_real = EXCLUDED.folio_real
+        """,
+        valores,
+        page_size=2000,
+    )
+
+    cur.execute("""
+        UPDATE catalogos.padron_2026 p
+        SET folio_real = t.folio_real
+        FROM tmp_folios_import t
+        WHERE UPPER(TRIM(p.clave_catastral)) = t.clave_catastral
+    """)
+    actualizados = cur.rowcount
+
+    cur.execute("""
+        SELECT COUNT(*)::int AS total
+        FROM tmp_folios_import t
+        WHERE t.folio_real IS NOT NULL
+    """)
+    con_folio = int(cur.fetchone()["total"])
+
+    cur.execute("""
+        SELECT COUNT(*)::int AS total
+        FROM tmp_folios_import t
+        WHERE t.folio_real IS NULL
+    """)
+    sin_folio = int(cur.fetchone()["total"])
+
+    cur.execute("""
+        SELECT t.clave_catastral
+        FROM tmp_folios_import t
+        LEFT JOIN catalogos.padron_2026 p
+            ON UPPER(TRIM(p.clave_catastral)) = t.clave_catastral
+        WHERE p.clave_catastral IS NULL
+        LIMIT 50
+    """)
+    no_enc_muestra = [r["clave_catastral"] for r in cur.fetchall()]
+
+    cur.execute("""
+        SELECT COUNT(*) AS total
+        FROM tmp_folios_import t
+        LEFT JOIN catalogos.padron_2026 p
+            ON UPPER(TRIM(p.clave_catastral)) = t.clave_catastral
+        WHERE p.clave_catastral IS NULL
+    """)
+    no_encontrados = int(cur.fetchone()["total"])
+
+    return {
+        "actualizados": actualizados,
+        "no_encontrados": no_encontrados,
+        "no_encontrados_muestra": no_enc_muestra,
+        "con_folio": con_folio,
+        "sin_folio": sin_folio,
+        "omitidos": omitidos,
+        "errores": errores,
+        "procesados": len(filas),
+        "unicos": len(valores),
+    }
+
+
+@router.post("/padron/mantenimiento/folios/importar")
+def importar_folios_padron(
+    payload: ImportFoliosPayload,
+    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+):
+    """Importa folio real del expediente al padrón 2026 por clave catastral."""
+    if not payload.filas:
+        raise HTTPException(status_code=400, detail="No hay filas para importar")
+    if len(payload.filas) > 20000:
+        raise HTTPException(status_code=400, detail="Maximo 20,000 filas por lote")
+
+    conn = get_conn()
+    cur = conn.cursor()
+    usuario = usuario_actual.get("usuario") or "sistema"
+    try:
+        asegurar_columna_folio_real_padron(cur, conn)
+        resumen = _importar_lote_folios(cur, payload.filas)
+        conn.commit()
+        registrar_auditoria(
+            usuario,
+            "IMPORTAR_FOLIOS_PADRON",
+            "catalogos.padron_2026",
+            (
+                f"procesados={resumen.get('procesados')}; "
+                f"actualizados={resumen.get('actualizados')}; "
+                f"con_folio={resumen.get('con_folio')}; "
+                f"no_encontrados={resumen.get('no_encontrados')}"
+            ),
+        )
+        return {"ok": True, **resumen}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.get("/padron/mantenimiento/folios/plantilla.csv")
+def plantilla_import_folios(
+    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+):
+    """Plantilla CSV para importación de folio real por clave."""
+    contenido = "CLAVE_CATASTRAL,FOLIO_REAL\nA1003001,194026\nA1004003,0\n"
+    return Response(
+        content=contenido,
+        media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": 'attachment; filename="plantilla_folios_reales.csv"'},
     )
 
 

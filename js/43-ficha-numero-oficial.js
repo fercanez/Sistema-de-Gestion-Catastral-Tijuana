@@ -263,6 +263,7 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
     window.__numofVistaUsuario=false;
     window.__numofCentradoInicial=false;
     if(typeof inicializarOrdenCapasFichaNumof==="function")inicializarOrdenCapasFichaNumof();
+    if(typeof actualizarCapasFichaNumof==="function")actualizarCapasFichaNumof();
 
     function marcarVistaUsuarioNumof(){
       window.__numofVistaUsuario=true;

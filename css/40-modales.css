@@ -1039,7 +1039,7 @@
 .modal-seguimiento-overlay {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 5100 !important;
+  z-index: 5300 !important;
   background: linear-gradient(135deg, rgba(112, 51, 65, .78), rgba(15, 23, 42, .74)) !important;
   backdrop-filter: blur(5px) !important;
   display: flex !important;
@@ -1224,7 +1224,7 @@
 .modal-aplicar-overlay {
   position: fixed !important;
   inset: 0 !important;
-  z-index: 5200 !important;
+  z-index: 5400 !important;
   background: linear-gradient(135deg, rgba(112, 51, 65, .78), rgba(15, 23, 42, .74)) !important;
   backdrop-filter: blur(5px) !important;
   display: flex !important;
@@ -2483,7 +2483,7 @@ body.tabla-resultados-visible {
   z-index: 4 !important;
 }
 
-.app-institucional .ficha-sobre-mapa {
+.app-institucional .ficha-sobre-mapa:not(.ficha-libre) {
   position: absolute !important;
   top: 10px !important;
   right: 10px !important;
@@ -2501,6 +2501,28 @@ body.tabla-resultados-visible {
   flex-direction: column !important;
   overflow: hidden !important;
   background: #fff !important;
+}
+
+.app-institucional .ficha-sobre-mapa.ficha-libre {
+  position: absolute !important;
+  right: auto !important;
+  bottom: auto !important;
+  min-width: 260px !important;
+  min-height: 180px !important;
+  max-width: calc(100% - 20px) !important;
+  max-height: calc(100% - 20px) !important;
+  flex: none !important;
+  z-index: 1200 !important;
+  border-radius: 12px !important;
+  box-shadow: 0 10px 28px rgba(15, 23, 42, 0.28) !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background: #fff !important;
+}
+
+.app-institucional .ficha-sobre-mapa.ficha-libre .ficha-flotante-body {
+  max-height: none !important;
 }
 
 .app-institucional .ficha-sobre-mapa.oculto {

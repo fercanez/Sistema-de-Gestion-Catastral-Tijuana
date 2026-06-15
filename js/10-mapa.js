@@ -418,17 +418,56 @@ function obtenerPaddingMapaFit() {
   let right = margen;
   let bottom = margen;
 
-  // Solo reservar espacio para elementos que flotan SOBRE el canvas del mapa (p. ej. la ficha).
-  // El panel lateral y la tabla ya reducen el tamaño del mapa vía flex; no sumar su ancho aquí.
-  const fichaVisible = ficha && !ficha.classList.contains("oculto");
-  if (fichaVisible && mapEl) {
+  if (mapEl) {
     const mapRect = mapEl.getBoundingClientRect();
-    const fichaRect = ficha.getBoundingClientRect();
-    if (mapRect.width > 0 && fichaRect.width > 0) {
-      const solapeDerecho = Math.max(0, mapRect.right - fichaRect.left);
-      right = Math.max(right, solapeDerecho + 32);
+    const mapW = mapRect.width || 0;
+
+    if (typeof enModoMovimientosCatastrales === "function" && enModoMovimientosCatastrales()) {
+      const card = document.getElementById("movimientosModuloCard");
+      const capasPanel = document.getElementById("movimientosCapasPanel");
+
+      let visibleLeft = mapRect.left;
+      let visibleRight = mapRect.right;
+
+      if (card && !card.classList.contains("minimizado") && !card.classList.contains("oculto")) {
+        const cardRect = card.getBoundingClientRect();
+        visibleLeft = Math.max(visibleLeft, cardRect.right);
+        const solapeIzq = Math.max(0, cardRect.right - mapRect.left);
+        left = Math.max(left, solapeIzq + 56);
+      }
+
+      if (capasPanel && !capasPanel.classList.contains("oculto")) {
+        const capasRect = capasPanel.getBoundingClientRect();
+        visibleRight = Math.min(visibleRight, capasRect.left);
+        const solapeDerCapas = Math.max(0, mapRect.right - capasRect.left);
+        right = Math.max(right, solapeDerCapas + 28);
+      }
+
+      const fichaVisibleMov = ficha && !ficha.classList.contains("oculto");
+      if (fichaVisibleMov) {
+        visibleRight = Math.min(visibleRight, ficha.getBoundingClientRect().left);
+      }
+
+      if (mapW > 0 && visibleRight > visibleLeft + 80) {
+        const visibleCenterRel = ((visibleLeft + visibleRight) / 2) - mapRect.left;
+        const deltaPad = (2 * visibleCenterRel) - mapW;
+        if (deltaPad > 0) {
+          left = Math.max(left, margen + deltaPad);
+        } else if (deltaPad < 0) {
+          right = Math.max(right, margen - deltaPad);
+        }
+      }
     } else {
-      right = ficha.classList.contains("minimizada") ? 360 : 430;
+      const fichaVisible = ficha && !ficha.classList.contains("oculto");
+      if (fichaVisible) {
+        const fichaRect = ficha.getBoundingClientRect();
+        if (mapW > 0 && fichaRect.width > 0) {
+          const solapeDerecho = Math.max(0, mapRect.right - fichaRect.left);
+          right = Math.max(right, solapeDerecho + 32);
+        } else {
+          right = ficha.classList.contains("minimizada") ? 360 : 430;
+        }
+      }
     }
   }
 
@@ -815,7 +854,18 @@ function aplicarCapasVistaGeneral() {
   refrescarLeyendaDespuesDeCambio();
 }
 
+function aplicarCapasModuloMovimientos() {
+  aplicarCapasVistaGeneral();
+}
+
 function activarCapasPredioSeleccionado() {
+  activarCapasPredioConsulta({ opacidadPredios: 100 });
+}
+
+function activarCapasPredioConsulta(opciones) {
+  opciones = opciones || {};
+  const opacidad = Number(opciones.opacidadPredios ?? 100);
+
   capaOrdenEstado.predios = 55;
   capaOrdenEstado.colonias = 45;
   aplicarZIndexCapa("predios");
@@ -824,9 +874,137 @@ function activarCapasPredioSeleccionado() {
   const chkPred = document.getElementById("chkPrediosWms");
   if (chkPred) chkPred.checked = true;
   aplicarVisibilidadCapaWms(prediosWmsLayer, true);
+  prediosWmsLayer.setOpacity(opacidad / 100);
+
+  const opPred = document.getElementById("opPredios");
+  const opPredTxt = document.getElementById("opPrediosTxt");
+  if (opPred) opPred.value = String(opacidad);
+  if (opPredTxt) opPredTxt.textContent = opacidad + "%";
+  if (typeof cambiarOpacidadCapa === "function") cambiarOpacidadCapa("predios", opacidad);
+
+  if (opciones.activarFiscal !== false) {
+    const chkFiscal = document.getElementById("chkAdeudosFiscal");
+    if (chkFiscal && !chkFiscal.checked) {
+      chkFiscal.checked = true;
+      if (typeof toggleAdeudosFiscal === "function") toggleAdeudosFiscal();
+    }
+  }
 
   refrescarLeyendaDespuesDeCambio();
 }
+
+async function cargarPrediosCercanosConFiscal(geometry, clavePrincipal, minPredios) {
+  minPredios = minPredios || 20;
+  if (!geometry || typeof map === "undefined" || !map) return null;
+
+  if (typeof inicializarLayerResultadosBusqueda === "function") {
+    inicializarLayerResultadosBusqueda();
+  }
+  if (typeof resultadosSource === "undefined" || !resultadosSource) return null;
+
+  const claveNorm = String(clavePrincipal || "").trim().toUpperCase();
+  const center = ol.extent.getCenter(geometry.getExtent());
+  const lonLat = ol.proj.toLonLat(center);
+  const format = new ol.format.GeoJSON({
+    dataProjection: "EPSG:4326",
+    featureProjection: "EPSG:3857"
+  });
+
+  let radio = 55;
+  let geojson = null;
+  for (let intento = 0; intento < 7; intento++) {
+    try {
+      const r = await fetch(
+        `${API}/predios/cercanos?lon=${encodeURIComponent(lonLat[0])}&lat=${encodeURIComponent(lonLat[1])}&radio=${radio}&_=${Date.now()}`,
+        { cache: "no-store", headers: authHeaders() }
+      );
+      if (!r.ok) break;
+      geojson = await r.json();
+      const total = (geojson?.features || []).length;
+      if (total >= minPredios || radio >= 320) break;
+      radio += 45;
+    } catch (e) {
+      break;
+    }
+  }
+
+  resultadosSource.clear();
+  const features = [];
+  (geojson?.features || []).forEach(function(f) {
+    if (!f?.geometry) return;
+    try {
+      const feature = format.readFeature(f);
+      const props = f.properties || {};
+      const clave = String(props.clave_catastral || feature.get("clave_catastral") || "").trim().toUpperCase();
+      feature.set("clave_catastral", clave);
+      feature.set("adeudo_total", Number(props.adeudo_total || 0));
+      feature.set("info_fiscal", true);
+      feature.set("seleccionado", clave && clave === claveNorm);
+      feature.set("principal", clave && clave === claveNorm);
+      resultadosSource.addFeature(feature);
+      features.push(feature);
+    } catch (err) {}
+  });
+
+  if (claveNorm && !features.some(function(f) {
+    return String(f.get("clave_catastral") || "").toUpperCase() === claveNorm;
+  })) {
+    try {
+      const principal = new ol.Feature({ geometry: geometry.clone ? geometry.clone() : geometry });
+      principal.set("clave_catastral", claveNorm);
+      principal.set("adeudo_total", Number(ficha?.adeudo_total || 0));
+      principal.set("info_fiscal", true);
+      principal.set("seleccionado", true);
+      principal.set("principal", true);
+      resultadosSource.addFeature(principal);
+      features.push(principal);
+    } catch (err) {}
+  }
+
+  if (typeof toggleAdeudosFiscal === "function") {
+    const chkFiscal = document.getElementById("chkAdeudosFiscal");
+    if (chkFiscal && !chkFiscal.checked) {
+      chkFiscal.checked = true;
+      toggleAdeudosFiscal();
+    } else if (chkFiscal?.checked) {
+      toggleAdeudosFiscal();
+    }
+  }
+
+  const extent = resultadosSource.getExtent();
+  return { extent: extent, total: features.length, radio: radio };
+}
+
+async function activarVistaContextoPredioMovimientos(geometry, clave, ficha) {
+  if (!geometry) return false;
+
+  activarCapasPredioConsulta({ opacidadPredios: 60, activarFiscal: true });
+
+  const ctx = await cargarPrediosCercanosConFiscal(geometry, clave, 20);
+  let extentObjetivo = ctx?.extent;
+
+  if (!extentObjetivo || ol.extent.isEmpty(extentObjetivo)) {
+    extentObjetivo = expandirExtentGeometria(geometry, 2.8, 120) || geometry.getExtent();
+  } else {
+    const extSel = geometry.getExtent();
+    extentObjetivo = ol.extent.extend(extentObjetivo.slice(), extSel);
+    const w = ol.extent.getWidth(extentObjetivo);
+    const h = ol.extent.getHeight(extentObjetivo);
+    extentObjetivo = ol.extent.buffer(extentObjetivo, Math.max(w * 0.12, h * 0.12, 35));
+  }
+
+  marcarIgnorarClickMapa(900);
+  map.getView().fit(extentObjetivo, {
+    padding: obtenerPaddingMapaFit(),
+    duration: 650,
+    maxZoom: (ctx?.total || 0) >= 20 ? 17.2 : 17.8
+  });
+
+  if (clave) aplicarSeleccionVisualPredio(clave, geometry);
+  refrescarLeyendaDespuesDeCambio();
+  return true;
+}
+window.activarVistaContextoPredioMovimientos = activarVistaContextoPredioMovimientos;
 
 function restaurarCapasModuloCompleto() {
   const chkPred = document.getElementById("chkPrediosWms");
@@ -1040,14 +1218,25 @@ async function cargarDashboardFiscal() {
 }
 
 
+function tieneFolioRealPredio(p) {
+  const f = String(p?.folio_real ?? "").trim();
+  return !!f && f !== "0";
+}
+
+function indicadorRppcExpediente(p) {
+  const ok = Boolean(p?.tiene_rppc) || tieneFolioRealPredio(p);
+  return indicador(ok);
+}
+
 function porcentajeExpediente(p) {
+  const tieneRppc = Boolean(p?.tiene_rppc) || tieneFolioRealPredio(p);
   const campos = [
     p.tiene_documentos,
     p.tiene_cartografia,
     p.tiene_construccion,
     p.tiene_avaluo,
     p.tiene_inspeccion,
-    p.tiene_rppc,
+    tieneRppc,
     p.tiene_fotografia,
     p.tiene_cedula,
     p.tiene_historial
