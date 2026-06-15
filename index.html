@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
   <link rel="stylesheet" href="css/40-modales.css?v=20260614_v157_ficha_movible">
   <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v150_panel_ocultar">
-  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260613_v133_zona_datos">
+  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260611_v164_rppc_api">
   <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
   <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
   <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
@@ -612,7 +612,7 @@
 <button id="btnMostrarLeyenda" class="btn-mostrar-leyenda oculto" onclick="toggleLeyendaDinamica()">Leyenda</button>
 
 <footer id="footerInstitucional" class="footer-institucional">
-  <span id="footerVersionInst">SGC v162 · Capas fichas audit</span>
+  <span id="footerVersionInst">SGC v164 · RPPC API</span>
   <span class="footer-inst-copy">© Municipio de Mexicali, Baja California</span>
   <button type="button" class="footer-inst-ayuda" onclick="alert('Manual de usuario en preparación.')">Ayuda</button>
 </footer>
@@ -756,6 +756,7 @@
       <button type="button" class="popup-predio-tab active" data-tab="datos-generales" onclick="mostrarPopupPredioTab('datos-generales')">Datos Generales</button>
       <button type="button" class="popup-predio-tab" data-tab="construcciones" onclick="mostrarPopupPredioTab('construcciones')">Construcciones/Medidas</button>
       <button type="button" class="popup-predio-tab" data-tab="archivo" onclick="mostrarPopupPredioTab('archivo')">Archivo Digitalizado</button>
+      <button type="button" class="popup-predio-tab" data-tab="documento-rppc" onclick="mostrarPopupPredioTab('documento-rppc')">Documento RPPC</button>
       <button type="button" class="popup-predio-tab" data-tab="numeros-oficiales" onclick="mostrarPopupPredioTab('numeros-oficiales')">Números Oficiales</button>
       <button type="button" class="popup-predio-tab" data-tab="carta-urbana" onclick="mostrarPopupPredioTab('carta-urbana')">Carta Urbana 2040</button>
       <button type="button" class="popup-predio-tab" data-tab="colonia" onclick="mostrarPopupPredioTab('colonia')">Colonia/Fraccionamiento</button>
@@ -765,6 +766,7 @@
       <div id="popupTabDatosGenerales" class="popup-tab-panel active" data-tab="datos-generales"></div>
       <div id="popupTabConstrucciones" class="popup-tab-panel" data-tab="construcciones"></div>
       <div id="popupTabArchivo" class="popup-tab-panel" data-tab="archivo"></div>
+      <div id="popupTabDocumentoRppc" class="popup-tab-panel" data-tab="documento-rppc"></div>
       <div id="popupTabNumerosOficiales" class="popup-tab-panel" data-tab="numeros-oficiales"></div>
       <div id="popupTabCartaUrbana" class="popup-tab-panel" data-tab="carta-urbana"></div>
       <div id="popupTabColonia" class="popup-tab-panel" data-tab="colonia"></div>
@@ -1088,7 +1090,8 @@
 <script src="js/20-ficha.js?v=20260611_v159_folio_rppc"></script>
 <script src="js/40-pdf.js?v=20260611_v160_ficha_folio"></script>
 <script src="js/30-busqueda.js?v=20260611_v159_folio_busqueda"></script>
-<script src="js/05-modulos-portal.js?v=20260611_v159_folio_popup"></script>
+<script src="js/05-modulos-portal.js?v=20260611_v163_pestana_rppc"></script>
+<script src="js/52-popup-rppc.js?v=20260611_v164_rppc_api"></script>
 <script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
 <script src="js/46-ficha-mapa-capas.js?v=20260611_v162_capas_audit"></script>
 <script src="js/07-numeros-oficiales.js?v=20260613_v121_capas_unif"></script>

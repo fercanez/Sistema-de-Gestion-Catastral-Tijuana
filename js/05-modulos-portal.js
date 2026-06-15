@@ -1319,6 +1319,9 @@ async function pintarPopupPredioTab(tabId, p) {
   if (tabAnterior === "zona-homogenea" && tabId !== "zona-homogenea") {
     if (typeof destruirPopupZonaHomogenea === "function") destruirPopupZonaHomogenea();
   }
+  if (tabAnterior === "documento-rppc" && tabId !== "documento-rppc") {
+    if (typeof destruirPopupRppc === "function") destruirPopupRppc();
+  }
   document.querySelectorAll(".popup-predio-tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tabId);
   });
@@ -1336,6 +1339,14 @@ async function pintarPopupPredioTab(tabId, p) {
         "Cuadro de construcción, medición de vértices y edición cartográfica — módulo en desarrollo.");
     }
   }   else if (tabId === "archivo") await pintarPopupTabArchivo(clave, p);
+  else if (tabId === "documento-rppc") {
+    if (typeof pintarPopupTabRppc === "function") {
+      await pintarPopupTabRppc(clave, p);
+    } else {
+      pintarPopupTabPlaceholder("popupTabDocumentoRppc", "Documento RPPC",
+        "Visor del Registro Público de la Propiedad — recargue la página con Ctrl+F5.");
+    }
+  }
   else if (tabId === "numeros-oficiales") {
     if (typeof pintarPopupTabNumerosOficiales === "function") {
       await pintarPopupTabNumerosOficiales(p);
@@ -1416,6 +1427,7 @@ async function abrirPopupPredioWorkspace(ficha) {
 }
 
 function cerrarPopupPredioWorkspace() {
+  if (typeof destruirPopupRppc === "function") destruirPopupRppc();
   document.getElementById("popupPredioWorkspace")?.classList.add("oculto");
   document.body.classList.remove("popup-predio-abierto");
   destruirPopupMiniMap();

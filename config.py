@@ -23,3 +23,41 @@ DB_PORT = os.getenv("DB_PORT")
 DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
+GEONODE_DB_NAME = os.getenv("GEONODE_DB_NAME")
+
+# RPPC Baja California (enlace remoto)
+RPPC_BASE_URL = os.getenv(
+    "RPPC_BASE_URL",
+    "https://rppcweb.ebajacalifornia.gob.mx/rppweb/produccion",
+).rstrip("/")
+RPPC_USUARIO = os.getenv("RPPC_USUARIO", "").strip()
+RPPC_PASSWORD = os.getenv("RPPC_PASSWORD", "").strip()
+RPPC_SESSION_PATH = os.getenv(
+    "RPPC_SESSION_PATH",
+    "/rppapp/inicio?remoto=1",
+).strip()
+RPPC_REPORTES_PREFIX = os.getenv(
+    "RPPC_REPORTES_PREFIX",
+    "/WebAPI/Servicios/Reportes",
+).strip().rstrip("/")
+RPPC_MOVIMIENTOS_ACTION = os.getenv(
+    "RPPC_MOVIMIENTOS_ACTION",
+    "ObtenerLoteByFolioReal",
+).strip()
+RPPC_INSCRIPCIONES_ACTION = os.getenv(
+    "RPPC_INSCRIPCIONES_ACTION",
+    "obtenerInscripcionesPart",
+).strip()
+RPPC_DOCUMENTO_ACTION = os.getenv(
+    "RPPC_DOCUMENTO_ACTION",
+    "ObtenerDocumentoPorId",
+).strip()
+RPPC_TIMEOUT_POST = int(os.getenv("RPPC_TIMEOUT_POST", "40"))
+RPPC_TIMEOUT_GET = int(os.getenv("RPPC_TIMEOUT_GET", "60"))
+RPPC_SSL_LEGACY = os.getenv("RPPC_SSL_LEGACY", "1").strip().lower() in ("1", "true", "yes", "si")
+RPPC_SSL_SECLEVEL = os.getenv("RPPC_SSL_SECLEVEL", "1" if RPPC_SSL_LEGACY else "2").strip()
+RPPC_SSL_MIN_TLS = os.getenv("RPPC_SSL_MIN_TLS", "1.2" if not RPPC_SSL_LEGACY else "1.0").strip()
+# Cookie RPPC opcional para pruebas / sesión manual.
+# IMPORTANTE: no subir esta variable a GitHub; debe vivir solo en .env del servidor.
+RPPC_COOKIE = os.getenv("RPPC_COOKIE", "").strip()
+
