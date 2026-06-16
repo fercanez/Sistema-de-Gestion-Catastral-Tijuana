@@ -1,10 +1,42 @@
 """Helpers para aplicar movimientos al padron."""
 import json
+import re
 from typing import Any, Optional
 
 from fastapi import HTTPException
 
 from database import columnas_tabla
+
+_RE_Y_COP = re.compile(r"\bY\s+COP\.?\b", re.I)
+
+
+def _upper_clean(val) -> str:
+    return str(val or "").strip().upper()
+
+
+def formatear_nombre_visible_titularidad(propietarios: list) -> str:
+    """Nombre para padrón/ficha: titular principal + ' Y COP.' si hay copropietarios."""
+    rows = [p for p in (propietarios or []) if isinstance(p, dict)]
+    if not rows:
+        return ""
+
+    def sort_key(row):
+        tipo = _upper_clean(row.get("tipo_titularidad"))
+        pct = float(row.get("porcentaje_propiedad") or 0)
+        return (0 if tipo == "PROPIETARIO" else 1, -pct)
+
+    orden = sorted(rows, key=sort_key)
+    principal = orden[0]
+    nombre = _upper_clean(principal.get("nombre_completo") or principal.get("nombre"))
+    if not nombre:
+        return ""
+
+    hay_cop = len(rows) > 1 or any(
+        _upper_clean(r.get("tipo_titularidad")) == "COPROPIETARIO" for r in rows
+    )
+    if hay_cop and not _RE_Y_COP.search(nombre):
+        return f"{nombre} Y COP."
+    return nombre
 
 CAMPO_A_PADRON = {
     "superficie_documental": "sup_documental",
@@ -243,13 +275,21 @@ def _validar_porcentaje_propiedad(valor) -> float:
 
 def _nombre_persona_por_id(cur, id_persona: int) -> Optional[str]:
     cur.execute("""
-        SELECT COALESCE(NULLIF(TRIM(nombre), ''), NULLIF(TRIM(razon_social), '')) AS nombre
+        SELECT
+            tipo_persona,
+            nombre,
+            apellido_paterno,
+            apellido_materno,
+            razon_social
         FROM catalogos.personas
         WHERE id_persona = %s
         LIMIT 1;
     """, (id_persona,))
     row = cur.fetchone()
-    return row.get("nombre") if row else None
+    if not row:
+        return None
+    from routers.propietarios import construir_nombre_persona_v28
+    return construir_nombre_persona_v28(row) or None
 
 
 def aplicar_propietarios_desde_movimiento(cur, clave: str, propietarios_raw: list) -> dict:
@@ -331,8 +371,16 @@ def aplicar_propietarios_desde_movimiento(cur, clave: str, propietarios_raw: lis
         """, vals)
         insertados.append(cur.fetchone())
 
-    principal = max(propietarios, key=lambda x: (x["porcentaje_propiedad"], -propietarios.index(x)))
-    nombre_principal = _nombre_persona_por_id(cur, principal["id_persona"])
+    principal = next(
+        (p for p in propietarios if p["tipo_titularidad"] == "PROPIETARIO"),
+        propietarios[0],
+    )
+    for p in propietarios:
+        if not p.get("nombre_completo"):
+            p["nombre_completo"] = _nombre_persona_por_id(cur, p["id_persona"])
+    nombre_principal = formatear_nombre_visible_titularidad(propietarios)
+    if not nombre_principal:
+        nombre_principal = _nombre_persona_por_id(cur, principal["id_persona"])
 
     return {
         "propietarios_aplicados": len(insertados),

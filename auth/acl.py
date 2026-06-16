@@ -1,11 +1,15 @@
 ACL_BACKEND = {
     "admin": {
         "administrar_usuarios", "ver_auditoria", "editar_cartografia",
-        "editar_catastro", "editar_fiscal", "ver_fiscal", "ver_expediente",
+        "editar_catastro", "editar_titularidad", "editar_nombre_contribuyente",
+        "solicitar_movimientos", "aplicar_movimientos",
+        "editar_fiscal", "ver_fiscal", "ver_expediente",
         "ver_documentos", "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
     },
     "supervisor": {
         "ver_auditoria", "editar_cartografia", "editar_catastro",
+        "editar_titularidad", "editar_nombre_contribuyente",
+        "solicitar_movimientos", "aplicar_movimientos",
         "editar_fiscal", "ver_fiscal", "ver_expediente", "ver_documentos",
         "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
     },
@@ -14,7 +18,9 @@ ACL_BACKEND = {
         "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
     },
     "catastro": {
-        "editar_catastro", "ver_expediente", "ver_documentos",
+        "editar_catastro", "editar_titularidad", "editar_nombre_contribuyente",
+        "solicitar_movimientos",
+        "ver_expediente", "ver_documentos",
         "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
     },
     "fiscalizacion": {

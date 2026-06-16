@@ -9,8 +9,9 @@ from fastapi.responses import JSONResponse
 from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
 
-from auth.acl import normalizar_rol
+from auth.acl import normalizar_rol, usuario_tiene_permiso
 from auth.dependencies import obtener_usuario_actual
+from auth.permisos_operativos import exigir_permiso_usuario, validar_permiso_tipo_movimiento
 from database import get_conn, columnas_tabla, asegurar_tabla_predio_condominio
 from routers.movimientos_aplicar_helpers import aplicar_propietarios_desde_movimiento
 from routers.padron import CODIGOS_TENENCIA_PADRON, _aplicar_tenencia_predio, normalizar_codigo_tenencia
@@ -456,20 +457,33 @@ def _registrar_auditoria_aplicar(cur, movimiento_id: int, clave: str, accion: st
 
 def _aplicar_titularidad_desde_relaciones(cur, clave: str):
     cols_pp = columnas_tabla(cur, "catastro", "predio_propietario")
-    if "vigente" in cols_pp:
-        cur.execute("""
-            SELECT nombre_completo FROM catastro.predio_propietario
-            WHERE UPPER(TRIM(clave_catastral::text)) = UPPER(TRIM(%s)) AND vigente = TRUE
-            ORDER BY titular_principal DESC NULLS LAST LIMIT 1;
-        """, (clave,))
-    else:
-        cur.execute("""
-            SELECT nombre_completo FROM catastro.predio_propietario
-            WHERE UPPER(TRIM(clave_catastral::text)) = UPPER(TRIM(%s))
-            ORDER BY id_persona DESC LIMIT 1;
-        """, (clave,))
+    if "vigente" not in cols_pp:
+        return None
+    order_parts = []
+    if "titular_principal" in cols_pp:
+        order_parts.append("CASE WHEN COALESCE(pp.titular_principal, FALSE) THEN 0 ELSE 1 END")
+    order_parts.extend([
+        "CASE WHEN pp.tipo_titularidad = 'PROPIETARIO' THEN 0 ELSE 1 END",
+        "pp.porcentaje_propiedad DESC NULLS LAST",
+        "pp.id_predio_propietario",
+    ])
+    order = ", ".join(order_parts)
+    cur.execute(f"""
+        SELECT TRIM(CONCAT_WS(' ',
+            NULLIF(TRIM(per.apellido_paterno), ''),
+            NULLIF(TRIM(per.apellido_materno), ''),
+            NULLIF(TRIM(COALESCE(per.nombre, per.razon_social)), '')
+        )) AS nombre_completo
+        FROM catastro.predio_propietario pp
+        LEFT JOIN catalogos.personas per ON per.id_persona = pp.id_persona
+        WHERE UPPER(TRIM(pp.clave_catastral::text)) = UPPER(TRIM(%s))
+          AND pp.vigente = TRUE
+        ORDER BY {order}
+        LIMIT 1;
+    """, (clave,))
     row = cur.fetchone()
-    return row.get("nombre_completo") if row else None
+    nombre = (row.get("nombre_completo") or "").strip() if row else ""
+    return nombre or None
 
 
 class MovimientoPadronCreate(BaseModel):
@@ -494,22 +508,30 @@ class AplicarMovimientoBody(BaseModel):
 
 
 def permiso_movimientos(usuario_actual: dict = Depends(obtener_usuario_actual)):
-    rol = normalizar_rol(usuario_actual.get("rol"))
-    if rol not in ["admin", "supervisor", "catastro"]:
+    if not any(
+        usuario_tiene_permiso(usuario_actual, p)
+        for p in (
+            "solicitar_movimientos",
+            "aplicar_movimientos",
+            "consulta",
+            "ver_expediente",
+            "editar_catastro",
+        )
+    ):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Se requiere rol admin, supervisor o catastro para movimientos catastrales",
+            detail="Sin permiso para consultar movimientos catastrales",
         )
     return usuario_actual
 
 
+def permiso_solicitar_movimientos(usuario_actual: dict = Depends(obtener_usuario_actual)):
+    exigir_permiso_usuario(usuario_actual, "solicitar_movimientos")
+    return usuario_actual
+
+
 def permiso_aplicar_movimientos(usuario_actual: dict = Depends(obtener_usuario_actual)):
-    rol = normalizar_rol(usuario_actual.get("rol"))
-    if rol not in ["admin", "supervisor"]:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Solo admin o supervisor pueden autorizar/aplicar movimientos",
-        )
+    exigir_permiso_usuario(usuario_actual, "aplicar_movimientos")
     return usuario_actual
 
 
@@ -555,7 +577,8 @@ def listar_movimientos(
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(sql, params)
-            return cur.fetchall()
+            rows = cur.fetchall()
+            return enriquecer_movimientos_lista(cur, rows)
 
 
 @router.get("/movimientos/{movimiento_id}")
@@ -580,16 +603,17 @@ def obtener_movimiento(movimiento_id: int, usuario_actual: dict = Depends(permis
             auditoria = cur.fetchall()
             mov["detalles"] = detalles
             mov["auditoria"] = auditoria
-            return mov
+            return enriquecer_movimiento_respuesta(cur, mov)
 
 
 @router.post("/movimientos")
 def crear_movimiento(
     payload: MovimientoPadronCreate,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos),
+    usuario_actual: dict = Depends(permiso_solicitar_movimientos),
 ):
     tipo = (payload.tipo_movimiento or "").strip().upper()
+    validar_permiso_tipo_movimiento(usuario_actual, tipo)
     estado_inicial = "BORRADOR"
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -689,7 +713,8 @@ def historial_movimientos_clave(clave: str, usuario_actual: dict = Depends(permi
                    OR UPPER(TRIM(COALESCE(clave_catastral_nueva, ''))) = %s
                 ORDER BY fecha_solicitud DESC;
             """, (clave_norm, clave_norm, clave_norm))
-            return cur.fetchall()
+            rows = cur.fetchall()
+            return enriquecer_movimientos_lista(cur, rows)
 
 
 @router.get("/movimientos/historial/{clave}/numero-oficial")
@@ -754,6 +779,149 @@ def obtener_detalles_movimiento(cur, movimiento_id: int):
         WHERE movimiento_id = %s ORDER BY id;
     """, (movimiento_id,))
     return cur.fetchall()
+
+
+CAMPOS_TRAZA_MOVIMIENTO = (
+    "usuario_solicita",
+    "usuario_revisa",
+    "usuario_autoriza",
+    "usuario_aplica",
+    "usuario_cancela",
+    "fecha_solicitud",
+    "fecha_revision",
+    "fecha_autorizacion",
+    "fecha_aplicacion",
+    "fecha_cancelacion",
+)
+
+MAPA_USUARIO_NOMBRE_MOV = (
+    ("usuario_solicita", "nombre_solicita"),
+    ("usuario_revisa", "nombre_revisa"),
+    ("usuario_autoriza", "nombre_autoriza"),
+    ("usuario_aplica", "nombre_aplica"),
+    ("usuario_cancela", "nombre_cancela"),
+)
+
+
+def _fusionar_trazabilidad_movimiento(cur, mov: dict) -> dict:
+    if not mov or mov.get("id") is None:
+        return mov
+    cur.execute(
+        """
+        SELECT
+            usuario_solicita, usuario_revisa, usuario_autoriza, usuario_aplica, usuario_cancela,
+            fecha_solicitud, fecha_revision, fecha_autorizacion, fecha_aplicacion, fecha_cancelacion
+        FROM catastro.movimientos_padron
+        WHERE id = %s;
+        """,
+        (mov["id"],),
+    )
+    base = cur.fetchone() or {}
+    for campo in CAMPOS_TRAZA_MOVIMIENTO:
+        valor = base.get(campo)
+        if valor is not None and valor != "":
+            mov[campo] = valor
+    return mov
+
+
+def _enriquecer_nombres_usuarios(cur, registro: dict, campos=MAPA_USUARIO_NOMBRE_MOV) -> dict:
+    if not registro:
+        return registro
+    logins = sorted({
+        str(registro.get(col_u) or "").strip()
+        for col_u, _ in campos
+        if str(registro.get(col_u) or "").strip()
+    })
+    if not logins:
+        return registro
+    cur.execute(
+        """
+        SELECT usuario, nombre_completo
+        FROM seguridad.usuarios
+        WHERE usuario = ANY(%s);
+        """,
+        (logins,),
+    )
+    mapa = {
+        r["usuario"]: (r.get("nombre_completo") or r["usuario"])
+        for r in (cur.fetchall() or [])
+    }
+    for col_u, col_n in campos:
+        login = str(registro.get(col_u) or "").strip()
+        if login:
+            registro[col_n] = mapa.get(login, login)
+    return registro
+
+
+def enriquecer_movimiento_respuesta(cur, mov: dict) -> dict:
+    mov = _fusionar_trazabilidad_movimiento(cur, dict(mov or {}))
+    mov = _enriquecer_nombres_usuarios(cur, mov)
+    auditoria = mov.get("auditoria") or []
+    if auditoria:
+        mov["auditoria"] = [
+            _enriquecer_nombres_usuarios(cur, dict(item), [("usuario", "nombre_usuario")])
+            for item in auditoria
+        ]
+    return mov
+
+
+def enriquecer_movimientos_lista(cur, rows: list) -> list:
+    if not rows:
+        return rows
+
+    ids = [int(r["id"]) for r in rows if r.get("id") is not None]
+    trazas = {}
+    if ids:
+        cur.execute(
+            """
+            SELECT
+                id,
+                usuario_solicita, usuario_revisa, usuario_autoriza, usuario_aplica, usuario_cancela,
+                fecha_solicitud, fecha_revision, fecha_autorizacion, fecha_aplicacion, fecha_cancelacion
+            FROM catastro.movimientos_padron
+            WHERE id = ANY(%s);
+            """,
+            (ids,),
+        )
+        for row in cur.fetchall() or []:
+            trazas[int(row["id"])] = row
+
+    logins = set()
+    enriquecidos = []
+    for mov in rows:
+        item = dict(mov or {})
+        base = trazas.get(int(item.get("id") or 0), {})
+        for campo in CAMPOS_TRAZA_MOVIMIENTO:
+            valor = base.get(campo)
+            if valor is not None and valor != "":
+                item[campo] = valor
+        for col_u, _ in MAPA_USUARIO_NOMBRE_MOV:
+            login = str(item.get(col_u) or "").strip()
+            if login:
+                logins.add(login)
+        enriquecidos.append(item)
+
+    mapa = {}
+    if logins:
+        cur.execute(
+            """
+            SELECT usuario, nombre_completo
+            FROM seguridad.usuarios
+            WHERE usuario = ANY(%s);
+            """,
+            (sorted(logins),),
+        )
+        mapa = {
+            r["usuario"]: (r.get("nombre_completo") or r["usuario"])
+            for r in (cur.fetchall() or [])
+        }
+
+    for item in enriquecidos:
+        for col_u, col_n in MAPA_USUARIO_NOMBRE_MOV:
+            login = str(item.get(col_u) or "").strip()
+            if login:
+                item[col_n] = mapa.get(login, login)
+    return enriquecidos
 
 
 def actualizar_estado_aplicado(cur, movimiento_id: int, usuario: str):
@@ -827,19 +995,26 @@ def aplicar_movimiento_padron(
                     if not nuevo_nombre:
                         raise HTTPException(status_code=400, detail="No se encontro titular para aplicar.")
 
-                    cur.execute(
-                        "SELECT nombre_completo FROM catalogos.padron_2026 WHERE clave_catastral = %s LIMIT 1;",
-                        (clave,),
-                    )
-                    anterior = cur.fetchone()
-                    if not anterior:
-                        raise HTTPException(status_code=404, detail="No se encontro la clave en padron_2026")
+                    clave_norm = str(clave or "").strip().upper()
+                    anterior = _obtener_fila_padron(cur, clave_norm)
+                    nombre_anterior_padron = anterior.get("nombre_completo") if anterior else None
+                    padron_actualizado = False
+                    actualizado = None
 
-                    cur.execute("""
-                        UPDATE catalogos.padron_2026 SET nombre_completo = %s
-                        WHERE clave_catastral = %s RETURNING clave_catastral, nombre_completo;
-                    """, (nuevo_nombre, clave))
-                    actualizado = cur.fetchone()
+                    if anterior:
+                        cur.execute("""
+                            UPDATE catalogos.padron_2026 SET nombre_completo = %s
+                            WHERE UPPER(TRIM(clave_catastral)) = UPPER(TRIM(%s))
+                            RETURNING clave_catastral, nombre_completo;
+                        """, (nuevo_nombre, clave_norm))
+                        actualizado = cur.fetchone()
+                        padron_actualizado = bool(actualizado)
+                    else:
+                        actualizado = {
+                            "clave_catastral": clave_norm,
+                            "nombre_completo": nuevo_nombre,
+                            "padron_actualizado": False,
+                        }
 
                     rfc_nuevo = valor_detalle(detalles, "rfc")
                     tipo_persona_nuevo = valor_detalle(detalles, "tipo_persona")
@@ -850,18 +1025,19 @@ def aplicar_movimiento_padron(
 
                     cols_pp = columnas_tabla(cur, "catastro", "predio_propietario")
                     cols_per = columnas_tabla(cur, "catalogos", "personas")
+                    order_pp = "CASE WHEN pp.tipo_titularidad = 'PROPIETARIO' THEN 0 ELSE 1 END, pp.porcentaje_propiedad DESC NULLS LAST, pp.id_persona DESC"
                     if "vigente" in cols_pp:
-                        cur.execute("""
+                        cur.execute(f"""
                             SELECT pp.id_persona FROM catastro.predio_propietario pp
                             WHERE UPPER(TRIM(pp.clave_catastral::text)) = UPPER(TRIM(%s)) AND pp.vigente = TRUE
-                            ORDER BY pp.id_persona DESC LIMIT 1;
-                        """, (clave,))
+                            ORDER BY {order_pp} LIMIT 1;
+                        """, (clave_norm,))
                     else:
-                        cur.execute("""
+                        cur.execute(f"""
                             SELECT pp.id_persona FROM catastro.predio_propietario pp
                             WHERE UPPER(TRIM(pp.clave_catastral::text)) = UPPER(TRIM(%s))
-                            ORDER BY pp.id_persona DESC LIMIT 1;
-                        """, (clave,))
+                            ORDER BY {order_pp} LIMIT 1;
+                        """, (clave_norm,))
                     rel = cur.fetchone()
                     if rel and rel.get("id_persona"):
                         pp_set, pp_params = [], []
@@ -871,18 +1047,26 @@ def aplicar_movimiento_padron(
                         if tipo_persona_nuevo and "tipo_persona" in cols_pp:
                             pp_set.append("tipo_persona = %s")
                             pp_params.append(tipo_persona_nuevo)
-                        if nuevo_nombre and "nombre_completo" in cols_pp:
+                        if (
+                            tipo != "CAMBIO_TITULARIDAD"
+                            and nuevo_nombre
+                            and "nombre_completo" in cols_pp
+                        ):
                             pp_set.append("nombre_completo = %s")
                             pp_params.append(nuevo_nombre)
                         if pp_set:
-                            pp_params.extend([rel["id_persona"], clave])
+                            pp_params.extend([rel["id_persona"], clave_norm])
                             cur.execute(
                                 f"UPDATE catastro.predio_propietario SET {', '.join(pp_set)} "
                                 f"WHERE id_persona = %s AND UPPER(TRIM(clave_catastral::text)) = UPPER(TRIM(%s));",
                                 pp_params,
                             )
                         per_set, per_params = [], []
-                        if nuevo_nombre and "nombre" in cols_per:
+                        if (
+                            tipo != "CAMBIO_TITULARIDAD"
+                            and nuevo_nombre
+                            and "nombre" in cols_per
+                        ):
                             per_set.append("nombre = %s")
                             per_params.append(nuevo_nombre)
                         if rfc_nuevo and "rfc" in cols_per:
@@ -903,20 +1087,22 @@ def aplicar_movimiento_padron(
                             clave_catastral, movimiento_id, tipo_evento,
                             nombre_anterior, nombre_nuevo, motivo, usuario_modifica
                         ) VALUES (%s,%s,%s,%s,%s,%s,%s);
-                    """, (clave, movimiento_id, tipo, anterior.get("nombre_completo"), nuevo_nombre, mov.get("motivo"), usuario))
+                    """, (clave_norm, movimiento_id, tipo, nombre_anterior_padron, nuevo_nombre, mov.get("motivo"), usuario))
 
                     accion_aud = "APLICAR_CAMBIO_TITULARIDAD" if tipo == "CAMBIO_TITULARIDAD" else "APLICAR_CAMBIO_NOMBRE"
                     detalle_aud = (
                         "Titularidad/copropietarios aplicados al predio"
+                        + (" y padrón" if padron_actualizado else " (solo catastro; sin fila en padrón)")
                         if tipo == "CAMBIO_TITULARIDAD"
                         else "Cambio aplicado a padron_2026.nombre_completo"
                     )
                     _registrar_auditoria_aplicar(
-                        cur, movimiento_id, clave, accion_aud, estado_ant,
+                        cur, movimiento_id, clave_norm, accion_aud, estado_ant,
                         detalle_aud,
                         {
-                            "valor_anterior": anterior.get("nombre_completo"),
+                            "valor_anterior": nombre_anterior_padron,
                             "valor_nuevo": nuevo_nombre,
+                            "padron_actualizado": padron_actualizado,
                             "propietarios": res_propietarios,
                             "tenencia_anterior": datos_anteriores_aplica.get("tenencia"),
                             "tenencia_nueva": datos_nuevos_aplica.get("tenencia"),
@@ -925,11 +1111,14 @@ def aplicar_movimiento_padron(
                     )
                     mov_final = actualizar_estado_aplicado(cur, movimiento_id, usuario)
                     conn.commit()
-                    msg_ok = (
-                        "Cambio de titularidad aplicado al padron"
-                        if tipo == "CAMBIO_TITULARIDAD"
-                        else "Cambio de nombre aplicado al padron"
-                    )
+                    if tipo == "CAMBIO_TITULARIDAD":
+                        msg_ok = (
+                            "Cambio de titularidad aplicado al predio y padrón"
+                            if padron_actualizado
+                            else "Cambio de titularidad aplicado al predio (catálogo catastro; clave sin fila en padrón)"
+                        )
+                    else:
+                        msg_ok = "Cambio de nombre aplicado al padron"
                     return _ok_aplicar(msg_ok, mov_final, actualizado)
 
                 if tipo in [

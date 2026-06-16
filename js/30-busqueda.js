@@ -92,10 +92,11 @@ function deduplicarResultadosPadron(resultados) {
   (resultados || []).forEach(r => {
     const clave = String(r.clave_catastral || "").trim().toUpperCase();
     if (!clave) return;
-    if (!vistos.has(clave)) vistos.set(clave, r);
+    vistos.set(clave, r);
   });
   return Array.from(vistos.values());
 }
+window.deduplicarResultadosPadron = deduplicarResultadosPadron;
 
 function detectarTipoBusquedaActiva() {
   const clave = (document.getElementById("claveInput")?.value || "").trim();
@@ -256,14 +257,17 @@ async function buscarAvanzado() {
   const folio = document.getElementById("folioRealInput")?.value?.trim().replace(/\s+/g, "") || "";
 
   const tipoBusqueda = detectarTipoBusquedaActiva();
+  const soloClaveExacta = clave.length >= 8 && !nombre && !colonia && !calle && !numero && !folio;
   limpiarContornoSeleccion();
 
   try {
     let data = null;
+    const limiteInicial = soloClaveExacta ? 1 : 5000;
 
     try {
-      data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, 5000);
+      data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, limiteInicial);
     } catch (e5000) {
+      if (soloClaveExacta) throw e5000;
       console.warn("Búsqueda con límite 5000 falló; reintentando con 100.", e5000);
       data = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, 100);
     }
@@ -275,7 +279,7 @@ async function buscarAvanzado() {
     }
 
     // Si el backend respondió 0 con 5000, reintenta con 100 para evitar falso negativo.
-    if (data.__limite_usado === 5000 && total === 0 && resultados.length === 0) {
+    if (!soloClaveExacta && data.__limite_usado === 5000 && total === 0 && resultados.length === 0) {
       try {
         const data100 = await pedirBusquedaAvanzada(clave, nombre, colonia, calle, numero, folio, 100);
         if ((data100.resultados || []).length > 0 || Number(data100.total || 0) > 0) {
@@ -432,12 +436,7 @@ async function cargarFeaturePredio(claveNorm, geojsonPrefetch, seq, opciones) {
     || props.id_expediente !== undefined;
 
   if (tieneExpediente && !soloCartografia && !yaEsExpediente && !opciones.omitirExpediente) {
-    const exp = await fetchFeaturePredioOpcional(
-      `${API}/expediente/${encodeURIComponent(claveNorm)}?_=${ts}`
-    );
-    if (seq !== seleccionPredioSeq) return null;
-    const expNorm = normalizarFeaturePredioApi(exp, claveNorm);
-    if (expNorm) feature = expNorm;
+    enriquecerFeatureConExpedienteEnSegundoPlano(claveNorm, feature, seq);
   }
 
   if (geojsonPrefetch?.geometry) {
@@ -446,6 +445,30 @@ async function cargarFeaturePredio(claveNorm, geojsonPrefetch, seq, opciones) {
 
   guardarFeaturePredioEnCache(claveNorm, feature);
   return feature;
+}
+
+async function enriquecerFeatureConExpedienteEnSegundoPlano(claveNorm, feature, seq) {
+  const exp = await fetchFeaturePredioOpcional(
+    `${API}/expediente/${encodeURIComponent(claveNorm)}?_=${Date.now()}`
+  );
+  if (seq !== seleccionPredioSeq || !exp) return;
+  const expNorm = normalizarFeaturePredioApi(exp, claveNorm);
+  if (!expNorm) return;
+
+  feature.properties = Object.assign({}, feature.properties || {}, expNorm.properties || {});
+  if (expNorm.geometry && !feature.geometry) {
+    feature.geometry = expNorm.geometry;
+  }
+  guardarFeaturePredioEnCache(claveNorm, feature);
+  window.predioSeleccionado = feature.properties;
+
+  if (typeof pintarFicha === "function") {
+    pintarFicha(feature.properties);
+  }
+  if (document.body.classList.contains("popup-predio-abierto") &&
+      typeof actualizarPopupPredioHeader === "function") {
+    actualizarPopupPredioHeader(feature.properties);
+  }
 }
 
 async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {

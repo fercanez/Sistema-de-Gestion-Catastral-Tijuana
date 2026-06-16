@@ -7,8 +7,10 @@ from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
 
 from database import get_conn, columnas_tabla, asegurar_tabla_predio_condominio
-from auth.dependencies import obtener_usuario_actual
-from routers.movimientos import permiso_movimientos, permiso_aplicar_movimientos
+from auth.dependencies import requerir_permiso
+from auth.permisos_operativos import permiso_consulta_catastro
+from routers.movimientos import permiso_aplicar_movimientos
+from routers.movimientos_aplicar_helpers import formatear_nombre_visible_titularidad
 from routers.padron import (
     SQL_TIPO_CONDOMINIO,
     _etiqueta_tipo_condominio,
@@ -17,6 +19,10 @@ from routers.padron import (
 )
 
 router = APIRouter(tags=["propietarios"])
+
+_permiso_titularidad = requerir_permiso("editar_titularidad")
+_permiso_nombre_contribuyente = requerir_permiso("editar_nombre_contribuyente")
+_permiso_editar_catastro = requerir_permiso("editar_catastro")
 
 class PropietarioPersonaPayload(BaseModel):
     tipo_persona: str = "FISICA"
@@ -171,6 +177,121 @@ def nombre_persona_sql_v28(alias="p"):
     """
 
 
+def parse_nombre_padron_v28(nombre_completo):
+    texto = re.sub(r"\s+Y\s+COP\.?\s*$", "", upper_clean_v28(nombre_completo) or "", flags=re.I).strip()
+    partes = [p for p in texto.split() if p]
+    if len(partes) >= 3:
+        return {
+            "apellido_paterno": partes[0],
+            "apellido_materno": partes[1],
+            "nombre": " ".join(partes[2:]),
+        }
+    if len(partes) == 2:
+        return {"apellido_paterno": partes[0], "apellido_materno": None, "nombre": partes[1]}
+    if len(partes) == 1:
+        return {"apellido_paterno": partes[0], "apellido_materno": None, "nombre": None}
+    return {"apellido_paterno": None, "apellido_materno": None, "nombre": None}
+
+
+_RE_Y_COP_PERSONA = re.compile(r"\s+Y\s+COP\.?\s*$", re.I)
+
+
+def limpiar_sufijo_copropiedad_v28(nombre: Optional[str]) -> str:
+    return _RE_Y_COP_PERSONA.sub("", upper_clean_v28(nombre) or "").strip()
+
+
+def sanitizar_nombre_dado_v28(
+    nombre: Optional[str],
+    apellido_paterno: Optional[str] = None,
+    apellido_materno: Optional[str] = None,
+) -> str:
+    nm = limpiar_sufijo_copropiedad_v28(nombre)
+    ap = upper_clean_v28(apellido_paterno) or ""
+    am = upper_clean_v28(apellido_materno) or ""
+    prefijo = " ".join(x for x in [ap, am] if x)
+    if prefijo and nm:
+        if nm.startswith(prefijo + " "):
+            nm = nm[len(prefijo):].strip()
+        elif nm == prefijo:
+            nm = ""
+    return nm
+
+
+def normalizar_campos_persona_fisica_v28(
+    nombre: Optional[str],
+    apellido_paterno: Optional[str],
+    apellido_materno: Optional[str],
+):
+    ap = upper_clean_v28(apellido_paterno) or ""
+    am = upper_clean_v28(apellido_materno) or ""
+    nm = limpiar_sufijo_copropiedad_v28(nombre)
+
+    if not ap and not am and nm:
+        parsed = parse_nombre_padron_v28(nm)
+        ap = upper_clean_v28(parsed.get("apellido_paterno")) or ""
+        am = upper_clean_v28(parsed.get("apellido_materno")) or ""
+        nm = upper_clean_v28(parsed.get("nombre")) or ""
+
+    nm = sanitizar_nombre_dado_v28(nm, ap, am)
+    return nm or None, ap or None, am or None
+
+
+def construir_nombre_persona_v28(row: Optional[dict] = None, **kwargs) -> str:
+    data = dict(row or {})
+    data.update({k: v for k, v in kwargs.items() if v is not None})
+    tipo = upper_clean_v28(data.get("tipo_persona")) or "FISICA"
+    if tipo == "MORAL":
+        return upper_clean_v28(data.get("razon_social") or data.get("nombre_completo") or data.get("nombre")) or ""
+
+    nm, ap, am = normalizar_campos_persona_fisica_v28(
+        data.get("nombre"),
+        data.get("apellido_paterno"),
+        data.get("apellido_materno"),
+    )
+    partes = [x for x in [ap, am, nm] if x]
+    if partes:
+        return " ".join(partes)
+    return limpiar_sufijo_copropiedad_v28(data.get("nombre_completo") or data.get("nombre")) or ""
+
+
+def enriquecer_fila_persona_v28(row: Optional[dict]) -> Optional[dict]:
+    if not row:
+        return row
+    enriched = dict(row)
+    enriched["nombre_completo"] = construir_nombre_persona_v28(enriched)
+    return enriched
+
+
+def sanea_persona_en_bd_v28(cur, row: dict) -> dict:
+    """Corrige en catálogo nombres duplicados o con sufijo Y COP. heredado del padrón."""
+    if not row or not row.get("id_persona"):
+        return enriquecer_fila_persona_v28(row)
+    if upper_clean_v28(row.get("tipo_persona")) == "MORAL":
+        return enriquecer_fila_persona_v28(row)
+
+    nm, ap, am = normalizar_campos_persona_fisica_v28(
+        row.get("nombre"),
+        row.get("apellido_paterno"),
+        row.get("apellido_materno"),
+    )
+    actual_nm = upper_clean_v28(row.get("nombre")) or None
+    actual_ap = upper_clean_v28(row.get("apellido_paterno")) or None
+    actual_am = upper_clean_v28(row.get("apellido_materno")) or None
+    if (nm, ap, am) == (actual_nm, actual_ap, actual_am):
+        return enriquecer_fila_persona_v28(row)
+
+    cur.execute("""
+        UPDATE catalogos.personas
+        SET nombre = %s,
+            apellido_paterno = %s,
+            apellido_materno = %s
+        WHERE id_persona = %s
+        RETURNING *;
+    """, (nm, ap, am, row["id_persona"]))
+    fixed = cur.fetchone()
+    return enriquecer_fila_persona_v28(dict(fixed) if fixed else row)
+
+
 def condiciones_busqueda_persona_v28(alias="p", texto=""):
     tokens = [t for t in str(texto or "").split() if t]
     if not tokens:
@@ -206,21 +327,6 @@ def condiciones_busqueda_texto_col(col_expr, texto=""):
         params.append(f"%{token}%")
 
     return " AND ".join(partes), params
-
-
-def parse_nombre_padron_v28(nombre_completo):
-    partes = [p for p in str(nombre_completo or "").split() if p]
-    if len(partes) >= 3:
-        return {
-            "apellido_paterno": partes[0],
-            "apellido_materno": partes[1],
-            "nombre": " ".join(partes[2:]),
-        }
-    if len(partes) == 2:
-        return {"apellido_paterno": partes[0], "apellido_materno": None, "nombre": partes[1]}
-    if len(partes) == 1:
-        return {"apellido_paterno": partes[0], "apellido_materno": None, "nombre": None}
-    return {"apellido_paterno": None, "apellido_materno": None, "nombre": None}
 
 
 def condiciones_busqueda_padron_v28(paterno="", materno="", nombre="", razon_social="", q=""):
@@ -328,6 +434,9 @@ def titular_padron_sincronizado_v28(rows, titular_padron: str):
         return True
     if not rows:
         return False
+    esperado = formatear_nombre_visible_titularidad_v28(rows)
+    if esperado and esperado == titular:
+        return True
     for row in rows:
         nombre = upper_clean_v28(row.get("nombre_completo"))
         if not nombre:
@@ -335,6 +444,18 @@ def titular_padron_sincronizado_v28(rows, titular_padron: str):
         if nombre == titular or titular in nombre or nombre in titular:
             return True
     return False
+
+
+def formatear_nombre_visible_titularidad_v28(rows) -> str:
+    payload = []
+    for row in rows or []:
+        enriched = enriquecer_fila_persona_v28(dict(row))
+        payload.append({
+            "nombre_completo": enriched.get("nombre_completo"),
+            "tipo_titularidad": row.get("tipo_titularidad"),
+            "porcentaje_propiedad": row.get("porcentaje_propiedad"),
+        })
+    return formatear_nombre_visible_titularidad(payload)
 
 
 def normalizar_nombre_condominio(valor: Optional[str]) -> Optional[str]:
@@ -441,17 +562,22 @@ def sincronizar_padron_nombre_persona_v28(cur, id_persona: int, nombre: str = ""
 def sincronizar_padron_titular_predio_v28(cur, clave: str) -> int:
     """Actualiza padron.nombre_completo con el titular principal vigente del predio."""
     cur.execute(f"""
-        SELECT {nombre_persona_sql_v28('p')} AS nombre_completo
+        SELECT
+            {nombre_persona_sql_v28('p')} AS nombre_completo,
+            pp.tipo_titularidad,
+            pp.porcentaje_propiedad
         FROM catastro.predio_propietario pp
         JOIN catalogos.personas p ON p.id_persona = pp.id_persona
         WHERE UPPER(TRIM(pp.clave_catastral)) = UPPER(TRIM(%s))
           AND pp.vigente = TRUE
           AND COALESCE(p.activo, TRUE) = TRUE
-        ORDER BY pp.porcentaje_propiedad DESC NULLS LAST, pp.id_predio_propietario
-        LIMIT 1;
+        ORDER BY
+            CASE WHEN pp.tipo_titularidad = 'PROPIETARIO' THEN 0 ELSE 1 END,
+            pp.porcentaje_propiedad DESC NULLS LAST,
+            pp.id_predio_propietario;
     """, (clave,))
-    row = cur.fetchone() or {}
-    nombre = upper_clean_v28(row.get("nombre_completo"))
+    rows = cur.fetchall() or []
+    nombre = formatear_nombre_visible_titularidad_v28(rows)
     if not nombre:
         return 0
     return sincronizar_padron_nombre_claves_v28(cur, [clave], nombre)
@@ -743,15 +869,20 @@ def resolver_persona_por_nombre_padron_v28(cur, nombre_completo: str):
         """, (nombre[:MAX_PERSONA],))
     else:
         parsed = parse_nombre_padron_v28(nombre)
+        nm, ap, am = normalizar_campos_persona_fisica_v28(
+            parsed.get("nombre"),
+            parsed.get("apellido_paterno"),
+            parsed.get("apellido_materno"),
+        )
         cur.execute("""
             INSERT INTO catalogos.personas (
                 tipo_persona, nombre, apellido_paterno, apellido_materno, activo, fecha_creacion
             ) VALUES ('FISICA', %s, %s, %s, TRUE, now())
             RETURNING id_persona;
         """, (
-            (parsed["nombre"] or "")[:MAX_PERSONA],
-            (parsed["apellido_paterno"] or "")[:MAX_PERSONA],
-            (parsed["apellido_materno"] or "")[:MAX_PERSONA],
+            (nm or "")[:MAX_PERSONA],
+            (ap or "")[:MAX_PERSONA],
+            (am or "")[:MAX_PERSONA],
         ))
 
     created = cur.fetchone()
@@ -839,7 +970,7 @@ def buscar_propietarios_catalogo(
     nombre: str = Query("", max_length=80),
     razon_social: str = Query("", max_length=150),
     limite: int = Query(200, ge=1, le=500),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     rs = upper_clean_v28(razon_social) or ""
     filtro_catalogo, params_catalogo = condiciones_busqueda_persona_estructurada_v28(
@@ -878,10 +1009,11 @@ def buscar_propietarios_catalogo(
                     LIMIT %s;
                 """, (*params_catalogo, limite))
                 for row in cur.fetchall():
-                    nombre_row = upper_clean_v28(row.get("nombre_completo"))
+                    enriched = enriquecer_fila_persona_v28(dict(row))
+                    nombre_row = upper_clean_v28(enriched.get("nombre_completo"))
                     if nombre_row:
                         nombres_vistos.add(nombre_row)
-                    rows.append(row)
+                    rows.append(enriched)
 
             total_padron = 0
             if filtro_padron != "FALSE":
@@ -928,7 +1060,7 @@ def buscar_apellidos_catalogo(
     q: str = Query("", max_length=80),
     tipo: str = Query("paterno"),
     limite: int = Query(25, ge=1, le=100),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     texto = upper_clean_v28(q) or ""
     like = f"{texto}%"
@@ -965,7 +1097,7 @@ def buscar_apellidos_catalogo(
 def buscar_nombres_catalogo(
     q: str = Query("", max_length=80),
     limite: int = Query(30, ge=1, le=100),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     texto = upper_clean_v28(q) or ""
     like = f"{texto}%"
@@ -1000,7 +1132,7 @@ def buscar_nombres_catalogo(
 def buscar_razones_sociales_catalogo(
     q: str = Query("", max_length=120),
     limite: int = Query(25, ge=1, le=100),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     texto = upper_clean_v28(q) or ""
     like = f"{texto}%"
@@ -1026,7 +1158,7 @@ def buscar_calles_catalogo(
     limite: int = Query(30, ge=1, le=100),
     exacta: bool = Query(False),
     incluir_padron: bool = Query(True),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     """Busca calles en cat_calles; opcionalmente sugiere calles del padrón fiscal."""
     texto = upper_clean_v28(q) or ""
@@ -1081,7 +1213,7 @@ def buscar_calles_catalogo(
 def crear_calle_catalogo(
     payload: CalleCatalogoPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     """Alta de calle en catalogos.cat_calles."""
     nombre = upper_clean_v28(payload.nombre_calle)
@@ -1149,7 +1281,7 @@ def crear_calle_catalogo(
 def buscar_propietarios_mantenimiento(
     q: str = Query("", max_length=150),
     limite: int = Query(150, ge=1, le=500),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     """Búsqueda para mantenimiento de propietarios con domicilio fiscal del padrón."""
     texto = upper_clean_v28(q) or ""
@@ -1325,7 +1457,7 @@ def buscar_propietarios_mantenimiento(
 def fusionar_propietarios_catalogo(
     payload: FusionarPropietariosPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     destino = int(payload.id_persona_destino)
     origenes = sorted({
@@ -1498,7 +1630,7 @@ def fusionar_propietarios_catalogo(
 @router.get("/propietarios/{id_persona}")
 def obtener_propietario_catalogo(
     id_persona: int,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1512,6 +1644,8 @@ def obtener_propietario_catalogo(
             row = cur.fetchone()
             if not row:
                 raise HTTPException(status_code=404, detail="Propietario no encontrado")
+            row = sanea_persona_en_bd_v28(cur, dict(row))
+            conn.commit()
             return row
 
 
@@ -1519,7 +1653,7 @@ def obtener_propietario_catalogo(
 def crear_propietario_catalogo(
     payload: PropietarioPersonaPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     tipo = upper_clean_v28(payload.tipo_persona) or "FISICA"
     if tipo not in ["FISICA", "MORAL"]:
@@ -1536,6 +1670,10 @@ def crear_propietario_catalogo(
         raise HTTPException(status_code=400, detail="Razón social obligatoria para persona moral")
     if tipo == "FISICA" and not (nombre or ap_pat or ap_mat):
         raise HTTPException(status_code=400, detail="Debe capturar apellido o nombre para persona física")
+    if tipo == "FISICA":
+        nombre, ap_pat, ap_mat = normalizar_campos_persona_fisica_v28(nombre, ap_pat, ap_mat)
+        if not (nombre or ap_pat or ap_mat):
+            raise HTTPException(status_code=400, detail="Debe capturar apellido o nombre para persona física")
 
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1571,7 +1709,7 @@ def crear_propietario_catalogo(
                 request.client.host if request.client else None
             )
             conn.commit()
-            return {"ok": True, "propietario": row}
+            return {"ok": True, "propietario": enriquecer_fila_persona_v28(row)}
 
 
 @router.put("/propietarios/{id_persona}")
@@ -1579,7 +1717,7 @@ def actualizar_propietario_catalogo(
     id_persona: int,
     payload: PropietarioPersonaPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     tipo = upper_clean_v28(payload.tipo_persona) or "FISICA"
     if tipo not in ["FISICA", "MORAL"]:
@@ -1589,6 +1727,11 @@ def actualizar_propietario_catalogo(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cols_tabla = asegurar_columnas_domicilio_persona(cur, conn)
             dom = domicilio_persona_desde_payload(payload)
+            nombre = upper_clean_v28(payload.nombre)
+            ap_pat = upper_clean_v28(payload.apellido_paterno)
+            ap_mat = upper_clean_v28(payload.apellido_materno)
+            if tipo == "FISICA":
+                nombre, ap_pat, ap_mat = normalizar_campos_persona_fisica_v28(nombre, ap_pat, ap_mat)
             set_parts = [
                 "tipo_persona = %s",
                 "nombre = %s",
@@ -1601,9 +1744,9 @@ def actualizar_propietario_catalogo(
             ]
             params = [
                 tipo,
-                upper_clean_v28(payload.nombre),
-                upper_clean_v28(payload.apellido_paterno),
-                upper_clean_v28(payload.apellido_materno),
+                nombre,
+                ap_pat,
+                ap_mat,
                 upper_clean_v28(payload.razon_social),
                 upper_clean_v28(payload.rfc),
                 upper_clean_v28(payload.curp),
@@ -1634,14 +1777,14 @@ def actualizar_propietario_catalogo(
                 request.client.host if request.client else None
             )
             conn.commit()
-            return {"ok": True, "propietario": row, "padron_actualizados": padron_sync}
+            return {"ok": True, "propietario": enriquecer_fila_persona_v28(row), "padron_actualizados": padron_sync}
 
 
 @router.delete("/propietarios/{id_persona}")
 def eliminar_propietario_catalogo(
     id_persona: int,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     """Baja lógica del propietario en catálogo y cierra relaciones vigentes con predios."""
     with get_conn() as conn:
@@ -1693,7 +1836,7 @@ def eliminar_propietario_catalogo(
 @router.get("/predios/{clave}/propietarios")
 def listar_propietarios_predio_v28(
     clave: str,
-    usuario_actual: dict = Depends(obtener_usuario_actual)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1728,16 +1871,20 @@ def listar_propietarios_predio_v28(
                     nombre_completo;
             """, (clave,))
             rows = cur.fetchall()
+            rows = [sanea_persona_en_bd_v28(cur, dict(r)) for r in rows]
             total_porcentaje = sum(float(r.get("porcentaje_propiedad") or 0) for r in rows)
             titular_padron = obtener_titular_padron_v28(cur, clave)
+            nombre_visible = formatear_nombre_visible_titularidad_v28(rows)
             sincronizado = titular_padron_sincronizado_v28(rows, titular_padron)
             condominio = obtener_info_condominio_predio_v28(cur, clave)
+            conn.commit()
             return {
                 "clave_catastral": clave.upper(),
                 "total": len(rows),
                 "suma_porcentaje": round(total_porcentaje, 6),
                 "valido": abs(total_porcentaje - 100) < 0.000001,
                 "titular_padron": titular_padron,
+                "nombre_visible": nombre_visible,
                 "padron_sincronizado": sincronizado,
                 "condominio": condominio,
                 "propietarios": rows
@@ -1748,7 +1895,7 @@ def listar_propietarios_predio_v28(
 def refrescar_nombre_padron_desde_catalogo_v28(
     clave: str,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_nombre_contribuyente)
 ):
     """Copia el titular vigente del catálogo al campo padron.nombre_completo."""
     with get_conn() as conn:
@@ -1799,7 +1946,7 @@ def resumen_desfase_padron_catalogo(
     texto_padron: str = Query("", max_length=80),
     limite: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
-    usuario_actual: dict = Depends(permiso_movimientos),
+    usuario_actual: dict = Depends(permiso_consulta_catastro),
 ):
     """Predios cuyo nombre en padrón difiere del titular vigente en catálogo."""
     filtro = ""
@@ -1857,7 +2004,7 @@ def resumen_desfase_padron_catalogo(
 def sincronizar_padron_catalogo_masivo_v28(
     payload: SincronizarPadronMasivoPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos),
+    usuario_actual: dict = Depends(_permiso_nombre_contribuyente),
 ):
     """Copia el titular del catálogo al padrón en todos los predios con desfase."""
     if not payload.confirmar:
@@ -1912,7 +2059,7 @@ def sincronizar_padron_catalogo_masivo_v28(
 @router.get("/predios/{clave}/condominio")
 def obtener_condominio_predio_v28(
     clave: str,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -1925,7 +2072,7 @@ def actualizar_tenencia_predio_v28(
     clave: str,
     payload: TenenciaPadronPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos),
+    usuario_actual: dict = Depends(_permiso_editar_catastro),
 ):
     """Asigna o cambia el tipo de tenencia (campo padron.condominio)."""
     if not payload.confirmar:
@@ -1958,7 +2105,7 @@ def guardar_condominio_predio_v28(
     clave: str,
     payload: PredioCondominioPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_editar_catastro)
 ):
     clave_norm = upper_clean_v28(clave) or ""
 
@@ -2068,7 +2215,7 @@ def _fila_predio_clasificacion_condominio(row: dict) -> dict:
 def listar_nombres_condominio_v28(
     q: str = Query("", max_length=150),
     limite: int = Query(50, ge=1, le=200),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -2104,7 +2251,7 @@ def listar_nombres_condominio_v28(
 @router.post("/condominios/clasificacion/buscar")
 def buscar_clasificacion_condominio_v28(
     payload: CondominioClasificacionBuscarPayload,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     claves = parse_lista_claves_condominio_v28(payload.claves_texto, payload.claves)
     limite = min(max(payload.limite or 500, 1), 5000)
@@ -2225,7 +2372,7 @@ def buscar_clasificacion_condominio_v28(
 def clasificacion_masiva_condominio_v28(
     payload: CondominioClasificacionMasivaPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_editar_catastro)
 ):
     claves = parse_lista_claves_condominio_v28(claves=payload.claves)
     if not claves:
@@ -2303,7 +2450,7 @@ def agregar_propietario_predio_v28(
     clave: str,
     payload: PredioPropietarioPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     porcentaje = validar_porcentaje_v28(payload.porcentaje_propiedad)
     tipo_titularidad = upper_clean_v28(payload.tipo_titularidad) or "PROPIETARIO"
@@ -2384,7 +2531,7 @@ def actualizar_propietario_predio_v28(
     id_persona: int,
     payload: PredioPropietarioUpdatePayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     porcentaje = validar_porcentaje_v28(payload.porcentaje_propiedad)
     tipo_titularidad = upper_clean_v28(payload.tipo_titularidad) or "PROPIETARIO"
@@ -2434,7 +2581,7 @@ def quitar_propietario_predio_v28(
     clave: str,
     id_persona: int,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -2474,7 +2621,7 @@ def sincronizar_titular_padron_v28(
     clave: str,
     reemplazar: bool = Query(False),
     request: Request = None,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -2579,7 +2726,7 @@ def sincronizar_titular_padron_masivo_v28(
     confirmar: bool = Query(False),
     limite: int = Query(1500, ge=1, le=20000),
     request: Request = None,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     """Aplica el titular del padrón a los predios que tienen nombre en el padrón fiscal
     pero AÚN no tienen propietario vigente en el catálogo.
@@ -2722,7 +2869,7 @@ def reemplazar_propietarios_predio_v28(
     clave: str,
     payload: PredioPropietariosReemplazoPayload,
     request: Request,
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(_permiso_titularidad)
 ):
     propietarios = payload.propietarios or []
     if not propietarios:
@@ -2801,7 +2948,7 @@ def listar_pendientes_titular_padron_v28(
     limite: int = Query(500, ge=1, le=5000),
     offset: int = Query(0, ge=0),
     solo_invalidos: bool = Query(False),
-    usuario_actual: dict = Depends(permiso_movimientos)
+    usuario_actual: dict = Depends(permiso_consulta_catastro)
 ):
     """
     Lista predios del padrón que siguen sin propietario vigente en catálogo

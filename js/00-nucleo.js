@@ -19,8 +19,52 @@ function obtenerRolSesion() {
   return (obtenerUsuarioSesion()?.rol || "consulta").trim().toLowerCase();
 }
 
+function obtenerPermisosSesion() {
+  const u = obtenerUsuarioSesion();
+  return Array.isArray(u?.permisos) ? u.permisos : [];
+}
+
+function _fallbackPermisoPorRol(codigo) {
+  const rol = String(obtenerRolSesion()).trim().toLowerCase();
+  const mapa = {
+    editar_catastro: ["admin", "supervisor", "catastro"],
+    editar_titularidad: ["admin", "supervisor", "catastro"],
+    editar_nombre_contribuyente: ["admin", "supervisor", "catastro"],
+    solicitar_movimientos: ["admin", "supervisor", "catastro"],
+    aplicar_movimientos: ["admin", "supervisor"],
+  };
+  return (mapa[codigo] || []).includes(rol);
+}
+
+function tienePermiso(codigo) {
+  const permiso = String(codigo || "").trim().toLowerCase();
+  if (!permiso) return false;
+  const perms = obtenerPermisosSesion();
+  if (perms.length) return perms.includes(permiso);
+  return _fallbackPermisoPorRol(permiso);
+}
+
 function puedeEditarCatastro(rol) {
-  return ["admin", "supervisor", "catastro"].includes(String(rol || obtenerRolSesion()).trim().toLowerCase());
+  if (typeof rol === "string" && rol.trim()) {
+    return tienePermiso("editar_catastro") || _fallbackPermisoPorRol("editar_catastro");
+  }
+  return tienePermiso("editar_catastro");
+}
+
+function puedeEditarTitularidad() {
+  return tienePermiso("editar_titularidad");
+}
+
+function puedeEditarNombreContribuyente() {
+  return tienePermiso("editar_nombre_contribuyente");
+}
+
+function puedeSolicitarMovimientos() {
+  return tienePermiso("solicitar_movimientos");
+}
+
+function puedeAplicarMovimientos() {
+  return tienePermiso("aplicar_movimientos");
 }
 
 function guardarSesionInstitucional(data) {
@@ -29,6 +73,7 @@ function guardarSesionInstitucional(data) {
     usuario: data.usuario,
     nombre: data.nombre,
     rol: data.rol,
+    permisos: data.permisos || [],
     modulos: data.modulos || [],
     expira_minutos: data.expira_minutos
   }));
@@ -174,6 +219,7 @@ async function validarSesionInstitucional() {
       usuario: data.usuario,
       nombre: data.nombre,
       rol: data.rol,
+      permisos: data.permisos || [],
       modulos: data.modulos || []
     };
 
@@ -202,7 +248,9 @@ function aplicarPermisosVisuales(rol) {
   const rolNorm = String(rol || "").trim().toLowerCase();
   const esAdmin = rolNorm === "admin";
   const puedeHerramientas = ["admin", "cartografia", "catastro", "supervisor"].includes(rolNorm);
-  const puedeEditarCatastroRol = ["admin", "supervisor", "catastro"].includes(rolNorm);
+  const puedeEditarCatastroRol = typeof puedeEditarCatastro === "function" && puedeEditarCatastro();
+  const puedeMovimientosRol = (typeof puedeSolicitarMovimientos === "function" && puedeSolicitarMovimientos())
+    || (typeof puedeAplicarMovimientos === "function" && puedeAplicarMovimientos());
 
   document.querySelectorAll(".solo-admin").forEach(el => {
     el.style.display = esAdmin ? "" : "none";
@@ -213,7 +261,7 @@ function aplicarPermisosVisuales(rol) {
   });
 
   document.querySelectorAll(".requiere-movimientos").forEach(el => {
-    el.style.display = puedeEditarCatastroRol ? "" : "none";
+    el.style.display = puedeMovimientosRol ? "" : "none";
   });
 
   document.querySelectorAll(".perm-editar-cartografia").forEach(el => {

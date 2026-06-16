@@ -339,10 +339,16 @@ function popupHayCopropiedad(p, titularidad) {
 }
 
 function popupNombreContribuyente(p, titularidad) {
+  const props = titularidad?.propietarios || [];
+  if (props.length && typeof formatearNombreVisibleTitularidad === "function") {
+    const fmt = formatearNombreVisibleTitularidad(props);
+    if (fmt) return fmt;
+  }
   const nombre = String(p?.nombre_completo || p?.propietario || "").trim();
   if (!nombre) return "—";
   if (popupHayCopropiedad(p, titularidad) && !/\bY\s+COP\.?\b/i.test(nombre)) {
-    return `${nombre} Y COP.`;
+    const limpio = nombre.replace(/\s+(Y\s+COP\.?.*)?$/i, "").trim();
+    return `${limpio || nombre} Y COP.`;
   }
   return nombre;
 }
@@ -924,13 +930,10 @@ async function pintarPopupTabDatosGenerales(p) {
   destruirPopupMiniMap();
 
   const clave = String(p?.clave_catastral || claveSeleccionadaActual || "").trim().toUpperCase();
-  const titularidad = await cargarTitularidadPredioPopup(clave, p);
-  popupTitularidadCache = titularidad;
-
   const supDoc = typeof formatoNumero === "function" ? formatoNumero(p?.sup_documental) : p?.sup_documental;
   const valor = typeof formatoMoneda === "function" ? formatoMoneda(p?.valor2026) : p?.valor2026;
   const adeudo = typeof formatoMoneda === "function" ? formatoMoneda(p?.adeudo_total) : p?.adeudo_total;
-  const nombreContrib = popupNombreContribuyente(p, titularidad);
+  const nombreContrib = popupNombreContribuyente(p, popupTitularidadCache);
 
   panel.innerHTML = `
     <div class="popup-datos-grid popup-datos-grid-legacy">
@@ -939,7 +942,6 @@ async function pintarPopupTabDatosGenerales(p) {
           ${popupCampo("Clave catastral", p?.clave_catastral)}
           ${popupCampoNombre("Nombre contribuyente", nombreContrib)}
           ${popupCampo("Tipo persona", popupEtiquetaTipoPersona(p))}
-          ${popupCampo("RFC", p?.rfc)}
           ${popupCampo("Delegación", p?.delegacion)}
           ${popupCampo("Colonia / fraccionamiento", p?.colonia)}
           ${popupCampo("Calle", p?.calle)}
@@ -976,9 +978,21 @@ async function pintarPopupTabDatosGenerales(p) {
     </div>
   `;
 
-  pintarPopupTitularidadSeccion(titularidad, p);
+  pintarPopupTitularidadSeccion(null, p);
   actualizarPopupPredioHeader(p);
-  await actualizarPopupVistaCartografica(p);
+
+  const [titularidad] = await Promise.all([
+    cargarTitularidadPredioPopup(clave, p),
+    actualizarPopupVistaCartografica(p)
+  ]);
+  popupTitularidadCache = titularidad;
+  pintarPopupTitularidadSeccion(titularidad, p);
+
+  const nombreFinal = popupNombreContribuyente(p, titularidad);
+  const nombreEl = panel.querySelector(".popup-legacy-row-nombre .popup-legacy-val");
+  if (nombreEl && nombreFinal && nombreFinal !== "—") {
+    nombreEl.textContent = nombreFinal;
+  }
 }
 
 function pintarPopupTabPlaceholder(panelId, titulo, detalle) {

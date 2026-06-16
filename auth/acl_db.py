@@ -21,12 +21,47 @@ CREATE INDEX IF NOT EXISTS idx_rol_permisos_rol ON seguridad.rol_permisos (rol_i
 CREATE INDEX IF NOT EXISTS idx_rol_permisos_permiso ON seguridad.rol_permisos (permiso_id);
 """
 
+_PERMISOS_FALTANTES_SINCRONIZADOS = False
+
 
 def ensure_acl_db(cur) -> None:
+    global _PERMISOS_FALTANTES_SINCRONIZADOS
     cur.execute(DDL_ACL)
     _sembrar_permisos_base(cur)
     _sembrar_roles_base(cur)
     _sincronizar_matriz_desde_codigo(cur)
+    if not _PERMISOS_FALTANTES_SINCRONIZADOS:
+        _sincronizar_permisos_faltantes(cur)
+        _PERMISOS_FALTANTES_SINCRONIZADOS = True
+
+
+def _sincronizar_permisos_faltantes(cur) -> None:
+    """Agrega permisos nuevos del código a roles existentes sin quitar asignaciones."""
+    for rol_nombre, permisos in ACL_BACKEND.items():
+        cur.execute(
+            "SELECT id FROM seguridad.roles WHERE LOWER(TRIM(nombre)) = %s LIMIT 1;",
+            (rol_nombre.lower(),),
+        )
+        row = cur.fetchone()
+        if not row:
+            continue
+        rol_id = row["id"]
+        for codigo in permisos:
+            cur.execute(
+                "SELECT id FROM seguridad.permisos WHERE codigo = %s AND activo = TRUE;",
+                (codigo,),
+            )
+            perm = cur.fetchone()
+            if not perm:
+                continue
+            cur.execute(
+                """
+                INSERT INTO seguridad.rol_permisos (rol_id, permiso_id)
+                VALUES (%s, %s)
+                ON CONFLICT DO NOTHING;
+                """,
+                (rol_id, perm["id"]),
+            )
 
 
 def _todos_codigos_acl() -> set:

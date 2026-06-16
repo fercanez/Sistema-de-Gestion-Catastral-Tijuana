@@ -94,6 +94,20 @@ async function crearMovimientoPadron() {
   const motivo = (document.getElementById("movMotivo")?.value || "").trim().toUpperCase();
   const observaciones = (document.getElementById("movObservaciones")?.value || "").trim().toUpperCase();
 
+  if (typeof puedeSolicitarMovimientos === "function" && !puedeSolicitarMovimientos()) {
+    setMovMensaje("Su rol no tiene permiso para registrar movimientos catastrales.", "error");
+    return;
+  }
+  const tipoUp = String(tipo || "").trim().toUpperCase();
+  if (tipoUp === "CAMBIO_TITULARIDAD" && typeof puedeEditarTitularidad === "function" && !puedeEditarTitularidad()) {
+    setMovMensaje("Su rol no tiene permiso para cambios de titularidad.", "error");
+    return;
+  }
+  if (tipoUp === "CAMBIO_NOMBRE" && typeof puedeEditarNombreContribuyente === "function" && !puedeEditarNombreContribuyente()) {
+    setMovMensaje("Su rol no tiene permiso para cambio de nombre del contribuyente.", "error");
+    return;
+  }
+
   if (!clave) {
     setMovMensaje("Captura la clave catastral origen.", "error");
     return;
@@ -156,7 +170,7 @@ async function crearMovimientoPadron() {
 window.crearMovimientoPadron = crearMovimientoPadron;
 
 function puedeAutorizarAplicarMovimientos() {
-  return ["admin", "supervisor"].includes(obtenerRolSesion());
+  return typeof puedeAplicarMovimientos === "function" && puedeAplicarMovimientos();
 }
 
 function nombreEstadoMovimiento(estado) {
@@ -180,6 +194,40 @@ function formatearFechaMovimiento(fecha) {
   } catch (e) {
     return String(fecha);
   }
+}
+
+function nombreUsuarioMovimiento(mov, loginKey, nombreKey) {
+  if (!mov) return "";
+  return String(mov[nombreKey] || mov[loginKey] || "").trim();
+}
+
+function metaUsuarioMovHtml(mov, loginKey, nombreKey, etiqueta, fechaKey) {
+  const nombre = nombreUsuarioMovimiento(mov, loginKey, nombreKey);
+  if (!nombre) return "";
+  const fecha = fechaKey ? formatearFechaMovimiento(mov[fechaKey]) : "";
+  const extra = fecha && fecha !== "Sin fecha"
+    ? `<small style="color:#64748b;font-weight:600;">${escapeHtml(fecha)}</small>`
+    : "";
+  return `
+    <div>
+      <span>${escapeHtml(etiqueta)}</span>
+      <b>${escapeHtml(nombre)}</b>
+      ${extra}
+    </div>
+  `;
+}
+
+function renderMetaUsuariosMovHtml(mov) {
+  if (!mov) return "";
+  const estado = String(mov.estado || "").toUpperCase();
+  let html = metaUsuarioMovHtml(mov, "usuario_solicita", "nombre_solicita", "Solicitó", "fecha_solicitud");
+  if (nombreUsuarioMovimiento(mov, "usuario_autoriza", "nombre_autoriza")) {
+    html += metaUsuarioMovHtml(mov, "usuario_autoriza", "nombre_autoriza", "Autorizó", "fecha_autorizacion");
+  }
+  if (estado === "APLICADO" || nombreUsuarioMovimiento(mov, "usuario_aplica", "nombre_aplica")) {
+    html += metaUsuarioMovHtml(mov, "usuario_aplica", "nombre_aplica", "Aplicó al padrón", "fecha_aplicacion");
+  }
+  return html;
 }
 
 const gestorMovimientosCache = {};
@@ -457,6 +505,7 @@ function renderPanelDetalleGestorMov(mov) {
     <div class="gestor-mov-meta">
       <div><span>Clave</span><b>${escapeHtml(mov.clave_catastral || "---")}</b></div>
       <div><span>Solicitud</span><b>${formatearFechaMovimiento(mov.fecha_solicitud)}</b></div>
+      ${renderMetaUsuariosMovHtml(mov)}
       <div><span>Motivo</span><b>${escapeHtml(mov.motivo || "---")}</b></div>
       <div><span>Observaciones</span><b>${escapeHtml(mov.observaciones || "---")}</b></div>
     </div>
@@ -650,7 +699,12 @@ async function cargarDetalleSeguimientoMovimiento(id) {
     movimientoSeguimientoActual = mov;
     registrarMovimientoEnCache(mov);
 
-    detCont.innerHTML = renderDetallesMovimientoHtml(mov.detalles);
+    detCont.innerHTML = `
+      <div class="gestor-mov-meta" style="margin-bottom:12px;">
+        ${renderMetaUsuariosMovHtml(mov)}
+      </div>
+      ${renderDetallesMovimientoHtml(mov.detalles)}
+    `;
 
     if (accCont) {
       accCont.innerHTML = renderAccionesGestorMovHtml(mov);

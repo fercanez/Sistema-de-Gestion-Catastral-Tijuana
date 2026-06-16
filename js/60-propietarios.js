@@ -20,6 +20,53 @@ function requiereSolicitudMovimientoTitularidad() {
   return true;
 }
 
+function puedeConsultarTitularidadCoprop() {
+  if (typeof tienePermiso !== "function") return typeof puedeEditarCatastro === "function" && puedeEditarCatastro();
+  return (
+    tienePermiso("ver_expediente") ||
+    tienePermiso("consulta") ||
+    tienePermiso("editar_titularidad") ||
+    tienePermiso("solicitar_movimientos")
+  );
+}
+
+function aplicarPermisosUiCoprop() {
+  const puedeTit = typeof puedeEditarTitularidad === "function" && puedeEditarTitularidad();
+  const puedeSol = typeof puedeSolicitarMovimientos === "function" && puedeSolicitarMovimientos();
+
+  document.querySelectorAll(".coprop-btn-guardar-principal").forEach(function(el) {
+    el.style.display = puedeTit ? "" : "none";
+  });
+  document.querySelectorAll(".coprop-solicitud-mov").forEach(function(el) {
+    el.style.display = (puedeTit && puedeSol) ? "" : "none";
+  });
+  document.querySelectorAll(".coprop-acciones-predio .coprop-btn").forEach(function(el) {
+    if (el.classList.contains("coprop-btn-guardar-principal")) return;
+    el.style.display = puedeTit ? "" : "none";
+  });
+  document.querySelectorAll(".coprop-principal-radio").forEach(function(el) {
+    if (el.disabled && el.closest("tr")) return;
+    el.disabled = !puedeTit;
+  });
+  document.querySelectorAll(".coprop-table input[type=number]").forEach(function(el) {
+    el.disabled = !puedeTit;
+  });
+  document.querySelectorAll(".coprop-table .coprop-btn.danger").forEach(function(el) {
+    el.style.display = puedeTit ? "" : "none";
+  });
+  document.querySelectorAll(".coprop-padron-alerta .coprop-btn").forEach(function(el) {
+    el.style.display = puedeTit ? "" : "none";
+  });
+  const cardCatalogo = document.querySelector("#modalCopropietarios .coprop-body .coprop-card:last-child");
+  if (cardCatalogo) {
+    cardCatalogo.querySelectorAll("input, select, button, textarea").forEach(function(el) {
+      el.disabled = !puedeTit;
+    });
+  }
+  const aviso = document.getElementById("copropPermisoLectura");
+  if (aviso) aviso.classList.toggle("oculto", !!puedeTit);
+}
+
 function snapshotPropietariosMovimiento(props) {
   return (props || []).map(function(p, idx) {
     return {
@@ -44,14 +91,143 @@ function hayCambiosPendientesCoprop() {
   return JSON.stringify(base) !== JSON.stringify(actual) || tenBase !== tenAct;
 }
 
-function nombreTitularPrincipalCoprop(props) {
-  const lista = props || copropEstado.propietarios || [];
-  if (!lista.length) return "";
-  const principal = [...lista].sort(function(a, b) {
-    return Number(b.porcentaje_propiedad || 0) - Number(a.porcentaje_propiedad || 0);
-  })[0];
-  return principal.nombre_completo || (typeof nombrePersonaCatalogo === "function" ? nombrePersonaCatalogo(principal) : "");
+function esPropietarioPrincipalCoprop(p) {
+  return String(p?.tipo_titularidad || "").toUpperCase() === "PROPIETARIO";
 }
+
+function ordenarTitularesCoprop(props) {
+  return [...(props || [])].sort(function(a, b) {
+    const pa = esPropietarioPrincipalCoprop(a) ? 0 : 1;
+    const pb = esPropietarioPrincipalCoprop(b) ? 0 : 1;
+    if (pa !== pb) return pa - pb;
+    return Number(b.porcentaje_propiedad || 0) - Number(a.porcentaje_propiedad || 0);
+  });
+}
+
+function nombreTitularPrincipalCoprop(props) {
+  return formatearNombreVisibleTitularidad(props);
+}
+
+function formatearNombreVisibleTitularidad(props) {
+  const lista = ordenarTitularesCoprop(props || copropEstado.propietarios || []);
+  if (!lista.length) return "";
+  const principal = lista.find(esPropietarioPrincipalCoprop) || lista[0];
+  const base = (
+    typeof nombrePersonaCatalogo === "function"
+      ? nombrePersonaCatalogo(principal)
+      : (principal.nombre_completo || "")
+  ).trim();
+  if (!base) return "";
+  const hayCop = lista.length > 1 || lista.some(function(p) { return !esPropietarioPrincipalCoprop(p); });
+  if (hayCop && !/\bY\s+COP\.?\b/i.test(base)) {
+    return `${base} Y COP.`;
+  }
+  return base;
+}
+window.formatearNombreVisibleTitularidad = formatearNombreVisibleTitularidad;
+
+function marcarPropietarioPrincipalCoprop(idPersona) {
+  if (typeof puedeEditarTitularidad === "function" && !puedeEditarTitularidad()) {
+    msgCoprop("copropMsgPredio", "Su rol no tiene permiso para modificar titularidad.", false);
+    return;
+  }
+  const id = Number(idPersona);
+  const props = copropEstado.propietarios || [];
+  if (!props.length) return;
+  if (props.length === 1) {
+    props[0].tipo_titularidad = "PROPIETARIO";
+    renderCopropietariosPredio();
+    return;
+  }
+  copropEstado.propietarios = ordenarTitularesCoprop(props.map(function(p) {
+    return Object.assign({}, p, {
+      tipo_titularidad: Number(p.id_persona) === id ? "PROPIETARIO" : "COPROPIETARIO"
+    });
+  }));
+  renderCopropietariosPredio();
+  actualizarPreviewNombreVisibleCoprop();
+  msgCoprop(
+    "copropMsgPredio",
+    requiereSolicitudMovimientoTitularidad()
+      ? "Propietario principal actualizado en borrador. Registre la solicitud de movimiento."
+      : "Propietario principal actualizado.",
+    true
+  );
+}
+window.marcarPropietarioPrincipalCoprop = marcarPropietarioPrincipalCoprop;
+
+function actualizarPreviewNombreVisibleCoprop() {
+  const box = document.getElementById("copropNombreVisiblePreview");
+  if (!box) return;
+  const props = copropEstado.propietarios || [];
+  if (!props.length) {
+    box.innerHTML = "";
+    box.classList.add("oculto");
+    return;
+  }
+  const nombre = formatearNombreVisibleTitularidad(props);
+  box.classList.remove("oculto");
+  box.innerHTML = `
+    <div class="coprop-nombre-visible-preview">
+      <div class="coprop-nombre-visible-head">
+        <span class="coprop-nombre-visible-label">Nombre visible en ficha / padrón:</span>
+        <button type="button" class="coprop-btn ok coprop-btn-guardar-principal" onclick="guardarTitularPrincipalCoprop()" title="Guardar titular principal y copropietarios en catálogo y padrón">💾 Guardar</button>
+      </div>
+      <strong>${escapeHtml(nombre)}</strong>
+    </div>
+  `;
+}
+
+async function guardarTitularPrincipalCoprop() {
+  const clave = copropEstado.clave;
+  if (!clave) {
+    msgCoprop("copropMsgPredio", "No hay predio seleccionado.", false);
+    return;
+  }
+  if (typeof puedeEditarTitularidad === "function" && !puedeEditarTitularidad()) {
+    msgCoprop("copropMsgPredio", "Su rol no tiene permiso para guardar titularidad.", false);
+    return;
+  }
+  const props = copropEstado.propietarios || [];
+  if (!props.length) {
+    msgCoprop("copropMsgPredio", "Debe haber al menos un titular.", false);
+    return;
+  }
+  if (!props.some(esPropietarioPrincipalCoprop)) {
+    msgCoprop("copropMsgPredio", "Seleccione quién será el titular principal visible.", false);
+    return;
+  }
+  const suma = sumaCopropiedadLocal();
+  if (Math.abs(suma - 100) >= 0.01) {
+    msgCoprop("copropMsgPredio", "La suma de copropiedad debe ser exactamente 100%.", false);
+    return;
+  }
+
+  const nombreNuevo = formatearNombreVisibleTitularidad(props);
+  const confirmar = confirm(
+    `¿Guardar titularidad del predio ${clave}?\n\n` +
+    `Nombre visible: ${nombreNuevo}\n\n` +
+    `Se actualizará el catálogo de propietarios y el nombre en padrón.`
+  );
+  if (!confirmar) return;
+
+  try {
+    msgCoprop("copropMsgPredio", "Guardando titularidad...", true);
+    await sincronizarCopropietariosPredio();
+    invalidarCachePropietariosPredio(clave);
+    copropEstado.baseline = {
+      propietarios: JSON.parse(JSON.stringify(copropEstado.propietarios)),
+      tenencia: obtenerTenenciaCopropUi(),
+      nombre_padron: nombreNuevo
+    };
+    msgCoprop("copropMsgPredio", "Titularidad guardada correctamente.", true);
+    await cargarCopropietariosPredio(clave);
+    await refrescarVistaPredioActivo(clave);
+  } catch (e) {
+    msgCoprop("copropMsgPredio", e.message || "No se pudo guardar la titularidad.", false);
+  }
+}
+window.guardarTitularPrincipalCoprop = guardarTitularPrincipalCoprop;
 
 function construirDetallesMovimientoTitularidad(anterior, nuevo, tenAnt, tenNueva) {
   const detalles = [];
@@ -103,6 +279,14 @@ async function solicitarMovimientoTitularidadCoprop() {
   const clave = copropEstado.clave;
   if (!clave) {
     msgCoprop("copropMsgPredio", "No hay predio seleccionado.", false);
+    return;
+  }
+  if (typeof puedeEditarTitularidad === "function" && !puedeEditarTitularidad()) {
+    msgCoprop("copropMsgPredio", "Su rol no tiene permiso para modificar titularidad.", false);
+    return;
+  }
+  if (typeof puedeSolicitarMovimientos === "function" && !puedeSolicitarMovimientos()) {
+    msgCoprop("copropMsgPredio", "Su rol no tiene permiso para registrar movimientos catastrales.", false);
     return;
   }
   if (!hayCambiosPendientesCoprop()) {
@@ -753,22 +937,25 @@ function renderPadronInfoCoprop(data = null) {
   const box = document.getElementById("copropPadronInfo");
   if (!box) return;
 
+  const props = copropEstado.propietarios || [];
+  const nombreBorrador = formatearNombreVisibleTitularidad(props);
   const titular = data?.titular_padron || copropEstado.titularPadron;
-  if (!titular) {
+  if (!titular && !nombreBorrador) {
     box.innerHTML = "";
     return;
   }
 
   const ok = data?.padron_sincronizado ?? copropEstado.padronSincronizado;
-  if (ok) {
+  if (ok && titular) {
     box.innerHTML = `<div class="coprop-padron-ok">✓ Titular en padrón: ${escapeHtml(titular)}</div>`;
     return;
   }
 
-  const vacio = !(copropEstado.propietarios || []).length;
+  const vacio = !props.length;
   box.innerHTML = `
     <div class="coprop-padron-alerta">
-      <div><b>Titular en padrón:</b> ${escapeHtml(titular)}</div>
+      <div><b>Titular en padrón:</b> ${escapeHtml(titular || "—")}</div>
+      ${nombreBorrador ? `<div style="margin-top:4px;"><b>Con borrador actual:</b> ${escapeHtml(nombreBorrador)}</div>` : ""}
       <small>${vacio ? "Aún no está registrado en catastro para este predio." : "Difiere de los titulares registrados a la izquierda."}</small>
       <div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap;">
         <button type="button" class="coprop-btn ok" style="font-size:11px;padding:4px 8px;" onclick="sincronizarTitularDesdePadron()">Aplicar a este predio</button>
@@ -782,7 +969,7 @@ function renderPadronInfoCoprop(data = null) {
 // después de un await). Devuelve Promise<boolean> resuelta por el clic del usuario.
 
 async function aplicarTitularPadronMasivo() {
-  if (!puedeEditarCatastro()) {
+  if (typeof puedeEditarTitularidad === "function" && !puedeEditarTitularidad()) {
     await mostrarConfirmacionAsync("Sin permiso", "Su rol no tiene permiso para administrar titularidad.", { soloInfo: true });
     return;
   }
@@ -1003,11 +1190,18 @@ function nombrePersonaCatalogo(p) {
   if (String(p.tipo_persona || "").toUpperCase() === "MORAL") {
     return normalizarPersonaCatalogo(p.razon_social || p.nombre_completo || p.nombre);
   }
-  return normalizarPersonaCatalogo(
-    p.nombre_completo ||
-    [p.apellido_paterno, p.apellido_materno, p.nombre].filter(Boolean).join(" ") ||
-    p.nombre
-  );
+  const ap = normalizarPersonaCatalogo(p.apellido_paterno);
+  const am = normalizarPersonaCatalogo(p.apellido_materno);
+  let nm = normalizarPersonaCatalogo(p.nombre);
+  nm = nm.replace(/\s+Y\s+COP\.?\s*$/i, "").trim();
+  const prefijo = [ap, am].filter(Boolean).join(" ");
+  if (prefijo && nm) {
+    if (nm.startsWith(prefijo + " ")) nm = nm.slice(prefijo.length + 1).trim();
+    else if (nm === prefijo) nm = "";
+  }
+  const armado = [ap, am, nm].filter(Boolean).join(" ");
+  if (armado) return armado;
+  return normalizarPersonaCatalogo(String(p.nombre_completo || p.nombre || "").replace(/\s+Y\s+COP\.?\s*$/i, ""));
 }
 
 function porcentajeDefaultNuevoCopropietario() {
@@ -1023,7 +1217,7 @@ function sumaCopropiedadLocal() {
 }
 
 function asegurarModalCopropietarios() {
-  const versionModal = "v51_mov_solicitud";
+  const versionModal = "v52_guardar_principal";
   const existente = document.getElementById("modalCopropietarios");
   if (existente && existente.dataset.version !== versionModal) {
     existente.remove();
@@ -1095,6 +1289,14 @@ function asegurarModalCopropietarios() {
     .coprop-total.error{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5;}
     .coprop-msg{min-height:18px;font-size:12px;margin-top:6px;font-weight:bold;}
     .coprop-msg.ok{color:#15803d;}.coprop-msg.error{color:#b91c1c;}
+    .coprop-principal-badge{display:inline-block;background:#fef3c7;color:#92400e;border:1px solid #fcd34d;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:bold;white-space:nowrap;}
+    .coprop-principal-radio{width:16px;height:16px;cursor:pointer;accent-color:#703341;}
+    .coprop-principal-radio:disabled{cursor:default;opacity:.65;}
+    .coprop-nombre-visible-preview{background:#eff6ff;border:1px solid #93c5fd;border-radius:8px;padding:8px 10px;margin:8px 0;font-size:12px;color:#1e3a8a;line-height:1.45;}
+    .coprop-nombre-visible-head{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;}
+    .coprop-nombre-visible-label{display:block;font-size:10px;font-weight:bold;color:#475569;}
+    .coprop-btn-guardar-principal{font-size:11px;padding:4px 10px;white-space:nowrap;}
+    tr.coprop-fila-principal{background:#fffbeb;}
     .coprop-campo-catalogo{margin-bottom:8px;}
     .coprop-campo-catalogo label{display:block;font-size:11px;font-weight:bold;color:#475569;margin-bottom:4px;}
     .coprop-campo-catalogo small{display:block;font-size:10px;color:#64748b;margin-top:3px;}
@@ -1141,6 +1343,7 @@ function asegurarModalCopropietarios() {
           <div id="copropCondominioInfo"></div>
           <div id="copropPadronInfo"></div>
           <div id="copropTablaPredio">Cargando...</div>
+          <div id="copropNombreVisiblePreview" class="oculto"></div>
           <div id="copropTotal" class="coprop-total">TOTAL: 0%</div>
           <div class="coprop-acciones-predio">
             <button type="button" class="coprop-btn sec" onclick="repartirPorcentajesCopropiedad()">Repartir automático</button>
@@ -1156,6 +1359,7 @@ function asegurarModalCopropietarios() {
             </div>
           </div>
           <div id="copropMsgPredio" class="coprop-msg"></div>
+          <div id="copropPermisoLectura" class="coprop-msg oculto">Modo consulta: puede ver titulares, pero no modificar propietarios ni copropietarios.</div>
         </div>
 
         <div class="coprop-card">
@@ -1262,8 +1466,8 @@ function abrirCopropietariosDesdeMovimientos() {
 }
 
 async function abrirModalCopropietarios(clave) {
-  if (!puedeEditarCatastro()) {
-    alert("Su rol no tiene permiso para administrar titularidad. Consulte la ficha en la pestaña Titularidad o solicite un movimiento catastral.");
+  if (typeof puedeConsultarTitularidadCoprop === "function" && !puedeConsultarTitularidadCoprop()) {
+    alert("No tiene permiso para consultar titularidad del predio.");
     return;
   }
 
@@ -1278,6 +1482,7 @@ async function abrirModalCopropietarios(clave) {
   copropEstado.seleccionCatalogo = null;
   document.getElementById("copropClaveHeader").textContent = claveFinal;
   document.getElementById("modalCopropietarios").classList.remove("oculto");
+  aplicarPermisosUiCoprop();
   await cargarCopropietariosPredio(claveFinal);
 }
 
@@ -1326,27 +1531,39 @@ function renderCopropietariosPredio(data = null) {
   const totalBox = document.getElementById("copropTotal");
   if (!cont) return;
 
-  const props = copropEstado.propietarios || [];
+  const props = ordenarTitularesCoprop(copropEstado.propietarios || []);
+  copropEstado.propietarios = props;
   if (!props.length) {
     cont.innerHTML = "Sin propietarios registrados.";
   } else {
     cont.innerHTML = `
       <table class="coprop-table">
-        <thead><tr><th>Propietario</th><th>Tipo</th><th>RFC</th><th>%</th><th>Acciones</th></tr></thead>
+        <thead><tr><th>Propietario</th><th>Tipo</th><th>Principal visible</th><th>%</th><th>Acciones</th></tr></thead>
         <tbody>
-          ${props.map((p, i) => `
-            <tr>
+          ${props.map((p) => {
+            const esPrincipal = esPropietarioPrincipalCoprop(p);
+            const soloUno = props.length <= 1;
+            const radioPrincipal = `
+              <label class="coprop-principal-radio-wrap" title="Aparece primero en ficha y padrón${props.length > 1 ? " (y copropietarios como Y COP.)" : ""}">
+                <input type="radio" class="coprop-principal-radio" name="copropPrincipalSel"
+                  ${esPrincipal ? "checked" : ""} ${soloUno ? "disabled" : ""}
+                  onchange="marcarPropietarioPrincipalCoprop(${p.id_persona})">
+              </label>`;
+            return `
+            <tr class="${esPrincipal ? "coprop-fila-principal" : ""}">
               <td><b>${escapeHtml(nombrePersonaCatalogo(p))}</b><br><small>ID persona: ${escapeHtml(p.id_persona)}</small></td>
               <td>${escapeHtml(p.tipo_titularidad || "")}</td>
-              <td>${escapeHtml(p.rfc || "")}</td>
-              <td><input type="number" step="0.01" min="0" max="100" value="${Number(p.porcentaje_propiedad || 0)}" onchange="actualizarPorcentajeLocalCoprop(${i}, this.value)"></td>
+              <td style="text-align:center;">${radioPrincipal}</td>
+              <td><input type="number" step="0.01" min="0" max="100" value="${Number(p.porcentaje_propiedad || 0)}" onchange="actualizarPorcentajeLocalCoprop(${p.id_persona}, this.value)"></td>
               <td><button type="button" class="coprop-btn danger" onclick="quitarCopropietarioPredio(${p.id_persona})">Quitar</button></td>
-            </tr>
-          `).join("")}
+            </tr>`;
+          }).join("")}
         </tbody>
       </table>
     `;
   }
+
+  actualizarPreviewNombreVisibleCoprop();
 
   const suma = data?.suma_porcentaje ?? sumaCopropiedadLocal();
   const valido = Math.abs(Number(suma || 0) - 100) < 0.01;
@@ -1354,10 +1571,14 @@ function renderCopropietariosPredio(data = null) {
     totalBox.textContent = `TOTAL COPROPIEDAD: ${Number(suma || 0).toFixed(2)}% ${valido ? "✓" : "⚠ DEBE SER 100%"}`;
     totalBox.className = valido ? "coprop-total ok" : "coprop-total error";
   }
+  aplicarPermisosUiCoprop();
 }
 
-function actualizarPorcentajeLocalCoprop(idx, valor) {
-  if (!copropEstado.propietarios[idx]) return;
+function actualizarPorcentajeLocalCoprop(idPersona, valor) {
+  const idx = (copropEstado.propietarios || []).findIndex(function(p) {
+    return Number(p.id_persona) === Number(idPersona);
+  });
+  if (idx < 0) return;
   copropEstado.propietarios[idx].porcentaje_propiedad = Number(valor || 0);
   renderCopropietariosPredio();
 }
@@ -1759,15 +1980,18 @@ async function cargarTitularidadFicha(clave) {
 }
 
 function renderTitularidadFichaDestinos(destinos, data) {
-  const props = data.propietarios || [];
+  const props = ordenarTitularesCoprop(data.propietarios || []);
+  const nombreVisible = data.nombre_visible || formatearNombreVisibleTitularidad(props);
   const html = props.length ? `
+    ${nombreVisible ? `<div class="ficha-mini-row"><div class="label">Nombre visible</div><div class="value">${escapeHtml(nombreVisible)}</div></div>` : ""}
     <table class="coprop-table">
-      <thead><tr><th>Nombre</th><th>RFC</th><th>%</th></tr></thead>
+      <thead><tr><th>Principal</th><th>Nombre</th><th>Tipo</th><th>%</th></tr></thead>
       <tbody>
         ${props.map(p => `
-          <tr>
+          <tr class="${esPropietarioPrincipalCoprop(p) ? "coprop-fila-principal" : ""}">
+            <td style="text-align:center;">${esPropietarioPrincipalCoprop(p) ? "★" : ""}</td>
             <td>${escapeHtml(nombrePersonaCatalogo(p))}</td>
-            <td>${escapeHtml(p.rfc || "")}</td>
+            <td>${escapeHtml(p.tipo_titularidad || "")}</td>
             <td>${Number(p.porcentaje_propiedad || 0).toFixed(2)}%</td>
           </tr>
         `).join("")}
@@ -1776,7 +2000,47 @@ function renderTitularidadFichaDestinos(destinos, data) {
     <div class="coprop-total ${data.valido ? "ok" : "error"}">TOTAL: ${Number(data.suma_porcentaje || 0).toFixed(2)}%</div>
   ` : "Sin propietarios registrados.";
   destinos.forEach(d => d.innerHTML = html);
+  if (nombreVisible) {
+    actualizarNombreVisibleEnFichaDom(nombreVisible);
+  }
 }
+
+function actualizarNombreVisibleEnFichaDom(nombre) {
+  ["fichaNombreVisible", "fichaNombreVisibleTab", "fichaNombreVisibleTit"].forEach(function(id) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = nombre || "—";
+  });
+}
+
+async function cargarNombreVisibleFicha(clave) {
+  const claveFinal = normalizarPersonaCatalogo(clave || document.getElementById("claveInput")?.value);
+  if (!claveFinal) return;
+  const p = window.predioSeleccionado;
+  if (p && String(p.clave_catastral || "").trim().toUpperCase() === claveFinal && p.nombre_completo) {
+    actualizarNombreVisibleEnFichaDom(p.nombre_completo);
+    return;
+  }
+  try {
+    let data = null;
+    if (typeof fetchPropietariosPredioCached === "function") {
+      data = await fetchPropietariosPredioCached(claveFinal);
+    }
+    if (!data) {
+      const r = await fetch(`${API}/predios/${encodeURIComponent(claveFinal)}/propietarios?_=${Date.now()}`, {
+        cache: "no-store",
+        headers: authHeaders()
+      });
+      data = await r.json().catch(function() { return null; });
+      if (!r.ok) data = null;
+    }
+    if (!data) return;
+    const nombre = data.nombre_visible || formatearNombreVisibleTitularidad(data.propietarios);
+    if (nombre) actualizarNombreVisibleEnFichaDom(nombre);
+  } catch (e) {
+    console.warn("No se pudo cargar nombre visible:", e);
+  }
+}
+window.cargarNombreVisibleFicha = cargarNombreVisibleFicha;
 
 async function refrescarFichaClaveActual(clave) {
   if (!clave) return;
@@ -1935,10 +2199,16 @@ async function fichaEnriquecidaPadronV28b(p) {
         .catch(e => { console.warn("No se pudo enriquecer ficha con padrón:", e); return null; })
     : Promise.resolve(dataPadron);
 
-  const [titular, dataPadronFetched] = await Promise.all([
-    titularCatalogoPredio(clave),
+  const [titularidadData, dataPadronFetched] = await Promise.all([
+    typeof fetchPropietariosPredioCached === "function"
+      ? fetchPropietariosPredioCached(clave)
+      : Promise.resolve(null),
     fichaPadronPromise
   ]);
+  const titular = titularidadData?.propietarios?.length
+    ? (titularidadData.propietarios.find(x => String(x.tipo_titularidad || "").toUpperCase() === "PROPIETARIO")
+      || titularidadData.propietarios[0])
+    : await titularCatalogoPredio(clave);
 
   if (!dataPadron && dataPadronFetched) {
     dataPadron = dataPadronFetched;
@@ -1958,8 +2228,16 @@ async function fichaEnriquecidaPadronV28b(p) {
 
   // 2) Titular del catálogo (prioritario para el nombre visible).
   let nombreCatalogo = "";
+  if (titularidadData?.nombre_visible) {
+    nombreCatalogo = String(titularidadData.nombre_visible).trim();
+  } else if (titularidadData?.propietarios?.length && typeof formatearNombreVisibleTitularidad === "function") {
+    nombreCatalogo = formatearNombreVisibleTitularidad(titularidadData.propietarios);
+  } else if (titular) {
+    nombreCatalogo = (typeof nombrePersonaCatalogo === "function"
+      ? nombrePersonaCatalogo(titular)
+      : (titular.nombre_completo || titular.razon_social || "")).trim();
+  }
   if (titular) {
-    nombreCatalogo = (titular.nombre_completo || titular.razon_social || "").trim();
     if (titular.tipo_persona) merged.tipo_persona = titular.tipo_persona;
     if (titular.rfc) merged.rfc = titular.rfc;
     if (titular.tipo_titularidad) merged.tipo_titularidad = titular.tipo_titularidad;
@@ -1991,16 +2269,9 @@ if (typeof pintarFichaFlotante === 'function' && !window.__pintarFichaFlotanteBa
   pintarFichaFlotante = async function(p) {
     const claveEsperada = String(p?.clave_catastral || p?.clave || "").trim().toUpperCase();
     const seqLocal = seleccionPredioSeq;
-    if (p?.__enriquecidaV28b) {
-      if (!fichaPinturaSigueVigenteV28b(claveEsperada, seqLocal)) return;
-      window.predioSeleccionado = p;
-      return window.__pintarFichaFlotanteBaseV28b(p);
-    }
-    const enriquecida = await fichaEnriquecidaPadronV28b(p);
     if (!fichaPinturaSigueVigenteV28b(claveEsperada, seqLocal)) return;
-    enriquecida.__enriquecidaV28b = true;
-    window.predioSeleccionado = enriquecida;
-    return window.__pintarFichaFlotanteBaseV28b(enriquecida);
+    window.predioSeleccionado = p;
+    return window.__pintarFichaFlotanteBaseV28b(p);
   };
   window.pintarFichaFlotante = pintarFichaFlotante;
 }
@@ -2014,11 +2285,18 @@ if (typeof pintarFicha === 'function' && !window.__pintarFichaBaseV28b) {
     }
     const claveEsperada = String(p?.clave_catastral || p?.clave || "").trim().toUpperCase();
     const seqLocal = seleccionPredioSeq;
-    const enriquecida = await fichaEnriquecidaPadronV28b(p);
-    if (!fichaPinturaSigueVigenteV28b(claveEsperada, seqLocal)) return;
-    enriquecida.__enriquecidaV28b = true;
-    window.predioSeleccionado = enriquecida;
-    return window.__pintarFichaBaseV28b(enriquecida);
+    window.predioSeleccionado = p;
+    window.__pintarFichaBaseV28b(p);
+
+    try {
+      const enriquecida = await fichaEnriquecidaPadronV28b(p);
+      if (!fichaPinturaSigueVigenteV28b(claveEsperada, seqLocal)) return;
+      enriquecida.__enriquecidaV28b = true;
+      window.predioSeleccionado = enriquecida;
+      return window.__pintarFichaBaseV28b(enriquecida);
+    } catch (e) {
+      console.warn("No se pudo enriquecer ficha en segundo plano:", e);
+    }
   };
   window.pintarFicha = pintarFicha;
 }
@@ -2478,6 +2756,14 @@ function configurarEntradasPersonaCambioNombreModal() {
 }
 
 function abrirModalCambioNombreV28b() {
+  if (typeof puedeEditarNombreContribuyente === "function" && !puedeEditarNombreContribuyente()) {
+    alert("Su rol no tiene permiso para solicitar cambio de nombre del contribuyente.");
+    return;
+  }
+  if (typeof puedeSolicitarMovimientos === "function" && !puedeSolicitarMovimientos()) {
+    alert("Su rol no tiene permiso para registrar movimientos catastrales.");
+    return;
+  }
   const modal = document.getElementById('modalMovimientoNombre');
   if (!modal) {
     alert('No se encontró el modal de cambio de nombre en index.html.');
@@ -2845,6 +3131,14 @@ window.__guardandoCambioNombre = false;
 
 window.guardarCambioNombreModal = async function() {
   if (window.__guardandoCambioNombre) return;
+  if (typeof puedeEditarNombreContribuyente === "function" && !puedeEditarNombreContribuyente()) {
+    modalMovimientoMensaje("Su rol no tiene permiso para solicitar cambio de nombre.", false);
+    return;
+  }
+  if (typeof puedeSolicitarMovimientos === "function" && !puedeSolicitarMovimientos()) {
+    modalMovimientoMensaje("Su rol no tiene permiso para registrar movimientos catastrales.", false);
+    return;
+  }
   window.__guardandoCambioNombre = true;
 
   try {

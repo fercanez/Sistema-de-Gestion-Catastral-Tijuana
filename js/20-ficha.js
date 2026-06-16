@@ -301,7 +301,7 @@ function pintarFichaFlotante(p) {
   contenedor.innerHTML = `
     <div class="ficha-status-box">
       <div class="big">${val(p.clave_catastral)}</div>
-      <div>${val(p.nombre_completo || p.propietario)}</div>
+      <div id="fichaNombreVisible">${val(p.nombre_completo || p.propietario)}</div>
       <div style="margin-top:5px;">
         ${p.dibujado ? '<span class="badge-ok">DIBUJADO</span>' : '<span class="badge-warn">SIN GEOMETRÍA DIRECTA</span>'}
         ${Number(p.adeudo_total || 0) > 0 ? '<span class="badge-fiscal-adeudo">CON ADEUDO</span>' : '<span class="badge-fiscal-ok">SIN ADEUDO</span>'}
@@ -320,9 +320,8 @@ function pintarFichaFlotante(p) {
 
     <div id="fichaTabIdentificacion" class="ficha-tab-panel active">
       <div class="ficha-mini-row"><div class="label">Clave</div><div class="value">${val(p.clave_catastral)}</div></div>
-      <div class="ficha-mini-row"><div class="label">Nombre / Razón social</div><div class="value">${val(p.nombre_completo || p.propietario)}</div></div>
+      <div class="ficha-mini-row"><div class="label">Nombre / Razón social</div><div class="value" id="fichaNombreVisibleTab">${val(p.nombre_completo || p.propietario)}</div></div>
       <div class="ficha-mini-row"><div class="label">Tipo persona</div><div class="value">${val(p.tipo_persona)}</div></div>
-      <div class="ficha-mini-row"><div class="label">RFC</div><div class="value">${val(p.rfc)}</div></div>
       <div class="ficha-mini-row"><div class="label">Titularidad</div><div class="value">${val(p.tipo_titularidad)}</div></div>
       <div class="ficha-mini-row"><div class="label">% Propiedad</div><div class="value">${val(p.porcentaje_propiedad)}</div></div>
       <div class="ficha-mini-row ficha-mini-row-folio"><div class="label">Folio real</div><div class="value">${textoFolioReal(p)}</div></div>
@@ -330,7 +329,7 @@ function pintarFichaFlotante(p) {
     </div>
 
     <div id="fichaTabTitularidad" class="ficha-tab-panel">
-      <div class="ficha-mini-row"><div class="label">Nombre visible</div><div class="value">${val(p.nombre_completo || p.propietario)}</div></div>
+      <div class="ficha-mini-row"><div class="label">Nombre visible</div><div class="value" id="fichaNombreVisibleTit">${val(p.nombre_completo || p.propietario)}</div></div>
       <div class="ficha-mini-row"><div class="label">Titulares</div><div class="value">${val(p.total_titulares || 1)}</div></div>
       <div class="ficha-mini-row"><div class="label">Suma propiedad</div><div class="value">${val(p.suma_porcentaje || p.porcentaje_propiedad || 100)}%</div></div>
       <div id="fichaTitularidadDetalle" style="margin-top:8px;">Cargando titularidad...</div>
@@ -390,6 +389,9 @@ function pintarFichaFlotante(p) {
 
   abrirFichaFlotante();
   aplicarPermisosVisuales(obtenerRolSesion());
+  if (typeof cargarNombreVisibleFicha === "function") {
+    cargarNombreVisibleFicha(p.clave_catastral);
+  }
 }
 
 function pintarFicha(p) {
@@ -856,30 +858,9 @@ async function zoomAResultadosBusqueda(resultados) {
 
   const format = new ol.format.GeoJSON();
 
-  // Un solo resultado: una sola /ficha (+ /expediente si aplica), sin consultas duplicadas.
+  // Un solo resultado: seleccionarPorClave carga /ficha una vez (mapa + ficha + popup).
   if (resultados.length === 1 && resultados[0].clave_catastral) {
-    const p = resultados[0];
-    const clave = p.clave_catastral;
-    let featurePrefetch = null;
-    if (esPredioDibujadoBusqueda(p)) {
-      featurePrefetch = await obtenerGeojsonPorClaveParaZoom(clave, p.dibujado);
-      if (featurePrefetch?.geometry) {
-        const feature = format.readFeature(featurePrefetch, {
-          dataProjection: "EPSG:4326",
-          featureProjection: "EPSG:3857"
-        });
-        feature.set("clave_catastral", clave);
-        feature.set("adeudo_total", Number(p.adeudo_total || featurePrefetch.properties?.adeudo_total || 0));
-        feature.set("info_fiscal", true);
-        feature.set("seleccionado", false);
-        feature.set("principal", true);
-        resultadosSource.addFeature(feature);
-      }
-    }
-    await seleccionarPorClave(clave, "busqueda", {
-      geojsonPrefetch: featurePrefetch,
-      featurePrefetch: featurePrefetch
-    });
+    await seleccionarPorClave(resultados[0].clave_catastral, "busqueda");
     return;
   }
 
@@ -1021,6 +1002,10 @@ function actualizarFilaResultadoEnGrid(clave, ficha) {
   });
 
   if (cambiado) {
+    if (typeof deduplicarResultadosPadron === "function") {
+      gridEstado.todos = deduplicarResultadosPadron(gridEstado.todos);
+      gridEstado.filtrados = deduplicarResultadosPadron(gridEstado.filtrados);
+    }
     ordenarResultadosInterno();
     pintarDataGridResultados();
   }

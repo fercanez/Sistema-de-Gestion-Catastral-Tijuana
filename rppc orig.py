@@ -11,11 +11,10 @@ import urllib.parse
 import urllib.request
 from http.cookiejar import CookieJar
 from io import BytesIO
-from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from auth.dependencies import obtener_usuario_actual
 from config import (
@@ -48,10 +47,6 @@ RPPC_RENOVAR_COOKIE_SCRIPT = os.getenv(
     "RPPC_RENOVAR_COOKIE_SCRIPT",
     "/opt/catastro_api/rppc_renovar_cookie.py",
 )
-RPPC_PDF_LOCAL_DIR = Path(os.getenv(
-    "RPPC_PDF_LOCAL_DIR",
-    "/var/www/catastro/documentos/rppc",
-))
 _rppc_opener: urllib.request.OpenerDirector | None = None
 _rppc_login_ok: bool | None = None
 _rppc_login_detalle: list[dict[str, Any]] = []
@@ -1634,10 +1629,7 @@ def _asegurar_columnas_rppc_cache(cur, conn) -> None:
             ADD COLUMN IF NOT EXISTS folio_real_fecha_actualizacion timestamp,
             ADD COLUMN IF NOT EXISTS rppc_doc_tramite_id text,
             ADD COLUMN IF NOT EXISTS rppc_partida text,
-            ADD COLUMN IF NOT EXISTS rppc_fecha_actualizacion timestamp,
-            ADD COLUMN IF NOT EXISTS rppc_pdf_local text,
-            ADD COLUMN IF NOT EXISTS rppc_pdf_fecha_descarga timestamp,
-            ADD COLUMN IF NOT EXISTS rppc_pdf_doc_tramite_id text;
+            ADD COLUMN IF NOT EXISTS rppc_fecha_actualizacion timestamp;
             """
         )
         conn.commit()
@@ -1886,152 +1878,6 @@ def _obtener_doc_id_por_partida(partida: int):
     return doc_id, datos[0]
 
 
-
-def _ruta_pdf_local(clave_catastral: str | None, doc_id: int) -> Path:
-    """Construye la ruta local donde se almacena el PDF RPPC."""
-    clave = _clave_cache_pdf(clave_catastral)
-    carpeta = RPPC_PDF_LOCAL_DIR / clave
-    carpeta.mkdir(parents=True, exist_ok=True)
-    return carpeta / f"rppc_{doc_id}.pdf"
-
-
-def _clave_cache_pdf(clave_catastral: str | None) -> str:
-    clave = _normalizar_clave(clave_catastral or "")
-    clave = re.sub(r"[^A-Z0-9_-]+", "_", clave).strip("_")
-    return clave or "SIN_CLAVE"
-
-
-def _pdf_local_existente(clave_catastral: str | None, doc_id: int) -> Path | None:
-    """Busca el PDF en disco aunque todavia no exista registro en padron."""
-    for clave in (_clave_cache_pdf(clave_catastral), "SIN_CLAVE"):
-        ruta = RPPC_PDF_LOCAL_DIR / clave / f"rppc_{doc_id}.pdf"
-        if ruta.exists() and ruta.is_file() and ruta.stat().st_size > 0:
-            return ruta
-    return None
-
-
-def _clave_catastral_por_doc_id(doc_id: int) -> str | None:
-    """Busca una clave relacionada con el doc_id cacheado para poder guardar el PDF por carpeta de clave."""
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _asegurar_columnas_rppc_cache(cur, conn)
-                cur.execute(
-                    """
-                    SELECT clave_catastral
-                    FROM catalogos.padron_2026
-                    WHERE NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') = %s
-                       OR NULLIF(NULLIF(TRIM(rppc_pdf_doc_tramite_id::text), ''), '0') = %s
-                    LIMIT 1;
-                    """,
-                    (str(doc_id), str(doc_id)),
-                )
-                row = cur.fetchone()
-        if row and row.get("clave_catastral"):
-            return _normalizar_clave(row["clave_catastral"])
-    except Exception:
-        return None
-    return None
-
-
-def _guardar_pdf_local(clave_catastral: str | None, doc_id: int, content: bytes) -> Path:
-    """Guarda el PDF en disco local y devuelve la ruta."""
-    ruta = _ruta_pdf_local(clave_catastral, doc_id)
-    tmp = ruta.with_suffix(f"{ruta.suffix}.tmp")
-    tmp.write_bytes(content)
-    tmp.replace(ruta)
-    return ruta
-
-
-def _registrar_pdf_local_en_padron(clave_catastral: str | None, doc_id: int, ruta: Path) -> None:
-    """Registra en padrón la ruta local del PDF descargado."""
-    clave = _normalizar_clave(clave_catastral or "")
-    if not clave:
-        clave = _clave_catastral_por_doc_id(doc_id) or ""
-    if not clave:
-        return
-
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _asegurar_columnas_rppc_cache(cur, conn)
-                cur.execute(
-                    """
-                    UPDATE catalogos.padron_2026
-                    SET rppc_pdf_local = %s,
-                        rppc_pdf_doc_tramite_id = %s,
-                        rppc_pdf_fecha_descarga = now()
-                    WHERE UPPER(TRIM(clave_catastral)) = %s;
-                    """,
-                    (str(ruta), str(doc_id), clave),
-                )
-                conn.commit()
-    except Exception:
-        # La descarga del PDF no debe fallar solo porque no se pudo registrar el cache.
-        pass
-
-
-def _obtener_pdf_local_desde_padron(clave_catastral: str | None = None, doc_id: int | None = None) -> Path | None:
-    """Devuelve el PDF local si ya fue descargado y registrado en padrón."""
-    clave = _normalizar_clave(clave_catastral or "")
-
-    if doc_id:
-        directo = _pdf_local_existente(clave, doc_id)
-        if directo:
-            return directo
-
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _asegurar_columnas_rppc_cache(cur, conn)
-                if clave and doc_id:
-                    cur.execute(
-                        """
-                        SELECT rppc_pdf_local
-                        FROM catalogos.padron_2026
-                        WHERE UPPER(TRIM(clave_catastral)) = %s
-                          AND NULLIF(NULLIF(TRIM(rppc_pdf_doc_tramite_id::text), ''), '0') = %s
-                        LIMIT 1;
-                        """,
-                        (clave, str(doc_id)),
-                    )
-                elif clave:
-                    cur.execute(
-                        """
-                        SELECT rppc_pdf_local
-                        FROM catalogos.padron_2026
-                        WHERE UPPER(TRIM(clave_catastral)) = %s
-                        LIMIT 1;
-                        """,
-                        (clave,),
-                    )
-                elif doc_id:
-                    cur.execute(
-                        """
-                        SELECT rppc_pdf_local
-                        FROM catalogos.padron_2026
-                        WHERE NULLIF(NULLIF(TRIM(rppc_pdf_doc_tramite_id::text), ''), '0') = %s
-                           OR NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') = %s
-                        ORDER BY rppc_pdf_fecha_descarga DESC NULLS LAST
-                        LIMIT 1;
-                        """,
-                        (str(doc_id), str(doc_id)),
-                    )
-                else:
-                    return None
-                row = cur.fetchone()
-
-        if not row or not row.get("rppc_pdf_local"):
-            return None
-
-        ruta = Path(str(row["rppc_pdf_local"]))
-        if ruta.exists() and ruta.is_file() and ruta.stat().st_size > 0:
-            return ruta
-    except Exception:
-        return None
-
-    return None
-
 def _descargar_pdf_por_partida(partida: int) -> bytes | None:
     _asegurar_rppc_listo(folio_prueba=1)
     api = _buscar_api_por_fragmento(_rppc_apis_cache, "obtienepdfinscripcion", metodo="GET")
@@ -2119,46 +1965,14 @@ def _descargar_pdf(doc_id: int, partida: int | None = None, _renovado: bool = Fa
     return content
 
 
-def _stream_pdf(
-    doc_id: int,
-    filename: str,
-    partida: int | None = None,
-    clave_catastral: str | None = None,
-    forzar_actualizar: bool = False,
-):
-    """Entrega PDF RPPC usando cache local cuando existe; si no, descarga y guarda."""
-    clave_para_cache = _normalizar_clave(clave_catastral or "") or _clave_catastral_por_doc_id(doc_id)
-
-    if not forzar_actualizar:
-        local = _obtener_pdf_local_desde_padron(clave_para_cache, doc_id)
-        if local:
-            return FileResponse(
-                local,
-                media_type="application/pdf",
-                filename=filename,
-                headers={
-                    "Content-Disposition": f'inline; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                    "X-RPPC-Source": "local-cache",
-                },
-            )
-
+def _stream_pdf(doc_id: int, filename: str, partida: int | None = None):
     content = _descargar_pdf(doc_id, partida=partida)
-
-    try:
-        local_path = _guardar_pdf_local(clave_para_cache, doc_id, content)
-        _registrar_pdf_local_en_padron(clave_para_cache, doc_id, local_path)
-    except Exception:
-        # Si el cache local falla, de todos modos entregamos el PDF descargado.
-        pass
-
     return StreamingResponse(
         BytesIO(content),
         media_type="application/pdf",
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "no-store",
-            "X-RPPC-Source": "rppc-download",
         },
     )
 
@@ -2181,7 +1995,6 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
                 "inscripcion": None,
                 "movimientos_total": None,
                 "pdf_url": f"/rppc/pdf/doc/{doc_cache}",
-                "clave_catastral": cache.get("clave_catastral"),
                 "cache_hit": True,
             }
 
@@ -2204,7 +2017,6 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
         "inscripcion": inscripcion,
         "movimientos_total": len(movimientos),
         "pdf_url": f"/rppc/pdf/doc/{doc_id}",
-        "clave_catastral": clave_catastral,
         "cache_hit": False,
     }
 
@@ -2452,29 +2264,22 @@ def resolver_por_clave(
 
 
 @router.get("/pdf/doc/{doc_tramite_id}")
-def pdf_por_doc(doc_tramite_id: int, refrescar: bool = False):
-    return _stream_pdf(
-        doc_tramite_id,
-        f"rppc_doc_{doc_tramite_id}.pdf",
-        forzar_actualizar=refrescar,
-    )
+def pdf_por_doc(doc_tramite_id: int):
+    return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")
 
 
 @router.get("/pdf/folio/{folio_real}")
-def pdf_por_folio(folio_real: int, refrescar: bool = False):
+def pdf_por_folio(folio_real: int):
     data = _resolver_documento_por_folio(folio_real)
     return _stream_pdf(
         data["doc_tramite_id"],
         f"rppc_folio_{folio_real}.pdf",
         partida=data.get("partida"),
-        clave_catastral=data.get("clave_catastral"),
-        forzar_actualizar=refrescar,
     )
 
 @router.get("/pdf/clave/{clave_catastral}")
 def pdf_por_clave(
     clave_catastral: str,
-    refrescar: bool = False,
     usuario_actual: dict = Depends(obtener_usuario_actual),
 ):
     clave = _normalizar_clave(clave_catastral)
@@ -2485,14 +2290,8 @@ def pdf_por_clave(
         data["doc_tramite_id"],
         f"rppc_{clave_limpia}.pdf",
         partida=data.get("partida"),
-        clave_catastral=clave,
-        forzar_actualizar=refrescar,
     )
 
 @router.get("/visor/pdf/doc/{doc_tramite_id}")
-def visor_pdf_por_doc(doc_tramite_id: int, refrescar: bool = False):
-    return _stream_pdf(
-        doc_tramite_id,
-        f"rppc_doc_{doc_tramite_id}.pdf",
-        forzar_actualizar=refrescar,
-    )
+def visor_pdf_por_doc(doc_tramite_id: int):
+    return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")

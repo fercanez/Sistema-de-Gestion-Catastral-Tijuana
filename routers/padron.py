@@ -36,13 +36,44 @@ class GeometriaPredioActualizar(BaseModel):
 # refleja cambios del catálogo al instante). NO usar un LATERAL correlacionado aquí,
 # porque al filtrar/contar sobre los ~441k predios se evalúa por fila y la búsqueda
 # por nombre/colonia se vuelve lentísima o expira (timeout) -> el frontend recibe 0.
-SQL_FROM_PADRON_UNICO = """
+SQL_SUBQUERY_TITULAR_PRINCIPAL = """
+    SELECT DISTINCT ON (UPPER(TRIM(v.clave_catastral)))
+        v.clave_catastral,
+        v.nombre_visible,
+        v.titular_principal,
+        v.tipo_titularidad,
+        v.porcentaje_propiedad,
+        v.id_persona,
+        v.tipo_persona,
+        v.rfc,
+        v.total_titulares,
+        v.suma_porcentaje
+    FROM catastro.v_titularidad_predio v
+    ORDER BY
+        UPPER(TRIM(v.clave_catastral)),
+        CASE WHEN UPPER(COALESCE(v.tipo_titularidad, '')) = 'PROPIETARIO' THEN 0 ELSE 1 END,
+        v.porcentaje_propiedad DESC NULLS LAST
+"""
+
+SQL_FROM_PADRON_UNICO = f"""
     FROM catalogos.padron_2026 p
-    LEFT JOIN catastro.v_titularidad_predio tit
+    LEFT JOIN ({SQL_SUBQUERY_TITULAR_PRINCIPAL}) tit
         ON UPPER(TRIM(tit.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
     LEFT JOIN catastro.predios g
         ON UPPER(TRIM(g.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
 """
+
+
+def _dedupe_filas_padron(rows):
+    """Una fila por clave catastral (evita duplicados por copropietarios en la vista)."""
+    vistos = {}
+    for row in rows or []:
+        clave = str(row.get("clave_catastral") or "").strip().upper()
+        if not clave:
+            continue
+        if clave not in vistos:
+            vistos[clave] = row
+    return list(vistos.values())
 
 SQL_SELECT_PADRON_UNICO = """
     SELECT
@@ -81,7 +112,7 @@ def buscar_padron(
         cur = conn.cursor()
 
         cur.execute(f"""
-            SELECT COUNT(*) AS total
+            SELECT COUNT(DISTINCT UPPER(TRIM(p.clave_catastral))) AS total
             {SQL_FROM_PADRON_UNICO}
             WHERE UPPER(p.clave_catastral) LIKE UPPER(%s);
         """, (clave + "%",))
@@ -96,7 +127,7 @@ def buscar_padron(
             LIMIT %s;
         """, (clave + "%", limite))
 
-        rows = cur.fetchall()
+        rows = _dedupe_filas_padron(cur.fetchall())
         cur.close()
         conn.close()
 
@@ -167,9 +198,9 @@ def busqueda_avanzada(
                 ORDER BY p.clave_catastral
                 LIMIT %s;
             """, (folio_stripped, limite))
-            rows = cur.fetchall()
+            rows = _dedupe_filas_padron(cur.fetchall())
             cur.execute(f"""
-                SELECT COUNT(*) AS total
+                SELECT COUNT(DISTINCT UPPER(TRIM(p.clave_catastral))) AS total
                 {SQL_FROM_PADRON_UNICO}
                 WHERE NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') = %s;
             """, (folio_stripped,))
@@ -220,7 +251,7 @@ def busqueda_avanzada(
             where_prefijo = "WHERE UPPER(p.clave_catastral) LIKE %s"
 
             cur.execute(f"""
-                SELECT COUNT(*) AS total
+                SELECT COUNT(DISTINCT UPPER(TRIM(p.clave_catastral))) AS total
                 {SQL_FROM_PADRON_UNICO}
                 {where_prefijo};
             """, (clave_like,))
@@ -235,7 +266,7 @@ def busqueda_avanzada(
                 LIMIT %s;
             """, (clave_like, limite))
 
-            rows = cur.fetchall()
+            rows = _dedupe_filas_padron(cur.fetchall())
             cur.close()
             conn.close()
 
@@ -271,7 +302,7 @@ def busqueda_avanzada(
 
         # Total real SIN LIMIT para que el frontend conozca todos los predios encontrados.
         cur.execute(f"""
-            SELECT COUNT(*) AS total
+            SELECT COUNT(DISTINCT UPPER(TRIM(p.clave_catastral))) AS total
             {SQL_FROM_PADRON_UNICO}
             {where_sql};
         """, params_where)
@@ -286,7 +317,7 @@ def busqueda_avanzada(
             LIMIT %s;
         """, params_where + (limite,))
 
-        rows = cur.fetchall()
+        rows = _dedupe_filas_padron(cur.fetchall())
         cur.close()
         conn.close()
 
