@@ -13,9 +13,11 @@ from http.cookiejar import CookieJar
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+import shutil
+import tempfile
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 
 from auth.dependencies import obtener_usuario_actual
 from config import (
@@ -39,6 +41,10 @@ from database import get_conn, asegurar_columna_folio_real_padron
 
 router = APIRouter(prefix="/rppc", tags=["rppc"])
 
+RPPC_PDF_LOCAL_DIR = Path(os.getenv("RPPC_PDF_LOCAL_DIR", "/var/www/catastro/documentos/rppc"))
+RPPC_HOJA_INSCRIPCION_ACTION = "ReporteVerHojaInsc"
+RPPC_HOJA_INSCRIPCION_DOC_PREFIX = "PARTIDA_"
+
 RPPC_UA = "SGC-Catastro-Mexicali/1.0 (+consulta-interna)"
 RPPC_RUNTIME_COOKIE_FILE = os.getenv(
     "RPPC_RUNTIME_COOKIE_FILE",
@@ -48,10 +54,6 @@ RPPC_RENOVAR_COOKIE_SCRIPT = os.getenv(
     "RPPC_RENOVAR_COOKIE_SCRIPT",
     "/opt/catastro_api/rppc_renovar_cookie.py",
 )
-RPPC_PDF_LOCAL_DIR = Path(os.getenv(
-    "RPPC_PDF_LOCAL_DIR",
-    "/var/www/catastro/documentos/rppc",
-))
 _rppc_opener: urllib.request.OpenerDirector | None = None
 _rppc_login_ok: bool | None = None
 _rppc_login_detalle: list[dict[str, Any]] = []
@@ -1886,152 +1888,6 @@ def _obtener_doc_id_por_partida(partida: int):
     return doc_id, datos[0]
 
 
-
-def _ruta_pdf_local(clave_catastral: str | None, doc_id: int) -> Path:
-    """Construye la ruta local donde se almacena el PDF RPPC."""
-    clave = _clave_cache_pdf(clave_catastral)
-    carpeta = RPPC_PDF_LOCAL_DIR / clave
-    carpeta.mkdir(parents=True, exist_ok=True)
-    return carpeta / f"rppc_{doc_id}.pdf"
-
-
-def _clave_cache_pdf(clave_catastral: str | None) -> str:
-    clave = _normalizar_clave(clave_catastral or "")
-    clave = re.sub(r"[^A-Z0-9_-]+", "_", clave).strip("_")
-    return clave or "SIN_CLAVE"
-
-
-def _pdf_local_existente(clave_catastral: str | None, doc_id: int) -> Path | None:
-    """Busca el PDF en disco aunque todavia no exista registro en padron."""
-    for clave in (_clave_cache_pdf(clave_catastral), "SIN_CLAVE"):
-        ruta = RPPC_PDF_LOCAL_DIR / clave / f"rppc_{doc_id}.pdf"
-        if ruta.exists() and ruta.is_file() and ruta.stat().st_size > 0:
-            return ruta
-    return None
-
-
-def _clave_catastral_por_doc_id(doc_id: int) -> str | None:
-    """Busca una clave relacionada con el doc_id cacheado para poder guardar el PDF por carpeta de clave."""
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _asegurar_columnas_rppc_cache(cur, conn)
-                cur.execute(
-                    """
-                    SELECT clave_catastral
-                    FROM catalogos.padron_2026
-                    WHERE NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') = %s
-                       OR NULLIF(NULLIF(TRIM(rppc_pdf_doc_tramite_id::text), ''), '0') = %s
-                    LIMIT 1;
-                    """,
-                    (str(doc_id), str(doc_id)),
-                )
-                row = cur.fetchone()
-        if row and row.get("clave_catastral"):
-            return _normalizar_clave(row["clave_catastral"])
-    except Exception:
-        return None
-    return None
-
-
-def _guardar_pdf_local(clave_catastral: str | None, doc_id: int, content: bytes) -> Path:
-    """Guarda el PDF en disco local y devuelve la ruta."""
-    ruta = _ruta_pdf_local(clave_catastral, doc_id)
-    tmp = ruta.with_suffix(f"{ruta.suffix}.tmp")
-    tmp.write_bytes(content)
-    tmp.replace(ruta)
-    return ruta
-
-
-def _registrar_pdf_local_en_padron(clave_catastral: str | None, doc_id: int, ruta: Path) -> None:
-    """Registra en padrón la ruta local del PDF descargado."""
-    clave = _normalizar_clave(clave_catastral or "")
-    if not clave:
-        clave = _clave_catastral_por_doc_id(doc_id) or ""
-    if not clave:
-        return
-
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _asegurar_columnas_rppc_cache(cur, conn)
-                cur.execute(
-                    """
-                    UPDATE catalogos.padron_2026
-                    SET rppc_pdf_local = %s,
-                        rppc_pdf_doc_tramite_id = %s,
-                        rppc_pdf_fecha_descarga = now()
-                    WHERE UPPER(TRIM(clave_catastral)) = %s;
-                    """,
-                    (str(ruta), str(doc_id), clave),
-                )
-                conn.commit()
-    except Exception:
-        # La descarga del PDF no debe fallar solo porque no se pudo registrar el cache.
-        pass
-
-
-def _obtener_pdf_local_desde_padron(clave_catastral: str | None = None, doc_id: int | None = None) -> Path | None:
-    """Devuelve el PDF local si ya fue descargado y registrado en padrón."""
-    clave = _normalizar_clave(clave_catastral or "")
-
-    if doc_id:
-        directo = _pdf_local_existente(clave, doc_id)
-        if directo:
-            return directo
-
-    try:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                _asegurar_columnas_rppc_cache(cur, conn)
-                if clave and doc_id:
-                    cur.execute(
-                        """
-                        SELECT rppc_pdf_local
-                        FROM catalogos.padron_2026
-                        WHERE UPPER(TRIM(clave_catastral)) = %s
-                          AND NULLIF(NULLIF(TRIM(rppc_pdf_doc_tramite_id::text), ''), '0') = %s
-                        LIMIT 1;
-                        """,
-                        (clave, str(doc_id)),
-                    )
-                elif clave:
-                    cur.execute(
-                        """
-                        SELECT rppc_pdf_local
-                        FROM catalogos.padron_2026
-                        WHERE UPPER(TRIM(clave_catastral)) = %s
-                        LIMIT 1;
-                        """,
-                        (clave,),
-                    )
-                elif doc_id:
-                    cur.execute(
-                        """
-                        SELECT rppc_pdf_local
-                        FROM catalogos.padron_2026
-                        WHERE NULLIF(NULLIF(TRIM(rppc_pdf_doc_tramite_id::text), ''), '0') = %s
-                           OR NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') = %s
-                        ORDER BY rppc_pdf_fecha_descarga DESC NULLS LAST
-                        LIMIT 1;
-                        """,
-                        (str(doc_id), str(doc_id)),
-                    )
-                else:
-                    return None
-                row = cur.fetchone()
-
-        if not row or not row.get("rppc_pdf_local"):
-            return None
-
-        ruta = Path(str(row["rppc_pdf_local"]))
-        if ruta.exists() and ruta.is_file() and ruta.stat().st_size > 0:
-            return ruta
-    except Exception:
-        return None
-
-    return None
-
 def _descargar_pdf_por_partida(partida: int) -> bytes | None:
     _asegurar_rppc_listo(folio_prueba=1)
     api = _buscar_api_por_fragmento(_rppc_apis_cache, "obtienepdfinscripcion", metodo="GET")
@@ -2065,6 +1921,250 @@ def _descargar_pdf_por_partida(partida: int) -> bytes | None:
         return None
     return None
 
+
+
+def _ruta_pdf_local_por_doc(doc_id: int | str, clave_catastral: str | None = None) -> Path:
+    clave = _normalizar_clave(clave_catastral or "SIN_CLAVE") or "SIN_CLAVE"
+    carpeta = RPPC_PDF_LOCAL_DIR / clave
+    carpeta.mkdir(parents=True, exist_ok=True)
+    safe_doc = re.sub(r"[^A-Za-z0-9_-]", "_", str(doc_id))
+    return carpeta / f"rppc_{safe_doc}.pdf"
+
+
+def _leer_pdf_local(doc_id: int | str, clave_catastral: str | None = None) -> bytes | None:
+    try:
+        ruta = _ruta_pdf_local_por_doc(doc_id, clave_catastral)
+        if ruta.exists() and ruta.is_file() and ruta.stat().st_size > 0:
+            content = ruta.read_bytes()
+            if content.startswith(b"%PDF"):
+                return content
+    except Exception:
+        return None
+    return None
+
+
+def _guardar_pdf_local(doc_id: int | str, content: bytes, clave_catastral: str | None = None) -> Path | None:
+    try:
+        if not content or not content.startswith(b"%PDF"):
+            return None
+        ruta = _ruta_pdf_local_por_doc(doc_id, clave_catastral)
+        ruta.write_bytes(content)
+        return ruta
+    except Exception:
+        return None
+
+
+
+
+def _extraer_folio_real_desde_pdf(content: bytes) -> int | None:
+    """Intenta extraer FOLIO REAL desde un PDF RPPC sin usar OCR.
+
+    Primero busca texto directo en los bytes; si no aparece, usa pdftotext si está
+    instalado en el servidor. Si no logra extraerlo, devuelve None sin fallar.
+    """
+    if not content or not content.startswith(b"%PDF"):
+        return None
+
+    patrones = [
+        r"FOLIO\s*REAL\s*[:\-]?\s*([0-9]{3,12})",
+        r"FOLIOREAL\s*[:\-]?\s*([0-9]{3,12})",
+    ]
+
+    # 1) Intento rápido sobre bytes decodificados.
+    try:
+        texto = content.decode("latin-1", errors="ignore")
+        texto_norm = re.sub(r"\s+", " ", texto.upper())
+        for patron in patrones:
+            m = re.search(patron, texto_norm, re.IGNORECASE)
+            if m:
+                return _normalizar_numero(m.group(1))
+    except Exception:
+        pass
+
+    # 2) Intento con pdftotext si existe en el sistema.
+    if not shutil.which("pdftotext"):
+        return None
+
+    tmp_pdf = None
+    tmp_txt = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f_pdf:
+            f_pdf.write(content)
+            tmp_pdf = f_pdf.name
+        tmp_txt = f"{tmp_pdf}.txt"
+        subprocess.run(
+            ["pdftotext", "-layout", tmp_pdf, tmp_txt],
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=15,
+        )
+        texto = Path(tmp_txt).read_text(encoding="utf-8", errors="ignore")
+        texto_norm = re.sub(r"\s+", " ", texto.upper())
+        for patron in patrones:
+            m = re.search(patron, texto_norm, re.IGNORECASE)
+            if m:
+                return _normalizar_numero(m.group(1))
+    except Exception:
+        return None
+    finally:
+        for tmp in (tmp_pdf, tmp_txt):
+            if tmp:
+                try:
+                    Path(tmp).unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+    return None
+
+
+def _guardar_folio_extraido_pdf_en_padron(
+    *,
+    clave_catastral: str | None,
+    folio_real_actual: int | None,
+    content: bytes,
+    fuente: str = "RPPC_PDF",
+) -> int | None:
+    """Guarda en padrón el FOLIO REAL visible dentro del PDF si el padrón no lo tenía.
+
+    Retorna el folio final conocido. No falla si el PDF no tiene texto extraíble.
+    """
+    if folio_real_actual:
+        return folio_real_actual
+    clave = _normalizar_clave(clave_catastral or "")
+    if not clave:
+        return None
+    folio_extraido = _extraer_folio_real_desde_pdf(content)
+    if not folio_extraido:
+        return None
+    try:
+        _guardar_cache_rppc_en_padron(
+            clave_catastral=clave,
+            folio_real=folio_extraido,
+            fuente=fuente,
+        )
+    except Exception:
+        try:
+            _guardar_folio_real_en_padron(clave, folio_extraido)
+        except Exception:
+            pass
+    return folio_extraido
+
+def _registrar_pdf_local_en_padron(
+    *,
+    clave_catastral: str | None = None,
+    folio_real: int | None = None,
+    partida: int | None = None,
+    doc_id: int | str | None = None,
+    ruta: Path | None = None,
+) -> None:
+    if not ruta or not doc_id:
+        return
+    clave = _normalizar_clave(clave_catastral or "")
+    folio = str(folio_real) if folio_real else ""
+    if not clave and not folio:
+        return
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    ALTER TABLE catalogos.padron_2026
+                    ADD COLUMN IF NOT EXISTS rppc_pdf_local text,
+                    ADD COLUMN IF NOT EXISTS rppc_pdf_fecha_descarga timestamp,
+                    ADD COLUMN IF NOT EXISTS rppc_pdf_doc_tramite_id text;
+                    """
+                )
+                params: list[Any] = [str(ruta), str(doc_id)]
+                sql = """
+                    UPDATE catalogos.padron_2026
+                    SET rppc_pdf_local = %s,
+                        rppc_pdf_doc_tramite_id = %s,
+                        rppc_pdf_fecha_descarga = now()
+                """
+                if partida:
+                    sql += ", rppc_partida = %s"
+                    params.append(str(partida))
+                sql += " WHERE "
+                if clave:
+                    sql += "UPPER(TRIM(clave_catastral)) = %s"
+                    params.append(clave)
+                else:
+                    sql += "NULLIF(NULLIF(TRIM(folio_real::text), ''), '0') = %s"
+                    params.append(folio)
+                cur.execute(sql, tuple(params))
+                conn.commit()
+    except Exception:
+        pass
+
+
+def _descargar_pdf_hoja_inscripcion_por_partida(
+    partida: int,
+    *,
+    municipio: str = "MEXICALI",
+    oficina_id: int = 1,
+    _renovado: bool = False,
+) -> bytes:
+    """Descarga PDF alternativo de Hoja de Inscripción por PARTIDA.
+
+    Este fallback cubre inscripciones antiguas que el RPPC sí muestra en pantalla,
+    pero que no traen DOC_TRAMITE_ID en obtenerInscripcionesPart.
+    """
+    cached = _leer_pdf_local(f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}")
+    if cached:
+        return cached
+
+    base = _url_api_desde_ruta(
+        RPPC_BASE_URL,
+        f"Servicios/Reportes/{RPPC_HOJA_INSCRIPCION_ACTION}",
+        solo_base=True,
+    )
+    params = {
+        "NOMBRE_REP": "ReporteHojaInscFir",
+        "FORMATO": "PDF",
+        "PARTIDA": str(partida),
+        "TITULOREP": "HOJA DE INSCRIPCIÓN",
+        "OFICINA_ID": str(oficina_id),
+        "PREVIEW": "S",
+        "MUNICIPIO": municipio or "MEXICALI",
+        "ORIENTACION": "V",
+        "TIPOHOJA": "CARTA",
+    }
+    url = f"{base}?{urllib.parse.urlencode(params)}"
+    opener = _build_opener()
+    req = urllib.request.Request(
+        url,
+        headers=_headers_rppc_auth({
+            "Accept": "application/pdf,*/*",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+            "Referer": "https://rppcweb.ebajacalifornia.gob.mx/rppweb/produccion/",
+        }),
+        method="GET",
+    )
+    try:
+        with opener.open(req, timeout=RPPC_TIMEOUT_GET) as resp:
+            content = resp.read()
+    except urllib.error.HTTPError as exc:
+        if not _renovado and RPPC_USUARIO and RPPC_PASSWORD:
+            if _renovar_cookie_rppc_runtime():
+                _reset_rppc_opener()
+                return _descargar_pdf_hoja_inscripcion_por_partida(partida, municipio=municipio, oficina_id=oficina_id, _renovado=True)
+        raise HTTPException(status_code=502, detail=f"No se pudo descargar Hoja de Inscripción RPPC: HTTP {exc.code}") from exc
+    except urllib.error.URLError as exc:
+        raise HTTPException(status_code=502, detail=f"No se pudo contactar al RPPC para Hoja de Inscripción: {_mensaje_url_error(exc)}") from exc
+
+    if not content:
+        raise HTTPException(status_code=502, detail="El RPPC devolvió Hoja de Inscripción vacía")
+    if not content.startswith(b"%PDF"):
+        if not _renovado and RPPC_USUARIO and RPPC_PASSWORD:
+            if _renovar_cookie_rppc_runtime():
+                _reset_rppc_opener()
+                return _descargar_pdf_hoja_inscripcion_por_partida(partida, municipio=municipio, oficina_id=oficina_id, _renovado=True)
+        preview = content[:180].decode("utf-8", errors="replace")
+        raise HTTPException(status_code=502, detail=f"RPPC no devolvió PDF de Hoja de Inscripción: {preview}")
+
+    _guardar_pdf_local(f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}", content)
+    return content
 
 def _descargar_pdf(doc_id: int, partida: int | None = None, _renovado: bool = False) -> bytes:
     if partida:
@@ -2120,37 +2220,57 @@ def _descargar_pdf(doc_id: int, partida: int | None = None, _renovado: bool = Fa
 
 
 def _stream_pdf(
-    doc_id: int,
+    doc_id: int | str,
     filename: str,
     partida: int | None = None,
     clave_catastral: str | None = None,
-    forzar_actualizar: bool = False,
+    folio_real: int | None = None,
 ):
-    """Entrega PDF RPPC usando cache local cuando existe; si no, descarga y guarda."""
-    clave_para_cache = _normalizar_clave(clave_catastral or "") or _clave_catastral_por_doc_id(doc_id)
-
-    if not forzar_actualizar:
-        local = _obtener_pdf_local_desde_padron(clave_para_cache, doc_id)
+    if isinstance(doc_id, str) and doc_id.startswith(RPPC_HOJA_INSCRIPCION_DOC_PREFIX):
+        if not partida:
+            partida = _normalizar_numero(doc_id.replace(RPPC_HOJA_INSCRIPCION_DOC_PREFIX, ""))
+        if not partida:
+            raise HTTPException(status_code=404, detail="Partida inválida para Hoja de Inscripción")
+        local = _leer_pdf_local(doc_id, clave_catastral) or _leer_pdf_local(doc_id)
         if local:
-            return FileResponse(
-                local,
-                media_type="application/pdf",
-                filename=filename,
-                headers={
-                    "Content-Disposition": f'inline; filename="{filename}"',
-                    "Cache-Control": "no-store",
-                    "X-RPPC-Source": "local-cache",
-                },
+            content = local
+            source = "local-cache-hoja-inscripcion"
+        else:
+            content = _descargar_pdf_hoja_inscripcion_por_partida(partida)
+            ruta = _guardar_pdf_local(doc_id, content, clave_catastral) or _guardar_pdf_local(doc_id, content)
+            _registrar_pdf_local_en_padron(
+                clave_catastral=clave_catastral,
+                folio_real=folio_real,
+                partida=partida,
+                doc_id=doc_id,
+                ruta=ruta,
             )
+            source = "rppc-hoja-inscripcion"
+    else:
+        local = _leer_pdf_local(doc_id, clave_catastral)
+        if local:
+            content = local
+            source = "local-cache"
+        else:
+            content = _descargar_pdf(int(doc_id), partida=partida)
+            ruta = _guardar_pdf_local(doc_id, content, clave_catastral)
+            _registrar_pdf_local_en_padron(
+                clave_catastral=clave_catastral,
+                folio_real=folio_real,
+                partida=partida,
+                doc_id=doc_id,
+                ruta=ruta,
+            )
+            source = "rppc-download"
 
-    content = _descargar_pdf(doc_id, partida=partida)
-
-    try:
-        local_path = _guardar_pdf_local(clave_para_cache, doc_id, content)
-        _registrar_pdf_local_en_padron(clave_para_cache, doc_id, local_path)
-    except Exception:
-        # Si el cache local falla, de todos modos entregamos el PDF descargado.
-        pass
+    # Si el PDF trae FOLIO REAL visible y la clave no lo tenía registrado,
+    # lo extraemos y persistimos para futuras consultas.
+    folio_real = _guardar_folio_extraido_pdf_en_padron(
+        clave_catastral=clave_catastral,
+        folio_real_actual=folio_real,
+        content=content,
+        fuente="RPPC_PDF",
+    ) or folio_real
 
     return StreamingResponse(
         BytesIO(content),
@@ -2158,7 +2278,7 @@ def _stream_pdf(
         headers={
             "Content-Disposition": f'inline; filename="{filename}"',
             "Cache-Control": "no-store",
-            "X-RPPC-Source": "rppc-download",
+            "X-RPPC-Source": source,
         },
     )
 
@@ -2177,16 +2297,45 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
                 "folio_real": folio_cache,
                 "partida": partida_cache,
                 "doc_tramite_id": doc_cache,
+                "tipo_documento": "doc_tramite_id",
                 "movimiento": None,
                 "inscripcion": None,
                 "movimientos_total": None,
                 "pdf_url": f"/rppc/pdf/doc/{doc_cache}",
-                "clave_catastral": cache.get("clave_catastral"),
+                "cache_hit": True,
+            }
+        if partida_cache:
+            return {
+                "folio_real": folio_cache,
+                "partida": partida_cache,
+                "doc_tramite_id": None,
+                "tipo_documento": "hoja_inscripcion_partida",
+                "movimiento": None,
+                "inscripcion": {"PARTIDA": partida_cache, "MODO": "HOJA_INSCRIPCION_PARTIDA_CACHE"},
+                "movimientos_total": None,
+                "pdf_url": f"/rppc/pdf/partida/{partida_cache}",
                 "cache_hit": True,
             }
 
     partida, movimiento, movimientos = _obtener_partida_por_folio(folio_real)
-    doc_id, inscripcion = _obtener_doc_id_por_partida(partida)
+    try:
+        doc_id, inscripcion = _obtener_doc_id_por_partida(partida)
+        tipo_documento = "doc_tramite_id"
+        pdf_url = f"/rppc/pdf/doc/{doc_id}"
+    except HTTPException as exc:
+        # Fallback para folios antiguos: RPPC no entrega DOC_TRAMITE_ID,
+        # pero sí genera PDF por ReporteVerHojaInscFr usando PARTIDA.
+        if exc.status_code not in (404, 502) or "DOC_TRAMITE_ID" not in str(exc.detail):
+            raise
+        doc_id = None
+        inscripcion = {
+            "PARTIDA": partida,
+            "DOC_TRAMITE_ID": None,
+            "MODO": "HOJA_INSCRIPCION_PARTIDA",
+            "detalle": str(exc.detail),
+        }
+        tipo_documento = "hoja_inscripcion_partida"
+        pdf_url = f"/rppc/pdf/partida/{partida}"
 
     _guardar_cache_rppc_en_padron(
         clave_catastral=clave_catastral,
@@ -2200,11 +2349,11 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
         "folio_real": folio_real,
         "partida": partida,
         "doc_tramite_id": doc_id,
+        "tipo_documento": tipo_documento,
         "movimiento": movimiento,
         "inscripcion": inscripcion,
         "movimientos_total": len(movimientos),
-        "pdf_url": f"/rppc/pdf/doc/{doc_id}",
-        "clave_catastral": clave_catastral,
+        "pdf_url": pdf_url,
         "cache_hit": False,
     }
 
@@ -2448,51 +2597,70 @@ def resolver_por_clave(
     data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
     data["clave_catastral"] = clave
     data["clave_rppc"] = _clave_sgc_a_rppc(clave)
+
+    # Si el documento es Hoja de Inscripción por partida, agregamos la clave
+    # como query string para que /pdf/partida pueda guardar PDF local y, si es
+    # necesario, extraer/registrar el FOLIO REAL visible dentro del PDF.
+    if not data.get("doc_tramite_id") and data.get("pdf_url") and data.get("partida"):
+        sep = "&" if "?" in str(data["pdf_url"]) else "?"
+        data["pdf_url"] = f"{data['pdf_url']}{sep}clave_catastral={urllib.parse.quote(clave)}"
+
     return data
 
 
 @router.get("/pdf/doc/{doc_tramite_id}")
-def pdf_por_doc(doc_tramite_id: int, refrescar: bool = False):
+def pdf_por_doc(doc_tramite_id: int):
+    return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")
+
+
+@router.get("/pdf/partida/{partida}")
+def pdf_por_partida(partida: int, clave_catastral: str | None = None):
+    clave = _normalizar_clave(clave_catastral or "") or None
     return _stream_pdf(
-        doc_tramite_id,
-        f"rppc_doc_{doc_tramite_id}.pdf",
-        forzar_actualizar=refrescar,
+        f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}",
+        f"rppc_partida_{partida}.pdf",
+        partida=partida,
+        clave_catastral=clave,
     )
 
 
 @router.get("/pdf/folio/{folio_real}")
-def pdf_por_folio(folio_real: int, refrescar: bool = False):
+def pdf_por_folio(folio_real: int):
     data = _resolver_documento_por_folio(folio_real)
+    if data.get("doc_tramite_id"):
+        doc_ref = data["doc_tramite_id"]
+    else:
+        doc_ref = f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{data.get('partida')}"
     return _stream_pdf(
-        data["doc_tramite_id"],
+        doc_ref,
         f"rppc_folio_{folio_real}.pdf",
         partida=data.get("partida"),
-        clave_catastral=data.get("clave_catastral"),
-        forzar_actualizar=refrescar,
+        folio_real=folio_real,
     )
+
 
 @router.get("/pdf/clave/{clave_catastral}")
 def pdf_por_clave(
     clave_catastral: str,
-    refrescar: bool = False,
     usuario_actual: dict = Depends(obtener_usuario_actual),
 ):
     clave = _normalizar_clave(clave_catastral)
     folio_real = _obtener_folio_por_clave(clave)
     data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
     clave_limpia = re.sub(r"[^A-Za-z0-9_-]", "_", clave)
+    if data.get("doc_tramite_id"):
+        doc_ref = data["doc_tramite_id"]
+    else:
+        doc_ref = f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{data.get('partida')}"
     return _stream_pdf(
-        data["doc_tramite_id"],
+        doc_ref,
         f"rppc_{clave_limpia}.pdf",
         partida=data.get("partida"),
         clave_catastral=clave,
-        forzar_actualizar=refrescar,
+        folio_real=folio_real,
     )
 
+
 @router.get("/visor/pdf/doc/{doc_tramite_id}")
-def visor_pdf_por_doc(doc_tramite_id: int, refrescar: bool = False):
-    return _stream_pdf(
-        doc_tramite_id,
-        f"rppc_doc_{doc_tramite_id}.pdf",
-        forzar_actualizar=refrescar,
-    )
+def visor_pdf_por_doc(doc_tramite_id: int):
+    return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")

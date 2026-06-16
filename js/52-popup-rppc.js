@@ -1,4 +1,4 @@
-/* Pestaña Documento RPPC — resolver folio con JWT y PDF por DOC_TRAMITE_ID */
+/* Pestaña Documento RPPC — resolver con JWT, DOC_TRAMITE_ID o Hoja de Inscripción por partida */
 
 let popupRppcBlobUrl = null;
 
@@ -24,11 +24,6 @@ function popupRppcFolioNumerico(p) {
   return txt.replace(/\D/g, "") || txt;
 }
 
-function buildUrlPdfRppcDoc(docId) {
-  const base = apiBaseRppc();
-  return `${base}/rppc/pdf/doc/${encodeURIComponent(docId)}`;
-}
-
 function buildUrlVisorPdfRppcDoc(docId) {
   const base = apiBaseRppc();
   return `${base}/rppc/visor/pdf/doc/${encodeURIComponent(docId)}`;
@@ -40,6 +35,13 @@ function buildUrlResolverRppc(claveNorm, folioNum) {
     return `${base}/rppc/resolver/folio/${encodeURIComponent(folioNum)}`;
   }
   return `${base}/rppc/resolver/clave/${encodeURIComponent(claveNorm)}`;
+}
+
+function buildAbsoluteRppcUrl(pathOrUrl) {
+  if (!pathOrUrl) return "";
+  if (/^https?:\/\//i.test(pathOrUrl)) return pathOrUrl;
+  const base = apiBaseRppc();
+  return `${base}${String(pathOrUrl).startsWith("/") ? "" : "/"}${pathOrUrl}`;
 }
 
 function destruirPopupRppc() {
@@ -78,9 +80,10 @@ async function resolverDocumentoRppc(claveNorm, folioNum) {
 
   const data = await response.json();
   const docId = data?.doc_tramite_id || data?.DOC_TRAMITE_ID;
+  const pdfUrl = data?.pdf_url || data?.PDF_URL;
 
-  if (!docId) {
-    throw new Error("El RPPC no devolvió DOC_TRAMITE_ID para este folio.");
+  if (!docId && !pdfUrl) {
+    throw new Error("El RPPC no devolvió DOC_TRAMITE_ID ni PDF alternativo para este folio.");
   }
 
   return data;
@@ -94,20 +97,46 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
 
   if (estado) {
     estado.classList.remove("popup-rppc-estado-error");
-    estado.textContent = "Resolviendo folio real en el Registro Público de la Propiedad…";
+    estado.textContent = "Resolviendo documento en el Registro Público de la Propiedad…";
   }
+
   if (btnExterno) {
     btnExterno.classList.add("oculto");
     btnExterno.removeAttribute("href");
   }
 
   try {
-    const data = await resolverDocumentoRppc(claveNorm, folioNum);
+	const data = await resolverDocumentoRppc(claveNorm, folioNum);
+	
+    const folioDetectado = data.folio_real || data.FOLIO_REAL;
+
+if (folioDetectado) {
+  const meta = document.querySelector(".popup-rppc-meta");
+  if (meta) {
+    const spans = meta.querySelectorAll("span");
+    spans.forEach(sp => {
+      if (sp.textContent.includes("Folio real:")) {
+        sp.innerHTML = `<b>Folio real:</b> ${popupRppcEsc(folioDetectado)}`;
+      }
+    });
+  }
+
+  if (window.predioSeleccionado) {
+    window.predioSeleccionado.folio_real = folioDetectado;
+  }
+}
+
     const docId = data.doc_tramite_id || data.DOC_TRAMITE_ID;
-    const urlPdf = buildUrlVisorPdfRppcDoc(docId);
+    const pdfUrl = data.pdf_url || data.PDF_URL;
+
+    const urlPdf = docId
+      ? buildUrlVisorPdfRppcDoc(docId)
+      : buildAbsoluteRppcUrl(pdfUrl);
 
     if (estado) {
-      estado.textContent = `Documento localizado. Partida ${data.partida ?? "—"}, DOC_TRAMITE_ID ${docId}. Cargando PDF…`;
+      estado.textContent = docId
+        ? `Documento localizado. Partida ${data.partida ?? "—"}, DOC_TRAMITE_ID ${docId}. Cargando PDF…`
+        : `Hoja de inscripción localizada. Partida ${data.partida ?? "—"}. Cargando PDF…`;
     }
 
     frame.src = urlPdf;
@@ -169,8 +198,6 @@ async function pintarPopupTabRppc(clave, p) {
   await cargarPdfRppcEnIframe(claveNorm, folioNum);
 }
 
-window.buildUrlPdfRppcDoc = buildUrlPdfRppcDoc;
-window.buildUrlVisorPdfRppcDoc = buildUrlVisorPdfRppcDoc;
 window.buildUrlResolverRppc = buildUrlResolverRppc;
 window.pintarPopupTabRppc = pintarPopupTabRppc;
 window.destruirPopupRppc = destruirPopupRppc;
