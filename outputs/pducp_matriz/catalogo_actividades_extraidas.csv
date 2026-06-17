@@ -1,0 +1,446 @@
+﻿uso_grupo,codigo_actividad,actividad,pagina_pdf
+Habitacional,1.1.1,Residencial,23
+Habitacional,1.1.1,Residencial,31
+Habitacional,1.1.2,Medio,23
+Habitacional,1.1.2,Medio,31
+Habitacional,1.1.3,Popular,23
+Habitacional,1.1.3,Popular,31
+Habitacional,1.1.4,Interés social,23
+Habitacional,1.1.4,Interés social,31
+Habitacional,1.2.1,Vivienda horizontal residencial L,23
+Habitacional,1.2.1,Vivienda horizontal residencial,31
+Habitacional,1.2.2,Vivienda horizontal medio A N,23
+Habitacional,1.2.2,Vivienda horizontal medio,31
+Habitacional,1.2.3,Vivienda horizontal popular O IC,23
+Habitacional,1.2.3,Vivienda horizontal popular,31
+Habitacional,1.2.4,Vivienda horizontal de interés social A T,23
+Habitacional,1.2.4,Vivienda horizontal de interés social,31
+Habitacional,1.2.5,Vivienda vertical residencial IB A 1.2.6. Vivienda vertical medio H,23
+Habitacional,1.2.5,Vivienda vertical residencial,31
+Habitacional,1.2.6,Vivienda vertical medio,31
+Habitacional,1.2.7,Vivienda vertical interés social .1,23
+Habitacional,1.2.7,Vivienda vertical interés social 1 . 3 S U B U R B A NA 1. 3 .1 C am p e st re,31
+Habitacional,1.3.1,Campestre,23
+Habitacional,1.3.2,Granjas,23
+Habitacional,1.3.2,Granjas,31
+Habitacional,1.4.1,Fraccionamiento o campo de casas móviles o semifijas,23
+Habitacional,1.4.1,Fraccionamiento o campo de casas móviles o semifijas,31
+Habitacional,1.5.1,Vivienda para jornaleros agrícolas,23
+Habitacional,1.5.1,Vivienda para jornaleros agrícolas,31
+Industrial,2.1.1,Alimentaria,23
+Industrial,2.1.1,Alimentaria,31
+Industrial,2.1.10,Impresión e industrias conexas IR,23
+Industrial,2.1.10,Impresión e industrias conexas,31
+Industrial,2.1.11,Productos derivados del petróleo y el carbón T S 2.1.12. Química. Productos químicos U,23
+Industrial,2.1.11,Productos derivados del petróleo y el carbón,31
+Industrial,2.1.12,Química. Productos químicos básicos,31
+Industrial,2.1.13,"Química. Resinas y hules sintéticos, y fibras químicas D N",23
+Industrial,2.1.13,"Química. Resinas y hules sintéticos, y fibras químicas 2 . 1 . 1 4 . Q u í m i c a . F e rt ili z a n t e s , p es t ic id a s y otros 2 . 1 . 1 5 . Q u í m i c a . P ro d u c t o s fa rm a c é u tic o s",31
+Industrial,2.1.14,"Química. Fertilizantes, pesticidas y otros I a g r o q u í m ico s .2 2 .1. 1 5 . Q u ím ic a. Productos farmacéuticos",23
+Industrial,2.1.16,"Química. Pinturas, recubrimientos y adhesivos",23
+Industrial,2.1.16,"Química. Pinturas, recubrimientos y adhesivos",31
+Industrial,2.1.17,Química. Explosivos,23
+Industrial,2.1.17,Química. Explosivos,31
+Industrial,2.1.18,Química. Fabricación de cerillos y encendedores,23
+Industrial,2.1.18,Química. Fabricación de cerillos y encendedores,31
+Industrial,2.1.19,"Química. Jabones, limpiadores y preparaciones de tocador",23
+Industrial,2.1.19,"Química. Jabones, limpiadores y preparaciones de tocador",31
+Industrial,2.1.2,"Matanza de ganado, aves y otros animales",23
+Industrial,2.1.2,"Matanza de ganado, aves y otros animales",31
+Industrial,2.1.20,Otros productos químicos,23
+Industrial,2.1.20,Otros productos químicos,31
+Industrial,2.1.21,Fabricación de productos a base de arcillas y minerales refractarios,23
+Industrial,2.1.21,Fabricación de productos a base de arcillas y minerales refractarios,31
+Industrial,2.1.22,Fabricación de vidrio y productos de vidrio,23
+Industrial,2.1.22,Fabricación de vidrio y productos de vidrio,31
+Industrial,2.1.23,Fabricación de cemento y productos de concreto,31
+Industrial,2.1.24,"Fabricación de cal, yeso y productos de yeso",31
+Industrial,2.1.25,Fabricación de fibra de vidrio y asbesto,32
+Industrial,2.1.26,Fabricación de otros productos a base de minerales no metálicos,32
+Industrial,2.1.27,Industrias metálicas básicas,24
+Industrial,2.1.27,Industrias metálicas básicas,32
+Industrial,2.1.28,"Industrias de metales no ferrosos, excepto aluminio",24
+Industrial,2.1.28,"Industrias de metales no ferrosos, excepto aluminio",32
+Industrial,2.1.29,Fabricación de productos metálicos,24
+Industrial,2.1.29,Fabricación de productos metálicos,32
+Industrial,2.1.3,Bebidas y tabaco,23
+Industrial,2.1.3,Bebidas y tabaco,31
+Industrial,2.1.30,Fabricación de maquinaria y equipo,24
+Industrial,2.1.30,Fabricación de maquinaria y equipo,32
+Industrial,2.1.31,"Fabricación de equipo de computación, comunicación, medición y de otros equipos, componentes y accesorios electrónicos L A",24
+Industrial,2.1.31,"Fabricación de equipo de computación, comunicación, medición y de otros equipos, componentes 2 . 1. 3 2 . F a b r ic a c ió n d e a c c e s o r io s , a p a r a to s eléctricos y e q u i p o d e g e n e ra c ió n d e e n er g ía e lé c t r ic a",32
+Industrial,2.1.32,"Fabricación de accesorios, aparatos eléctricos y IR equipo de generación de energía eléctrica T",24
+Industrial,2.1.33,Fabricación de acumuladores y pilas S U,24
+Industrial,2.1.33,Fabricación de acumuladores y pilas,32
+Industrial,2.1.34,"Fabricación de equipo de transporte D N 2.1.35.Empacado y procesamiento de carne de ganado, I a v e s y o tr o s a n i m a le s c o m e s ti b l es .2 2 .1 .3 6 .E la b o r a c i ó n d e m a n te c a y o tras grasas animales comestibles",24
+Industrial,2.1.34,Fabricación de equipo de transporte,32
+Industrial,2.1.35,"Empacado y procesamiento de carne de ganado, aves y otros animales comestibles",32
+Industrial,2.1.36,Elaboración de manteca y otras grasas animales comestibles,32
+Industrial,2.1.37,Empacado y procesamiento de productos agrícolas no animales,24
+Industrial,2.1.37,Empacado y procesamiento de productos agrícolas no animales,32
+Industrial,2.1.38,Fabricación de muebles,24
+Industrial,2.1.38,Fabricación de muebles,32
+Industrial,2.1.39,Otras industrias manufactureras,24
+Industrial,2.1.39,Otras industrias manufactureras,32
+Industrial,2.1.4,Elaboración de hielo y frigoríficos,23
+Industrial,2.1.4,Elaboración de hielo y frigoríficos,31
+Industrial,2.1.5,Preparación e hilado de fibras textiles y fabricación de productos textiles,23
+Industrial,2.1.5,Preparación e hilado de fibras textiles y fabricación de productos textiles,31
+Industrial,2.1.6,Fabricación de prendas de vestir,23
+Industrial,2.1.6,Fabricación de prendas de vestir,31
+Industrial,2.1.7,"Curtido y acabado de cuero y piel, y fabricación de productos de cuero, piel y materiales sucedáneos",23
+Industrial,2.1.7,"Curtido y acabado de cuero y piel, y fabricación de productos de cuero, piel y materiales sucedáneos",31
+Industrial,2.1.8,Madera,23
+Industrial,2.1.8,Madera,31
+Industrial,2.1.9,Papel L A,23
+Industrial,2.1.9,Papel,31
+Industrial,2.2.1,Extracción de minerales no metálicos (materiales pétreos),24
+Industrial,2.2.1,Extracción de minerales no metálicos (materiales pétreos),32
+Industrial,2.2.2,Extracción de minerales metálicos comercialización) y airtsudnI( 3 . 1 . 1 .A l i m e n t a r i a 3 . 1 . 2 . E l a b o r a c i ó n d e c e r v e za a rt e s a n a l 3 . 1 . 3 . F a b r ic a c i ó n y v e n t a d e m u e b l e s o productos de madera para el hogar (pequeña escala),24
+Industrial,2.2.2,Extracción de minerales metálicos )oicremoc 3 . 1 . 1 .A l i m e n t a r i a 3 . 1 . 2 . E l a b o r a c i ó n d e c e r v e z a a rt e s a n a l y airtsudnI( 3 . 1 . 3 . F a b r i c a c i ó n y v e n t a d e m u e b l e s o productos de m a d e r a p a r a e l h o g a r ( p e q u e ñ a e s c a l a ),32
+Comercio y servicios,4.1.1,Comercio al por mayor de abarrotes y alimentos,24
+Comercio y servicios,4.1.1,Comercio al por mayor de abarrotes y alimentos,32
+Comercio y servicios,4.1.10,Comercio al por mayor de materiales de desecho C,24
+Comercio y servicios,4.1.10,"Comercio al por mayor de materiales de desecho 4 .1 .1 1. C o m e r c io a l p o r m a y o r d e m a q u in a r ia , e q u i p o y m o b i lia r io p a r a a c ti vi d ad e s a g ro pe c u a ri a s i n d u s t r ia l e s, de servicios y comerciales",32
+Comercio y servicios,4.1.11,"Comercio al por mayor de maquinaria, equipo y .4 mobiliario para actividades agropecuarias industriales, de servicios y comerciales",24
+Comercio y servicios,4.1.12,Comercio al por mayor de otra maquinaria y equipo de uso general,24
+Comercio y servicios,4.1.12,Comercio al por mayor de otra maquinaria y equipo de uso general,32
+Comercio y servicios,4.1.13,"Comercio al por mayor de camiones y, de partes y refacciones nuevas para automóviles, camionetas y",24
+Comercio y servicios,4.1.13,"Comercio al por mayor de camiones y, de partes y refacciones nuevas para automóviles, camionetas y",32
+Comercio y servicios,4.1.14,Comercio al por mayor de acumuladores y pilas,32
+Comercio y servicios,4.1.15,Comercio al por menor de abarrotes y alimentos,33
+Comercio y servicios,4.1.16,"Comercio al por menor de bebidas, hielo y tabaco",25
+Comercio y servicios,4.1.16,"Comercio al por menor de bebidas, hielo y tabaco",33
+Comercio y servicios,4.1.17,Comercio al por menor en tiendas de autoservicio y departamentales,25
+Comercio y servicios,4.1.17,Comercio al por menor en tiendas de autoservicio y departamentales,33
+Comercio y servicios,4.1.18,"Comercio al por menor de productos textiles, bisutería, accesorios para vestir y calzado",25
+Comercio y servicios,4.1.18,"Comercio al por menor de productos textiles, bisutería, accesorios para vestir y calzado",33
+Comercio y servicios,4.1.19,Comercio al por menor de artículos para el cuidado de la salud,25
+Comercio y servicios,4.1.19,Comercio al por menor de artículos para el cuidado de la salud,33
+Comercio y servicios,4.1.2,"Comercio al por mayor de bebidas, hielo y tabaco",24
+Comercio y servicios,4.1.2,"Comercio al por mayor de bebidas, hielo y tabaco",32
+Comercio y servicios,4.1.20,"Comercio al por menor de artículos de papelería, para el esparcimiento y otros artículos de uso personal",25
+Comercio y servicios,4.1.20,"Comercio al por menor de artículos de papelería, para el esparcimiento y otros artículos de uso personal",33
+Comercio y servicios,4.1.21,"Comercio al por menor de regalos, artículos religiosos, desechables y otros artículos de uso personal",25
+Comercio y servicios,4.1.21,"Comercio al por menor de regalos, artículos religiosos, desechables y otros artículos de uso personal",33
+Comercio y servicios,4.1.22,Comercio al por menor de mascotas,25
+Comercio y servicios,4.1.22,Comercio al por menor de mascotas,33
+Comercio y servicios,4.1.23,"Comercio al por menor de enseres domésticos, computadoras, artículos para la decoración de interiores y artículos usados",25
+Comercio y servicios,4.1.23,"Comercio al por menor de enseres domésticos, computadoras, artículos para la decoración de interiores y artículos usados",33
+Comercio y servicios,4.1.24,"Comercio al por menor de artículos de ferretería, tlapalería y vidrios",25
+Comercio y servicios,4.1.24,"Comercio al por menor de artículos de ferretería, tlapalería y vidrios",33
+Comercio y servicios,4.1.25,"Comercio al por menor de vehículos de motor, refacciones y lubricantes S O",25
+Comercio y servicios,4.1.25,"Comercio al por menor de vehículos de motor, refacciones y lubricantes",33
+Comercio y servicios,4.1.26,Comercio al por menor de combustibles IC 4 .1. 2 7 . C o m e rcio al por menor de químicos y aditivos para la IV co n s t r u cc ió n R E,25
+Comercio y servicios,4.1.26,Comercio al por menor de combustibles,33
+Comercio y servicios,4.1.27,Comercio al por menor de químicos y aditivos para la construcción,33
+Comercio y servicios,4.1.28,Comercio al por menor de acumuladores y pilas S Y,25
+Comercio y servicios,4.1.28,Comercio al por menor de acumuladores y pilas,33
+Comercio y servicios,4.1.29,"Centro, plaza o locales comerciales O",25
+Comercio y servicios,4.1.29,"Centro, plaza o locales comerciales",33
+Comercio y servicios,4.1.3,Comercio al por mayor de productos textiles y calzado,24
+Comercio y servicios,4.1.3,Comercio al por mayor de productos textiles y calzado,32
+Comercio y servicios,4.1.30,Tianguis y bazares IC R E ALIM ENTOS Y BEBIDAS M O,25
+Comercio y servicios,4.1.30,"Tianguis y bazares 4 . 2 SE R V I C IO S D E P R E PARACIÓN DE A L I M E N T O S Y B E B ID A S 4 . 2 . 1 .S e rv i c io s d e p re p a ra c i ó n d e a l im e n to s p o r e n c argo 4 . 2 . 2 .C e n t ro s n o c tu rn o s , b a r e s , c a n tin a s y s im i l a r e s",33
+Comercio y servicios,4.1.4,"Comercio al por mayor de productos farmacéuticos, perfumería, artículos para el esparcimiento, S electrodomésticos menores y línea de blanca O IC 4.1.5.Comercio al por mayor de materias primas IV agropecuarias y forestales R",24
+Comercio y servicios,4.1.4,"Comercio al por mayor de productos farmacéuticos, perfumería, artículos para el esparcimiento, electrodomésticos menores y línea de blanca 4 . 1. 5 . C o m e r c i o a l p o r m a y or de materias primas a g r o p e c ua r i a s y f o r e s ta le s",32
+Comercio y servicios,4.1.6,Comercio al por mayor de materiales para la E S construcción Y,24
+Comercio y servicios,4.1.6,Comercio al por mayor de materiales para la construcción 4 . 1 . 7 . C o m e r c i o a l p o r m a y o r d e g an a d o y a v e s e n p i e 4 . 1 . 8 . C o m e r c i o a l p o r m a y o r d e co m b u s ti b l e s d e u s o in d u s tr ia l,32
+Comercio y servicios,4.1.7,Comercio al por mayor de ganado y aves en pie O,24
+Comercio y servicios,4.1.8,Comercio al por mayor de combustibles de uso IC industrial R E,24
+Comercio y servicios,4.1.9,Comercio al por mayor de artículos desechables M O,24
+Comercio y servicios,4.1.9,Comercio al por mayor de artículos desechables,32
+Comercio y servicios,4.10.1,"Casinos, loterías y otros juegos de azar E S",27
+Comercio y servicios,4.10.1,"Casinos, loterías y otros juegos de azar",35
+Comercio y servicios,4.10.2,Parques con instalaciones recreativas Y,27
+Comercio y servicios,4.10.2,Parques con instalaciones recreativas,35
+Comercio y servicios,4.10.3,Casas de juegos electrónicos O IC,27
+Comercio y servicios,4.10.3,Casas de juegos electrónicos,35
+Comercio y servicios,4.10.4,Boliches y billares R,27
+Comercio y servicios,4.10.4,Boliches y billares,35
+Comercio y servicios,4.10.5,Otros servicios recreativos E M O C TRANSPORTE .4,27
+Comercio y servicios,4.10.5,Otros servicios recreativos TRANSPORTE,35
+Comercio y servicios,4.11.1,Servicios relacionados con el transporte aéreo,27
+Comercio y servicios,4.11.1,Servicios relacionados con el transporte aéreo,35
+Comercio y servicios,4.11.2,Servicios relacionados con el transporte por ferrocarril,27
+Comercio y servicios,4.11.2,Servicios relacionados con el transporte por ferrocarril,35
+Comercio y servicios,4.11.3,Servicios relacionados con el transporte por carretera,27
+Comercio y servicios,4.11.3,Servicios relacionados con el transporte por carretera,35
+Comercio y servicios,4.11.4,Servicios de intermediación para el transporte de carga,27
+Comercio y servicios,4.11.4,Servicios de intermediación para el transporte de carga,35
+Comercio y servicios,4.11.5,Otros servicios relacionados con el transporte,27
+Comercio y servicios,4.11.5,Otros servicios relacionados con el transporte,35
+Comercio y servicios,4.12.1,Recolección de residuos peligrosos,27
+Comercio y servicios,4.12.1,Recolección de residuos peligrosos,35
+Comercio y servicios,4.12.2,Recolección de residuos de manejo especial,27
+Comercio y servicios,4.12.2,Recolección de residuos de manejo especial,35
+Comercio y servicios,4.12.3,Tratamiento y almacenamiento temporal de residuos peligrosos,27
+Comercio y servicios,4.12.3,Tratamiento y almacenamiento temporal de residuos peligrosos,35
+Comercio y servicios,4.12.4,Tratamiento y almacenamiento temporal de residuos de manejo especial,27
+Comercio y servicios,4.12.4,Tratamiento y almacenamiento temporal de residuos de manejo especial,35
+Comercio y servicios,4.12.5,Servicios de remediación ambiental,27
+Comercio y servicios,4.12.5,Servicios de remediación ambiental,35
+Comercio y servicios,4.12.6,Recuperación de residuos de manejo especial (recicladoras),27
+Comercio y servicios,4.12.6,Recuperación de residuos de manejo especial (recicladoras),35
+Comercio y servicios,4.12.7,Otros servicios de manejo especial (sanitarios),27
+Comercio y servicios,4.12.7,Otros servicios de manejo especial (sanitarios),35
+Comercio y servicios,4.12.8,Desmanteladora de autos (Yonques),35
+Comercio y servicios,4.2.1,"Servicios de preparación de alimentos por encargo C .4 4.2.2.Centros nocturnos, bares, cantinas y similares",25
+Comercio y servicios,4.2.3,Servicios de preparación de alimentos y bebidas ALQUILER DE BIENES M UEBLES E INTANGIBLES,25
+Comercio y servicios,4.2.3,Servicios de preparación de alimentos y bebidas ALQUILER DE BIENES MUEBLES E,33
+Comercio y servicios,4.3.1,Alquiler de salones para fiestas y convenciones,25
+Comercio y servicios,4.3.1,Alquiler de salones para fiestas y convenciones,33
+Comercio y servicios,4.3.10,"Servicios de alquiler de marcas registradas, patentes y franquicias",33
+Comercio y servicios,4.3.2,Inmobiliarias y corredores de bienes raíces,25
+Comercio y servicios,4.3.2,Inmobiliarias y corredores de bienes raíces,33
+Comercio y servicios,4.3.3,"Alquiler de automóviles, camiones y otros transportes terrestres",25
+Comercio y servicios,4.3.3,"Alquiler de automóviles, camiones y otros transportes terrestres",33
+Comercio y servicios,4.3.4,Alquiler de aparatos eléctricos y electrónicos para el hogar y personales,25
+Comercio y servicios,4.3.4,Alquiler de aparatos eléctricos y electrónicos para el hogar y personales,33
+Comercio y servicios,4.3.5,Alquiler de prendas de vestir,25
+Comercio y servicios,4.3.5,Alquiler de prendas de vestir,33
+Comercio y servicios,4.3.6,Alquiler de otros artículos para el hogar y personales,25
+Comercio y servicios,4.3.6,Alquiler de otros artículos para el hogar y personales,33
+Comercio y servicios,4.3.7,"Alquiler de mesas, sillas, vajillas y similares",25
+Comercio y servicios,4.3.7,"Alquiler de mesas, sillas, vajillas y similares",33
+Comercio y servicios,4.3.8,"Centros generales de alquiler (maquinaria para construcción, bombas, jardinería, etc.)",25
+Comercio y servicios,4.3.8,"Centros generales de alquiler (maquinaria para construcción, bombas, jardinería, etc.)",33
+Comercio y servicios,4.3.9,"Alquiler de maquinaria y equipo agropecuario, pesquero, industrial, comercial y de servicios",25
+Comercio y servicios,4.3.9,"Alquiler de maquinaria y equipo agropecuario, pesquero, industrial, comercial y de servicios",33
+Comercio y servicios,4.4.1,Servicios financieros y de seguro,26
+Comercio y servicios,4.4.1,Servicios financieros y de seguro,34
+Comercio y servicios,4.4.10,Servicios de mensajería y paquetería,26
+Comercio y servicios,4.4.10,Servicios de mensajería y paquetería,34
+Comercio y servicios,4.4.11,Servicios de almacenamiento general,26
+Comercio y servicios,4.4.11,Servicios de almacenamiento general,34
+Comercio y servicios,4.4.12,Servicios de almacenamiento con refrigeración,26
+Comercio y servicios,4.4.12,Servicios de almacenamiento con refrigeración,34
+Comercio y servicios,4.4.13,Servicios de almacenamiento de productos químicos,26
+Comercio y servicios,4.4.13,Servicios de almacenamiento de productos químicos,34
+Comercio y servicios,4.4.14,Servicios de almacenamiento de acumuladores y pilas,26
+Comercio y servicios,4.4.14,Servicios de almacenamiento de acumuladores y pilas,34
+Comercio y servicios,4.4.15,Servicios de almacenamiento de paneles solares,26
+Comercio y servicios,4.4.15,Servicios de almacenamiento de paneles solares 4 .4 .1 6 .O t ro s s e r v ic io s d e a l m acenamiento con in st a la c io n e s e s p e ci a l iz a d a s MANTENIMIENTO,34
+Comercio y servicios,4.4.16,Otros servicios de almacenamiento con instalaciones especializadas S O IC M ANTENIM IENTO IV,26
+Comercio y servicios,4.4.2,"Servicios profesionales, científicos y técnicos",26
+Comercio y servicios,4.4.2,"Servicios profesionales, científicos y técnicos",34
+Comercio y servicios,4.4.3,Servicios veterinarios,26
+Comercio y servicios,4.4.3,Servicios veterinarios,34
+Comercio y servicios,4.4.4,Corporativos,26
+Comercio y servicios,4.4.4,Corporativos,34
+Comercio y servicios,4.4.5,Servicios de apoyo a los negocios,26
+Comercio y servicios,4.4.5,Servicios de apoyo a los negocios,34
+Comercio y servicios,4.4.6,Agencias de viajes y servicios de reservaciones,26
+Comercio y servicios,4.4.6,Agencias de viajes y servicios de reservaciones,34
+Comercio y servicios,4.4.7,"Servicios de investigación, protección, seguridad",26
+Comercio y servicios,4.4.7,"Servicios de investigación, protección, seguridad",34
+Comercio y servicios,4.4.8,Servicios de limpieza,26
+Comercio y servicios,4.4.8,Servicios de limpieza,34
+Comercio y servicios,4.4.9,Servicios postales,26
+Comercio y servicios,4.4.9,Servicios postales,34
+Comercio y servicios,4.5.1,"Mantenimiento, reparación mecánica y eléctrica de R E automóviles y camiones S",26
+Comercio y servicios,4.5.1,"Mantenimiento, reparación mecánica y eléctrica de automóviles y camiones",34
+Comercio y servicios,4.5.2,"Taller de carrocería y pintura Y O 4 . 5 . 3 . S e r v ic io d e la v a d o d e t ra c to c a m io n e s IC 4 . 5 . 4 . O tr o s s e rv ic io s d e r e p a ra c ió n y m a n t enimiento de R E automóviles, camiones y tractocamiones M",26
+Comercio y servicios,4.5.2,Taller de carrocería y pintura,34
+Comercio y servicios,4.5.3,Servicio de lavado de tractocamiones,34
+Comercio y servicios,4.5.4,"Otros servicios de reparación y mantenimiento de automóviles, camiones y tractocamiones",34
+Comercio y servicios,4.5.5,"Reparación y mantenimiento de equipo electrónico, y O C d e e q ui p o d e p re c is ió n .4 4 .5 .6 .R e p a ra c ió n y m a ntenimiento de maquinaria y equipo agropecuario, industrial, comercial y de servicios",26
+Comercio y servicios,4.5.5,"Reparación y mantenimiento de equipo electrónico, y de equipo de precisión",34
+Comercio y servicios,4.5.6,"Reparación y mantenimiento de maquinaria y equipo agropecuario, industrial, comercial y de servicios",34
+Comercio y servicios,4.5.7,Reparación y mantenimiento de artículos para el hogar y personales,26
+Comercio y servicios,4.5.7,Reparación y mantenimiento de artículos para el hogar y personales,34
+Comercio y servicios,4.6.1,"Hoteles, moteles y similares",26
+Comercio y servicios,4.6.1,"Hoteles, moteles y similares",34
+Comercio y servicios,4.6.2,Campamentos y albergues recreativos,26
+Comercio y servicios,4.6.2,Campamentos y albergues recreativos,34
+Comercio y servicios,4.6.3,"Pensiones y, casas de huéspedes y departamentos, y casas amueblados con servicios de hotelería",26
+Comercio y servicios,4.6.3,"Pensiones y, casas de huéspedes y departamentos, y casas amueblados con servicios de hotelería",34
+Comercio y servicios,4.7.1,Salones y clínicas de belleza,26
+Comercio y servicios,4.7.1,Salones y clínicas de belleza,34
+Comercio y servicios,4.7.10,Burdeles,27
+Comercio y servicios,4.7.10,Burdeles,35
+Comercio y servicios,4.7.11,Otros servicios personales ORGANIZACIONES,27
+Comercio y servicios,4.7.11,Otros servicios personales,35
+Comercio y servicios,4.7.2,Baños públicos,26
+Comercio y servicios,4.7.2,Baños públicos,34
+Comercio y servicios,4.7.3,Bolerías,26
+Comercio y servicios,4.7.3,Bolerías,34
+Comercio y servicios,4.7.4,Lavanderías y tintorerías,26
+Comercio y servicios,4.7.4,Lavanderías y tintorerías,34
+Comercio y servicios,4.7.5,Servicios funerarios,26
+Comercio y servicios,4.7.5,Servicios funerarios,34
+Comercio y servicios,4.7.6,Servicios funerarios para mascotas,26
+Comercio y servicios,4.7.6,Servicios funerarios para mascotas,34
+Comercio y servicios,4.7.7,Estacionamientos y pensiones para vehículos motores,34
+Comercio y servicios,4.7.9,Servicios de revelado e impresión de fotografía,35
+Comercio y servicios,4.8.1,"Asociaciones y organizaciones comerciales, laborales, profesionales",27
+Comercio y servicios,4.8.1,"Asociaciones y organizaciones comerciales, laborales, profesionales",35
+Comercio y servicios,4.8.2,Asociaciones y organizaciones recreativas,27
+Comercio y servicios,4.8.2,Asociaciones y organizaciones recreativas,35
+Comercio y servicios,4.8.3,Asociaciones y organizaciones religiosas y civiles,27
+Comercio y servicios,4.8.3,Asociaciones y organizaciones religiosas y civiles,35
+Comercio y servicios,4.8.4,Asociaciones y organizaciones políticas DEPORTIVOS,27
+Comercio y servicios,4.8.4,Asociaciones y organizaciones políticas DEPORTIVOS,35
+Comercio y servicios,4.9.1,"Compañías y grupos de espectáculos artísticos, y culturales",27
+Comercio y servicios,4.9.1,"Compañías y grupos de espectáculos artísticos, y culturales",35
+Comercio y servicios,4.9.2,Deportistas y equipos deportivos profesionales,27
+Comercio y servicios,4.9.2,Deportistas y equipos deportivos profesionales,35
+Comercio y servicios,4.9.3,"Promotores de espectáculos artísticos, culturales, deportivos y similares",27
+Comercio y servicios,4.9.3,"Promotores de espectáculos artísticos, culturales, deportivos y similares",35
+Comercio y servicios,4.9.4,"Agentes y representantes de artistas, deportistas y similares",27
+Comercio y servicios,4.9.4,"Agentes y representantes de artistas, deportistas y similares",35
+Comercio y servicios,4.9.5,"Artistas, escritores y técnicos independientes S O IC INSTALACIONES RECREATIVAS Y OTROS IV R",27
+Comercio y servicios,4.9.5,"Artistas, escritores y técnicos independientes INSTALACIONES RECREATIVAS Y OTROS",35
+Equipamiento,5.1.1,"Maternal, preescolar y educación especial",28
+Equipamiento,5.1.1,"Maternal, preescolar y educación especial",36
+Equipamiento,5.1.10,Educación extraescolar,28
+Equipamiento,5.1.10,Educación extraescolar,36
+Equipamiento,5.1.11,Servicios de apoyo a la educación,28
+Equipamiento,5.1.11,Servicios de apoyo a la educación,36
+Equipamiento,5.1.2,Primarias,28
+Equipamiento,5.1.2,Primarias,36
+Equipamiento,5.1.3,Medio básico (Secundaria),28
+Equipamiento,5.1.3,Medio básico (Secundaria),36
+Equipamiento,5.1.4,Medio superior (Preparatoria),28
+Equipamiento,5.1.4,Medio superior (Preparatoria),36
+Equipamiento,5.1.5,Educación media técnica terminal,28
+Equipamiento,5.1.5,Educación media técnica terminal,36
+Equipamiento,5.1.6,Escuelas de oficios,28
+Equipamiento,5.1.6,Escuelas de oficios,36
+Equipamiento,5.1.7,"Escuelas de arte, deporte e idiomas",28
+Equipamiento,5.1.7,"Escuelas de arte, deporte e idiomas",36
+Equipamiento,5.1.8,Superior,28
+Equipamiento,5.1.8,Superior,36
+Equipamiento,5.1.9,"Instituciones de investigación, tecnología y superior",28
+Equipamiento,5.1.9,"Instituciones de investigación, tecnología y superior",36
+Equipamiento,5.2.1,Hospitales y clínicas,28
+Equipamiento,5.2.1,Hospitales y clínicas,36
+Equipamiento,5.2.2,Centros de salud y consultorios,28
+Equipamiento,5.2.2,Centros de salud y consultorios,36
+Equipamiento,5.2.3,Institutos y hospitales de alta especialidad,28
+Equipamiento,5.2.3,Institutos y hospitales de alta especialidad,36
+Equipamiento,5.2.4,Servicios de enfermería O 5.2.5. Laboratorios médicos y de diagnóstico T,28
+Equipamiento,5.2.4,Servicios de enfermería,36
+Equipamiento,5.2.5,Laboratorios médicos y de diagnóstico,36
+Equipamiento,5.2.6,"Centros para la atención de pacientes que no N E r e q u i e re n h o sp i t a li z a c ió n IM 5 .2 . 7 . S e rv ic io s d e a m b u lancias, bancos de órganos y otros A P servicios auxiliares al tratamiento médico IU Q",28
+Equipamiento,5.2.6,Centros para la atención de pacientes que no requieren hospitalización,36
+Equipamiento,5.2.7,"Servicios de ambulancias, bancos de órganos y otros servicios auxiliares al tratamiento médico",36
+Equipamiento,5.3.1,Asistencia para animales (refugios y albergues) E .5,28
+Equipamiento,5.3.1,Asistencia para animales (refugios y albergues),36
+Equipamiento,5.3.10,"Servicios de capacitación para el trabajo para p5e.4rs ConUaLsT dUesReAm pYle aRdEasC, RsuEbAemCpIlÓeaNdas o con",28
+Equipamiento,5.3.10,"Servicios de capacitación para el trabajo para p5e.4rs ConUaLsT dUesReAm pYle aRdEasC, RsuEbAemCpIlÓeaNdas o con",36
+Equipamiento,5.3.2,Guarderías y estancias infantiles,28
+Equipamiento,5.3.2,Guarderías y estancias infantiles,36
+Equipamiento,5.3.3,Centro de integración juvenil y establecimientos especializados en adicciones,28
+Equipamiento,5.3.3,Centro de integración juvenil y establecimientos especializados en adicciones,36
+Equipamiento,5.3.4,Asilos y otras residencias para el cuidado de ancianos,28
+Equipamiento,5.3.4,Asilos y otras residencias para el cuidado de ancianos,36
+Equipamiento,5.3.5,"Orfanatorio, casa cuna o casa hogar para menores y otras residencias de asistencia social",28
+Equipamiento,5.3.5,"Orfanatorio, casa cuna o casa hogar para menores y otras residencias de asistencia social",36
+Equipamiento,5.3.6,Centro de desarrollo comunitario,28
+Equipamiento,5.3.6,Centro de desarrollo comunitario,36
+Equipamiento,5.3.7,Residencias de asistencia social y para el cuidado de la salud,28
+Equipamiento,5.3.7,Residencias de asistencia social y para el cuidado de la salud,36
+Equipamiento,5.3.8,Servicios de orientación y trabajo social,28
+Equipamiento,5.3.8,Servicios de orientación y trabajo social,36
+Equipamiento,5.3.9,"Servicios de alimentación, refugio y emergencia (albergues)",28
+Equipamiento,5.3.9,"Servicios de alimentación, refugio y emergencia (albergues)",36
+Equipamiento,5.4.1,Zoológicos y acuarios,28
+Equipamiento,5.4.1,Zoológicos y acuarios,36
+Equipamiento,5.4.10,Casa de cultura,29
+Equipamiento,5.4.10,Casa de cultura,37
+Equipamiento,5.4.11,Centros de interpretación e investigación cultural e histórico,29
+Equipamiento,5.4.11,Centros de interpretación e investigación cultural e histórico,37
+Equipamiento,5.4.2,Jardín botánico,28
+Equipamiento,5.4.2,Jardín botánico,36
+Equipamiento,5.4.3,Cines y teatros,28
+Equipamiento,5.4.3,Cines y teatros,36
+Equipamiento,5.4.4,Auditorios,36
+Equipamiento,5.4.5,Centros de convenciones y espectáculos,36
+Equipamiento,5.4.6,"Museos, sitios históricos y similares",37
+Equipamiento,5.4.7,"Bibliotecas, hemerotecas y similares",29
+Equipamiento,5.4.7,"Bibliotecas, hemerotecas y similares",37
+Equipamiento,5.4.8,Albercas y Balnearios,29
+Equipamiento,5.4.8,Albercas y Balnearios,37
+Equipamiento,5.4.9,"Centro de exposiciones, exhibiciones o recinto ferial",29
+Equipamiento,5.4.9,"Centro de exposiciones, exhibiciones o recinto ferial",37
+Equipamiento,5.5.1,Unidades deportivas,29
+Equipamiento,5.5.1,Unidades deportivas,37
+Equipamiento,5.5.10,"Hípico, Hipódromos y galgódromo O 5.5.11.Velódromo T N 5.5.12.Lienzo charro E IM",29
+Equipamiento,5.5.10,"Hípico, Hipódromos y galgódromo",37
+Equipamiento,5.5.11,Velódromo,37
+Equipamiento,5.5.12,Lienzo charro,37
+Equipamiento,5.5.2,Arena deportiva,29
+Equipamiento,5.5.2,Arena deportiva,37
+Equipamiento,5.5.3,Centro deportivo o polideportivo,29
+Equipamiento,5.5.3,Centro deportivo o polideportivo,37
+Equipamiento,5.5.4,Módulo deportivo y canchas,29
+Equipamiento,5.5.4,Módulo deportivo y canchas,37
+Equipamiento,5.5.5,Centros de acondicionamiento físico y complejos deportivos,29
+Equipamiento,5.5.5,Centros de acondicionamiento físico y complejos deportivos,37
+Equipamiento,5.5.6,Campo de golf,29
+Equipamiento,5.5.6,Campo de golf,37
+Equipamiento,5.5.7,Clubes y ligas de aficionados,29
+Equipamiento,5.5.7,Clubes y ligas de aficionados,37
+Equipamiento,5.5.8,Estadio,29
+Equipamiento,5.5.8,Estadio,37
+Equipamiento,5.5.9,Autodromos,29
+Equipamiento,5.5.9,Autodromos,37
+Equipamiento,5.6.1,Instalación gubernamental A P,29
+Equipamiento,5.6.1,Instalación gubernamental,37
+Equipamiento,5.6.2,Cuartel general militar IU Q,29
+Equipamiento,5.6.2,Cuartel general militar,37
+Equipamiento,5.6.3,Instalación de seguridad pública E .5 5 . 6 . 4 . C e n t r o d e re a d a p ta ci ó n s o c ia l 5 . 6 . 5 . C e n t r o s d e in t e rn a m i en t o p a ra menores CONCESIONADOS,29
+Equipamiento,5.6.3,Instalación de seguridad pública 5 . 6 . 4 . C e n t r o d e re a d a p ta ci ó n s o c ia l 5 . 6 . 5 . C e n t r o s d e in t e rn a m i en t o p a ra menores CONCESIONADOS,37
+Equipamiento,5.7.1,Depósito vehicular (corralones),29
+Equipamiento,5.7.1,Depósito vehicular (corralones),37
+Equipamiento,5.7.2,Estación de bomberos municipal,29
+Equipamiento,5.7.2,Estación de bomberos municipal,37
+Equipamiento,5.7.3,Centros de atención canina (perrera),29
+Equipamiento,5.7.3,Centros de atención canina (perrera),37
+Equipamiento,5.7.4,Sitio de disposición final de residuos sólidos urbanos y de manejo especial,29
+Equipamiento,5.7.4,Sitio de disposición final de residuos sólidos urbanos y de manejo especial,37
+Equipamiento,5.7.5,Sitio de disposición final de residuos peligrosos,29
+Equipamiento,5.7.5,Sitio de disposición final de residuos peligrosos,37
+Equipamiento,5.7.6,Centro de transferencia de residuos sólidos urbanos y voluminosos,29
+Equipamiento,5.7.6,Centro de transferencia de residuos sólidos urbanos y voluminosos,37
+Equipamiento,5.7.7,Administración de cementerios,29
+Equipamiento,5.7.7,Administración de cementerios,37
+Equipamiento,5.8.1,Transporte aéreo,29
+Equipamiento,5.8.1,Transporte aéreo,37
+Equipamiento,5.8.10,TV y radio (estaciones) O 5.8.11.Telecomunicaciones (torres de comunicación) T N 5.8.12.Estacionamientos E,30
+Equipamiento,5.8.13,Encierros IM A,30
+Equipamiento,5.8.14,Puerto fronterizo P IU Q,30
+Equipamiento,5.8.2,Transporte ferroviario,29
+Equipamiento,5.8.2,Transporte ferroviario,37
+Equipamiento,5.8.3,Autotransporte de carga,29
+Equipamiento,5.8.3,Autotransporte de carga,37
+Equipamiento,5.8.4,Autotransporte de carga especializado,29
+Equipamiento,5.8.4,Autotransporte de carga especializado,37
+Equipamiento,5.8.5,Autotransporte de materiales y residuos peligrosos,29
+Equipamiento,5.8.5,Autotransporte de materiales y residuos peligrosos,37
+Equipamiento,5.8.6,"Transporte colectivo urbano y suburbano, y foráneo de pasajeros",37
+Equipamiento,5.8.8,Transporte escolar y de personal,30
+Equipamiento,5.8.9,Transporte turístico,30
+Equipamiento,5.9.1,"Áreas verdes urbanas (Parques, jardines y huertos) E",30
+Equipamiento,5.9.2,Parques naturales y otros sitios del patrimonio cultural .5 de la nación,30
+Equipamiento,5.9.3,Plazas,30
+Equipamiento,5.9.4,"Espacio deportivo (Canchas, trota pistas, parque de patinaje)",30
+Equipamiento,5.9.5,Mirador DISTRIBUCIÓN,30
+Infraestructura,6.1.1,"Generación, transmisión, distribución y comercialización de energía eléctrica",30
+Infraestructura,6.1.10,Transporte de gas natural por ductos,30
+Infraestructura,6.1.11,Transporte de petróleo crudo por ductos,30
+Infraestructura,6.1.12,"Transporte por ductos de otros productos, excepto de productos refinados del petróleo",30
+Infraestructura,6.1.2,Torres y líneas de alta tensión A R,30
+Infraestructura,6.1.3,Tanques y depósitos de agua U,30
+Infraestructura,6.1.4,Cárcamos y bombas T C U,30
+Infraestructura,6.1.5,Plantas de tratamiento de aguas residuales (PTAR) R,30
+Infraestructura,6.1.6,Plantas potabilizadoras T S E 6.1.7.Plantas de almacenamiento y distribución de A hidrocarburos R F,30
+Infraestructura,6.1.8,Trasvase de hidrocarburos o petrolíferos N I 6 . 1. 9 .T ra nsporte por ductos de productos refinados del .6 p e t ró le o,30
+Agricola,7.1.1,Agricultura,30
+Agricola,7.1.2,Cría y explotación de animales A,30
+Agricola,7.1.3,Servicios relacionados con las actividades L O agropecuarias y forestales C ÍR 7.1.4.Almacén de productos agrícolas G,30
+Agricola,7.1.5,Almacén de productos pecuarios A .7,30
+Agricola,7.1.6,Mantenimiento de tractores y vehículos de uso agropecuario,30
+Agricola,7.1.7,Actividades zoosanitarias y fitosanitarias,30
+Agricola,7.1.8,Apicultura,30

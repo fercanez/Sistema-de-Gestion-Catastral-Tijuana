@@ -86,6 +86,13 @@ Descripción inicial del modelo de datos:
 - relaciones funcionales
 - observaciones y recomendaciones
 
+### `docs/pducp-integracion.md`
+Notas de integracion del PDUCP Mexicali 2040:
+- cruce espacial predio -> distrito
+- matriz de compatibilidad generada
+- SQL de apoyo para vistas, compatibilidad y densidades
+- flujo objetivo para dictamen preliminar por clave catastral
+
 ### `docs/glosario.md`
 Glosario técnico y funcional:
 - términos de negocio catastral

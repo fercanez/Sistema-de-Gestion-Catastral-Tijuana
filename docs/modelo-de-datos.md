@@ -24,6 +24,7 @@ Los dominios identificados son:
 - catálogos
 - catastro
 - auditoría
+- pducp
 
 La arquitectura de datos parece combinar:
 
@@ -121,6 +122,26 @@ Tablas y vistas detectadas:
 
 #### Función del esquema
 Permite trazabilidad técnica e institucional sobre operaciones relevantes.
+
+---
+
+### 5. `pducp`
+
+Responsable de:
+- matriz de compatibilidad de usos del PDUCP Mexicali 2040
+- densidades habitacionales propuestas
+- relacion normativa por distrito urbano
+
+Tablas propuestas:
+- `pducp.matriz_compatibilidad`
+- `pducp.densidades_habitacionales`
+- `pducp.densidades_distrito`
+
+Vistas relacionadas en GeoNode:
+- `public.v_predios_distrito_pducp`
+
+#### Función del esquema
+Permite relacionar un predio con su distrito PDUCP y consultar densidad, COS/CUS y compatibilidad preliminar de uso.
 
 ---
 

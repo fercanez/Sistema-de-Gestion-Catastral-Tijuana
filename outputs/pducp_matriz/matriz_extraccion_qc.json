@@ -1,0 +1,133 @@
+{
+  "qc": [
+    {
+      "page": 23,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 43,
+      "activities_detected": 36,
+      "activities_used": 34
+    },
+    {
+      "page": 24,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 35,
+      "activities_detected": 27,
+      "activities_used": 25
+    },
+    {
+      "page": 25,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 30,
+      "activities_detected": 27,
+      "activities_used": 25
+    },
+    {
+      "page": 26,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 36,
+      "activities_detected": 31,
+      "activities_used": 29
+    },
+    {
+      "page": 27,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 34,
+      "activities_detected": 30,
+      "activities_used": 28
+    },
+    {
+      "page": 28,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 39,
+      "activities_detected": 31,
+      "activities_used": 29
+    },
+    {
+      "page": 29,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 39,
+      "activities_detected": 32,
+      "activities_used": 30
+    },
+    {
+      "page": 30,
+      "districts": 50,
+      "vlines": 51,
+      "hlines": 36,
+      "activities_detected": 28,
+      "activities_used": 27
+    },
+    {
+      "page": 31,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 51,
+      "activities_detected": 36,
+      "activities_used": 36
+    },
+    {
+      "page": 32,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 39,
+      "activities_detected": 26,
+      "activities_used": 26
+    },
+    {
+      "page": 33,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 33,
+      "activities_detected": 27,
+      "activities_used": 27
+    },
+    {
+      "page": 34,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 43,
+      "activities_detected": 33,
+      "activities_used": 32
+    },
+    {
+      "page": 35,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 41,
+      "activities_detected": 30,
+      "activities_used": 30
+    },
+    {
+      "page": 36,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 45,
+      "activities_detected": 33,
+      "activities_used": 33
+    },
+    {
+      "page": 37,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 45,
+      "activities_detected": 34,
+      "activities_used": 34
+    },
+    {
+      "page": 38,
+      "districts": 48,
+      "vlines": 49,
+      "hlines": 39,
+      "activities_detected": 0,
+      "activities_used": 0
+    }
+  ],
+  "rows": 21814
+}
