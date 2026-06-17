@@ -12,6 +12,13 @@ const POPUP_CARTA_SECTORES_LAYERS = (window.CARTA_URBANA_2040_CONFIG?.sectoresLa
   "sectores",
   "geonode:sectores"
 ];
+const POPUP_CARTA_DISTRITOS_LAYER = (window.CARTA_URBANA_2040_CONFIG?.distritosLayer) || "geonode:diatritos_pdupm";
+const POPUP_CARTA_DISTRITOS_LAYERS = (window.CARTA_URBANA_2040_CONFIG?.distritosLayers) || [
+  "geonode:diatritos_pdupm",
+  "diatritos_pdupm",
+  "geonode:distritos_pdupm",
+  "distritos_pdupm"
+];
 const POPUP_CARTA_WMS_LAYERS = (window.CARTA_URBANA_2040_CONFIG?.wmsLayers) || [
   "usos_prop_au40",
   "geonode:usos_prop_au40"
@@ -25,6 +32,7 @@ let popupCartaDatos = null;
 const POPUP_CARTA_CAPA_ORDEN_DEF = {
   predio: 35,
   sectores: 28,
+  distritos: 24,
   zona: 18,
   carta: 12,
   prediosWms: 8,
@@ -35,6 +43,7 @@ let popupCartaCapaOrdenEstado = { ...POPUP_CARTA_CAPA_ORDEN_DEF };
 const POPUP_CARTA_CAPA_PROP = {
   predio: "predioVector",
   sectores: "sectoresWms",
+  distritos: "distritosPducpWms",
   zona: "zonaVector",
   carta: "cartaWms",
   prediosWms: "prediosWms",
@@ -80,6 +89,239 @@ function popupCartaEstiloZona() {
     stroke: new ol.style.Stroke({ color: "#b45309", width: 2, lineDash: [6, 4] }),
     fill: new ol.style.Fill({ color: "rgba(245, 158, 11, 0.18)" })
   });
+}
+
+const POPUP_CARTA_USO_TEXTO_RE = /habitacional|comercio|industrial|equipamiento|mixto|conservaci|área verde|area verde|infraestructura|almacenamiento|reserva|existente|propuesto|agr[ií]cola/i;
+const POPUP_CARTA_USO_EXACTOS = [
+  "usoprop_40", "usoprop40", "uso_prop_40", "usoprop", "uso_suelo", "g_uso", "nom_uso",
+  "tipo_uso", "desc_uso", "descripcion_uso", "usos_prop", "prop_au40", "destino",
+  "clasific", "leyenda", "simbolo", "label", "clase_uso"
+];
+const POPUP_CARTA_USO_SUBSTR = [
+  "usoprop_40", "usoprop40", "usoprop", "desc_uso", "descripcion_uso", "nom_uso",
+  "tipo_uso", "uso_suelo", "g_uso", "usos_prop", "prop_au40", "clasific", "leyenda", "simbolo", "destino"
+];
+const POPUP_CARTA_USO_EXCLUIR = { uso_id: 1, id_uso: 1, cod_uso: 1, clave_uso: 1, tipo_uso_id: 1, gid: 1, fid: 1 };
+
+function popupCartaValorPropValido(val) {
+  if (val == null) return false;
+  const s = String(val).trim();
+  return s !== "" && s.toUpperCase() !== "NULL" && s !== "0" && s !== "-";
+}
+
+function popupCartaTomarProp(props, candidatos, exacto) {
+  if (!props) return "";
+  const claves = {};
+  Object.keys(props).forEach(function(k) { claves[String(k).toLowerCase()] = k; });
+  for (let i = 0; i < candidatos.length; i++) {
+    const cand = String(candidatos[i]).toLowerCase();
+    if (exacto) {
+      const orig = claves[cand];
+      if (orig && popupCartaValorPropValido(props[orig])) return String(props[orig]).trim();
+      continue;
+    }
+    for (const kl in claves) {
+      if (POPUP_CARTA_USO_EXCLUIR[kl]) continue;
+      if (kl.indexOf(cand) >= 0 && popupCartaValorPropValido(props[claves[kl]])) {
+        return String(props[claves[kl]]).trim();
+      }
+    }
+  }
+  return "";
+}
+
+function popupCartaCombinarUsos() {
+  const usos = [];
+  const vistos = {};
+  for (let i = 0; i < arguments.length; i++) {
+    String(arguments[i] || "").split("·").forEach(function(parte) {
+      const u = parte.trim();
+      if (!u) return;
+      const key = u.toLowerCase();
+      if (!vistos[key]) {
+        vistos[key] = 1;
+        usos.push(u);
+      }
+    });
+  }
+  return usos.slice(0, 5).join(" · ");
+}
+
+function popupCartaInferirUsoPermitido(props) {
+  if (!props) return "";
+  let uso = popupCartaTomarProp(props, POPUP_CARTA_USO_EXACTOS, true);
+  if (uso) return uso;
+  uso = popupCartaTomarProp(props, POPUP_CARTA_USO_SUBSTR, false);
+  if (uso) return uso;
+  const hallados = [];
+  const vistos = {};
+  Object.keys(props).forEach(function(k) {
+    if (/^(gid|fid|geom|the_geom|shape_|objectid|area|perim)/i.test(k)) return;
+    const val = props[k];
+    if (!popupCartaValorPropValido(val)) return;
+    const s = String(val).trim();
+    if (s.length > 140 || !POPUP_CARTA_USO_TEXTO_RE.test(s)) return;
+    const key = s.toLowerCase();
+    if (!vistos[key]) {
+      vistos[key] = 1;
+      hallados.push(s);
+    }
+  });
+  return hallados.slice(0, 4).join(" · ");
+}
+
+function popupCartaCrearWmsCapaConFallback(url, layerCandidates, visible, opacity, zIndex) {
+  const candidates = (Array.isArray(layerCandidates) ? layerCandidates : [layerCandidates])
+    .map(function(x) { return String(x || "").trim(); })
+    .filter(Boolean);
+  if (!candidates.length) candidates.push(POPUP_CARTA_WMS_LAYER);
+  const capaInicial = candidates[0];
+  const capa = new ol.layer.Tile({
+    visible: !!visible,
+    opacity: opacity == null ? 0.88 : opacity,
+    zIndex: zIndex == null ? 5 : zIndex,
+    source: new ol.source.TileWMS({
+      url: url,
+      params: {
+        LAYERS: capaInicial,
+        TILED: true,
+        VERSION: "1.1.1",
+        FORMAT: "image/png",
+        TRANSPARENT: true
+      },
+      serverType: "geoserver",
+      crossOrigin: "anonymous"
+    })
+  });
+  capa.set("wmsLayerCandidates", candidates);
+  capa.set("wmsLayerIndex", 0);
+  capa.set("wmsLayerResuelta", capaInicial);
+  capa.getSource().on("tileloaderror", function() {
+    popupCartaAvanzarCapaWmsFallback(capa);
+  });
+  popupCartaResolverCapaWms(candidates).then(function(elegida) {
+    if (!elegida || !capa.getSource()) return;
+    capa.set("wmsLayerResuelta", elegida);
+    capa.getSource().updateParams({ LAYERS: elegida });
+    if (popupCartaMap) popupCartaMap.render();
+  });
+  return capa;
+}
+
+let popupCartaWmsCapasDisponiblesCache = null;
+let popupCartaWmsCapasDisponiblesPromise = null;
+
+function popupCartaObtenerCapasWmsDisponibles() {
+  if (popupCartaWmsCapasDisponiblesCache) {
+    return Promise.resolve(popupCartaWmsCapasDisponiblesCache);
+  }
+  if (popupCartaWmsCapasDisponiblesPromise) return popupCartaWmsCapasDisponiblesPromise;
+  popupCartaWmsCapasDisponiblesPromise = fetch(
+    POPUP_CARTA_GEONODE_WMS + "?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.1.1",
+    { cache: "no-store" }
+  )
+    .then(function(r) { return r.ok ? r.text() : ""; })
+    .then(function(txt) {
+      const capas = [];
+      if (txt) {
+        txt.replace(/<Name>([^<]+)<\/Name>/gi, function(_m, nombre) {
+          capas.push(String(nombre).trim());
+          return _m;
+        });
+      }
+      popupCartaWmsCapasDisponiblesCache = capas;
+      return capas;
+    })
+    .catch(function() {
+      popupCartaWmsCapasDisponiblesCache = [];
+      return [];
+    });
+  return popupCartaWmsCapasDisponiblesPromise;
+}
+
+function popupCartaElegirCapaWms(candidates, disponibles) {
+  const list = disponibles || [];
+  for (let i = 0; i < candidates.length; i++) {
+    const cand = String(candidates[i] || "").trim();
+    if (!cand) continue;
+    if (list.indexOf(cand) >= 0) return cand;
+    const corto = cand.replace(/^geonode:/, "");
+    if (list.indexOf(corto) >= 0) return corto;
+    if (list.indexOf("geonode:" + corto) >= 0) return "geonode:" + corto;
+  }
+  return candidates[0] || "";
+}
+
+async function popupCartaResolverCapaWms(candidates) {
+  const disponibles = await popupCartaObtenerCapasWmsDisponibles();
+  return popupCartaElegirCapaWms(candidates, disponibles);
+}
+
+function popupCartaAvanzarCapaWmsFallback(capa) {
+  const list = capa.get("wmsLayerCandidates") || [];
+  const idx = (capa.get("wmsLayerIndex") || 0) + 1;
+  if (idx < list.length) {
+    capa.set("wmsLayerIndex", idx);
+    capa.set("wmsLayerResuelta", list[idx]);
+    capa.getSource().updateParams({ LAYERS: list[idx] });
+  }
+}
+
+function popupCartaPuntosMuestraGeometry(geometry) {
+  if (!geometry || typeof ol === "undefined") return [];
+  try {
+    const format = new ol.format.GeoJSON({
+      dataProjection: "EPSG:4326",
+      featureProjection: "EPSG:3857"
+    });
+    const geom = format.readFeature({ type: "Feature", geometry }).getGeometry();
+    if (!geom) return [];
+    const ext = geom.getExtent();
+    const cx = (ext[0] + ext[2]) / 2;
+    const cy = (ext[1] + ext[3]) / 2;
+    const pts = [[cx, cy]];
+    const mx = ext[0] + (ext[2] - ext[0]) * 0.25;
+    const Mx = ext[0] + (ext[2] - ext[0]) * 0.75;
+    const my = ext[1] + (ext[3] - ext[1]) * 0.25;
+    const My = ext[1] + (ext[3] - ext[1]) * 0.75;
+    [[mx, my], [Mx, my], [mx, My], [Mx, My], [cx, my], [cx, My], [mx, cy], [Mx, cy]].forEach(function(p) {
+      pts.push(p);
+    });
+    const out = [];
+    const vistos = {};
+    pts.forEach(function(p) {
+      if (!geom.intersectsCoordinate(p)) return;
+      const lonLat = ol.proj.toLonLat(p);
+      const key = lonLat[0].toFixed(5) + "," + lonLat[1].toFixed(5);
+      if (!vistos[key]) {
+        vistos[key] = 1;
+        out.push({ lon: lonLat[0], lat: lonLat[1] });
+      }
+    });
+    return out;
+  } catch (e) {
+    return [];
+  }
+}
+
+async function popupCartaMuestrearUsosEnPredio(geometry, centro) {
+  const puntos = popupCartaPuntosMuestraGeometry(geometry);
+  if (!puntos.length && centro && centro.lon != null) {
+    puntos.push({ lon: centro.lon, lat: centro.lat });
+  }
+  const usos = [];
+  for (let i = 0; i < puntos.length; i++) {
+    const hit = await popupCartaWmsGetFeatureInfo(puntos[i].lon, puntos[i].lat, POPUP_CARTA_WMS_LAYERS);
+    if (!hit) continue;
+    const uso = popupCartaInferirUsoPermitido(hit.properties);
+    if (!uso) continue;
+    uso.split("·").forEach(function(parte) {
+      const u = parte.trim();
+      if (u && usos.indexOf(u) < 0) usos.push(u);
+    });
+    if (usos.length >= 3) break;
+  }
+  return usos.slice(0, 5).join(" · ");
 }
 
 function popupCartaCrearCapas(wmsLayerName) {
@@ -144,6 +386,13 @@ function popupCartaCrearCapas(wmsLayerName) {
         crossOrigin: "anonymous"
       })
     }),
+    distritosPducpWms: popupCartaCrearWmsCapaConFallback(
+      POPUP_CARTA_GEONODE_WMS,
+      POPUP_CARTA_DISTRITOS_LAYERS,
+      true,
+      0.72,
+      POPUP_CARTA_CAPA_ORDEN_DEF.distritos
+    ),
     prediosWms: new ol.layer.Tile({
       visible: false,
       opacity: 0.45,
@@ -245,6 +494,13 @@ function htmlMenuCapasPopupCarta() {
       label: "Sectores (WMS)",
       checked: true,
       opacity: 100
+    }),
+    popupCartaHtmlLayerItem("distritos", {
+      checkboxId: "popupCartaChkDistritos",
+      dotClass: "dot-teal",
+      label: "Distritos PDUCP (WMS)",
+      checked: true,
+      opacity: 72
     }),
     popupCartaHtmlLayerItem("zona", {
       checkboxId: "popupCartaChkZona",
@@ -376,6 +632,7 @@ function togglePopupCartaCapa(tipo) {
   const chkMap = {
     carta: "popupCartaChkCarta",
     sectores: "popupCartaChkSectores",
+    distritos: "popupCartaChkDistritos",
     predio: "popupCartaChkPredio",
     zona: "popupCartaChkZona",
     prediosWms: "popupCartaChkPrediosWms",
@@ -453,7 +710,7 @@ function popupCartaNormalizarAtributos(props) {
       for (const kl in claves) {
         if (kl.indexOf(cand) >= 0) {
           const val = props[claves[kl]];
-          if (val != null && String(val).trim() !== "" && String(val).toUpperCase() !== "NULL") {
+          if (popupCartaValorPropValido(val)) {
             return String(val).trim();
           }
         }
@@ -463,11 +720,11 @@ function popupCartaNormalizarAtributos(props) {
   }
   return {
     zona: tomar("zona", "zonific", "clave_zona", "simbolo", "simbol", "clave", "codigo", "cod_uso"),
-    uso_permitido: tomar("usoprop_40", "usoprop", "uso", "uso_suelo", "usos_prop", "prop_au40", "destino", "clasific", "descripcion", "desc_uso"),
+    uso_permitido: popupCartaInferirUsoPermitido(props),
     densidad: tomar("densidad", "hab_ha", "viviendas", "dens"),
     nivel: tomar("nivel", "altura", "plantas", "niveles"),
     instrumento: tomar("instrumento", "programa", "pdu", "plan", "carta", "au40"),
-    observaciones: tomar("observ", "nota", "leyenda", "coment"),
+    observaciones: tomar("observ", "nota", "coment"),
     nombre_zona: tomar("nombre", "nom_zona", "desc_zona", "etiqueta", "desc", "descripcion")
   };
 }
@@ -518,7 +775,7 @@ async function popupCartaWmsGetFeatureInfo(lon, lat, layers) {
       Y: "50",
       SRS: "EPSG:4326",
       INFO_FORMAT: "application/json",
-      FEATURE_COUNT: "5"
+      FEATURE_COUNT: "10"
     });
     try {
       const r = await fetch(POPUP_CARTA_GEONODE_WMS + "?" + params.toString(), { cache: "no-store" });
@@ -526,12 +783,32 @@ async function popupCartaWmsGetFeatureInfo(lon, lat, layers) {
       const data = await r.json();
       const features = data.features || [];
       if (!features.length) continue;
-      const props = features[0].properties || {};
+      let bestProps = null;
+      let bestGeom = null;
+      const usos = [];
+      for (let f = 0; f < features.length; f++) {
+        const props = features[f].properties || {};
+        if (!bestProps) {
+          bestProps = props;
+          bestGeom = features[f].geometry || null;
+        }
+        const uso = popupCartaInferirUsoPermitido(props);
+        if (!uso) continue;
+        uso.split("·").forEach(function(parte) {
+          const u = parte.trim();
+          if (u && usos.indexOf(u) < 0) usos.push(u);
+        });
+      }
+      const attrs = popupCartaNormalizarAtributos(bestProps);
+      if (usos.length) {
+        attrs.uso_permitido = popupCartaCombinarUsos(attrs.uso_permitido, usos.join(" · "));
+      }
       return {
         origen: "wms",
         layer: layer,
-        properties: props,
-        geometry: features[0].geometry || null
+        properties: bestProps,
+        geometry: bestGeom,
+        atributos: attrs
       };
     } catch (e) {
       console.warn("Carta urbana WMS:", layer, e);
@@ -557,12 +834,13 @@ async function popupCartaConsultarSector(lon, lat) {
 async function popupCartaConsultarWmsGetFeatureInfo(lon, lat) {
   const hit = await popupCartaWmsGetFeatureInfo(lon, lat, POPUP_CARTA_WMS_LAYERS);
   if (!hit) return null;
+  const attrs = hit.atributos || popupCartaNormalizarAtributos(hit.properties);
   return {
     origen: hit.origen,
     layer: hit.layer,
     properties: hit.properties,
     geometry: hit.geometry,
-    atributos: popupCartaNormalizarAtributos(hit.properties)
+    atributos: attrs
   };
 }
 
@@ -581,9 +859,67 @@ async function popupCartaEnriquecerDatos(data, p) {
     const attrs = popupCartaNormalizarAtributos(data.carta_urbana.properties);
     data.carta_urbana.atributos = Object.assign({}, attrs, data.carta_urbana.atributos || {});
   }
+  if (!data.carta_urbana) {
+    data.carta_urbana = { origen: "wms", atributos: {}, properties: {} };
+  }
+  data.carta_urbana.atributos = data.carta_urbana.atributos || {};
+  const attrs = data.carta_urbana.atributos;
+  if (!String(attrs.uso_permitido || "").trim() && data.carta_urbana.properties) {
+    const inferido = popupCartaInferirUsoPermitido(data.carta_urbana.properties);
+    if (inferido) attrs.uso_permitido = inferido;
+  }
+  if (!String(attrs.uso_permitido || "").trim() && centro.lon != null) {
+    try {
+      const muestreado = await popupCartaMuestrearUsosEnPredio(data.geometry, centro);
+      if (muestreado) attrs.uso_permitido = muestreado;
+    } catch (e) {
+      console.warn("Carta urbana: muestreo usos WMS:", e);
+    }
+  }
   if (!data.centroide && centro.lon != null) data.centroide = centro;
+  return popupCartaFusionarPducp(data);
+}
+
+function popupCartaFusionarPducp(data) {
+  const pducp = data?.pducp;
+  if (!pducp?.disponible) return data;
+
+  const ui = pducp.campos_ui || {};
+  const asignarSiVacio = function(obj, campo, valor) {
+    if (!obj || valor == null || String(valor).trim() === "") return;
+    if (!String(obj[campo] || "").trim()) obj[campo] = valor;
+  };
+
+  if (!data.carta_urbana) {
+    data.carta_urbana = {
+      origen: "pducp",
+      atributos: {},
+      properties: {}
+    };
+  }
+  data.carta_urbana.atributos = data.carta_urbana.atributos || {};
+  const attrs = data.carta_urbana.atributos;
+  asignarSiVacio(attrs, "zona", ui.zona_clave);
+  asignarSiVacio(attrs, "nombre_zona", ui.nombre_zona);
+  asignarSiVacio(attrs, "densidad", ui.densidad);
+  asignarSiVacio(attrs, "nivel", ui.nivel_altura);
+  asignarSiVacio(attrs, "instrumento", ui.instrumento);
+  asignarSiVacio(attrs, "observaciones", ui.observaciones);
+
+  if (!data.sector?.codigo && pducp.sector_pducp) {
+    data.sector = Object.assign({}, data.sector || {}, {
+      codigo: pducp.sector_pducp,
+      nombre: pducp.sector_nombre || data.sector?.nombre || "",
+      origen: data.sector?.origen || "pducp",
+      layer: data.sector?.layer || "diatritos_pdupm",
+      distrito: pducp.distrito || ""
+    });
+  }
+
   return data;
 }
+window.popupCartaFusionarPducp = popupCartaFusionarPducp;
+window.popupCartaInferirUsoPermitido = popupCartaInferirUsoPermitido;
 
 async function cargarCartaUrbana2040Fallback(claveNorm, p) {
   const headers = typeof authHeaders === "function" ? authHeaders() : {};
@@ -686,6 +1022,7 @@ function popupCartaHtmlCampoSector(valor) {
 function popupCartaResumenTexto(data) {
   const partes = [];
   if (data?.sector?.codigo) partes.push("Sector " + data.sector.codigo);
+  if (data?.pducp?.distrito) partes.push("Distrito " + data.pducp.distrito);
   const uso = data?.carta_urbana?.atributos?.uso_permitido;
   if (uso) partes.push(uso);
   if (partes.length) return partes.join(" · ");
@@ -712,46 +1049,110 @@ function popupCartaPropiedadesExtras(props, attrs) {
   return html;
 }
 
+function popupCartaHtmlCampoCompact(label, valor, span2, extraClass) {
+  const cls = "popup-carta-campo popup-carta-campo-compact"
+    + (span2 ? " span2" : "")
+    + (extraClass ? " " + extraClass : "");
+  return `<div class="${cls}">
+    <span class="popup-carta-label">${popupCartaEsc(label)}</span>
+    <strong class="popup-carta-valor">${popupCartaEsc(popupCartaVal(valor))}</strong>
+  </div>`;
+}
+
+function popupCartaHtmlCampoFicha(label, valor, span) {
+  const sp = span ? " span" + span : "";
+  return `<div class="popup-carta-celda${sp}">
+    <span class="popup-carta-label">${popupCartaEsc(label)}</span>
+    <strong class="popup-carta-valor">${popupCartaEsc(popupCartaVal(valor))}</strong>
+  </div>`;
+}
+
+function popupCartaHtmlMatrizCompat(pducp) {
+  const matriz = pducp?.matriz_compatibilidad;
+  if (!matriz || !matriz.disponible) return "";
+  const distrito = matriz.distrito || pducp.distrito || "";
+  const cols = [
+    { key: "compatible", titulo: "Compatibles", cls: "popup-carta-matriz-c" },
+    { key: "condicionada", titulo: "Condicionadas", cls: "popup-carta-matriz-cond" },
+    { key: "no_permitida", titulo: "No permitidas", cls: "popup-carta-matriz-np" }
+  ];
+  let html = `<div class="popup-carta-matriz-compat">
+    <div class="popup-carta-matriz-head">Matriz compatibilidad PDUCP · Distrito ${popupCartaEsc(distrito)}</div>
+    <div class="popup-carta-matriz-grid">`;
+  cols.forEach(function(col) {
+    const items = matriz[col.key] || [];
+    const total = (matriz.totales || {})[col.key] || items.length;
+    html += `<div class="popup-carta-matriz-col ${col.cls}">
+      <strong>${popupCartaEsc(col.titulo)} <span>(${total})</span></strong>
+      <ul>`;
+    if (!items.length) {
+      html += `<li class="popup-carta-matriz-vacio">Sin registros</li>`;
+    } else {
+      items.forEach(function(it) {
+        const txt = [it.codigo, it.actividad].filter(Boolean).join(" · ");
+        html += `<li>${popupCartaEsc(txt)}</li>`;
+      });
+      if (total > items.length) {
+        html += `<li class="popup-carta-matriz-mas">+${total - items.length} más…</li>`;
+      }
+    }
+    html += `</ul></div>`;
+  });
+  html += `</div></div>`;
+  return html;
+}
+
 function popupCartaHtmlAtributos(data, p) {
   const attrs = data?.carta_urbana?.atributos || {};
+  const pducp = data?.pducp || {};
+  const compat = pducp.compatibilidad_padron || {};
+  const compatTxt = compat.resultado || compat.compatibilidad_desc || compat.compatibilidad || "";
   const usoPadron = data?.uso_padron || p?.descripcion_uso || "";
   const origen = data?.carta_urbana?.origen || "";
   const capa = data?.carta_urbana?.tabla || data?.carta_urbana?.layer || data?.wms_layer || "—";
   const sectorCodigo = data?.sector?.codigo
     || popupCartaExtraerSector(data?.sector?.properties)
     || popupCartaExtraerSector(data?.carta_urbana?.properties)
+    || pducp.sector_pducp
     || "";
 
-  let html = `
-    <section class="popup-carta-seccion">
-      <h4>Predio consultado</h4>
-      ${popupCartaHtmlCampo("Clave catastral", data?.clave_catastral)}
-      ${popupCartaHtmlCampo("Uso en padrón", usoPadron)}
-      ${popupCartaHtmlCampo("Colonia", data?.colonia || p?.colonia)}
-      ${popupCartaHtmlCampo("Delegación", data?.delegacion || p?.delegacion)}
-    </section>
-    <section class="popup-carta-seccion popup-carta-seccion-zona">
-      <h4>Carta Urbana 2040</h4>
-      ${popupCartaHtmlCampoSector(sectorCodigo)}`;
+  const distrito = pducp.distrito || attrs.zona || "";
+  const densidad = attrs.densidad || pducp.densidad_texto || "";
+  const nivel = attrs.nivel || pducp.cos_cus_texto || "";
+  const usoPlan = attrs.uso_permitido || "";
+  const densUni = pducp.densidad_unifamiliar || "";
+  const densMulti = pducp.densidad_multifamiliar || "";
+  const densCompact = [densUni, densMulti].filter(function(x) {
+    return x && String(x).trim() !== "";
+  }).join(" · ") || densidad;
 
-  if (data?.carta_urbana) {
-    html += popupCartaHtmlCampo("Uso permitido (plan)", attrs.uso_permitido, true);
-    html += popupCartaHtmlCampo("Zona / clave", attrs.zona || attrs.nombre_zona);
-    html += popupCartaHtmlCampo("Nombre de zona", attrs.nombre_zona);
-    html += popupCartaHtmlCampo("Densidad", attrs.densidad);
-    html += popupCartaHtmlCampo("Nivel / altura", attrs.nivel);
-    html += popupCartaHtmlCampo("Instrumento / plan", attrs.instrumento);
-    html += popupCartaHtmlCampo("Observaciones", attrs.observaciones);
-    html += popupCartaHtmlCampo("Fuente usos", origen === "geonode" ? `GeoNode · ${capa}` : `WMS · ${capa}`);
-    if (data.sector?.layer || data.sector?.origen) {
-      html += popupCartaHtmlCampo("Fuente sector", `WMS · ${data.sector.layer || POPUP_CARTA_SECTORES_LAYER}`);
-    }
-    html += popupCartaPropiedadesExtras(data.carta_urbana.properties, attrs);
-  } else {
-    html += `<div class="popup-carta-aviso">${popupCartaEsc(data?.mensaje || "Sin datos de uso de suelo 2040 para este predio.")}</div>`;
-    html += `<div class="popup-carta-meta">Capa usos: ${popupCartaEsc(data?.wms_layer || POPUP_CARTA_WMS_LAYER)}</div>`;
+  let html = `
+    <section class="popup-carta-seccion popup-carta-seccion-compacta">
+      <div class="popup-carta-resumen-head">
+        <div class="popup-carta-sector-badge">${popupCartaEsc(popupCartaVal(sectorCodigo))}</div>
+        <div class="popup-carta-head-meta">
+          <strong>${popupCartaEsc(data?.clave_catastral)}</strong>
+          <span>${popupCartaEsc(usoPadron)} · ${popupCartaEsc(data?.colonia || p?.colonia)} · Distrito ${popupCartaEsc(popupCartaVal(distrito))}</span>
+        </div>
+      </div>
+      <div class="popup-carta-grid-ficha popup-carta-bloque-normativa">`;
+
+  html += popupCartaHtmlCampoFicha("Uso permitido (plan)", usoPlan, 2);
+  html += popupCartaHtmlCampoFicha("Compat. padrón", compatTxt || "—", 2);
+  html += popupCartaHtmlCampoFicha("Densidad", densCompact, 2);
+  html += popupCartaHtmlCampoFicha("COS / CUS", nivel, 2);
+
+  html += `</div>`;
+  html += popupCartaHtmlMatrizCompat(pducp);
+
+  if (!data?.carta_urbana && data?.mensaje) {
+    html += `<div class="popup-carta-aviso popup-carta-aviso-mini">${popupCartaEsc(data.mensaje)}</div>`;
   }
 
+  html += `<div class="popup-carta-meta-fuentes">
+    Usos: ${popupCartaEsc(origen === "geonode" ? `GeoNode · ${capa}` : `WMS · ${capa}`)}
+    · Sectores WMS · Distritos ${popupCartaEsc(POPUP_CARTA_DISTRITOS_LAYER)}
+  </div>`;
   html += `</section>`;
   return html;
 }
@@ -785,6 +1186,7 @@ function popupCartaActualizarMapa(data) {
         popupCartaCapas.osm,
         popupCartaCapas.cartaWms,
         popupCartaCapas.sectoresWms,
+        popupCartaCapas.distritosPducpWms,
         popupCartaCapas.coloniasWms,
         popupCartaCapas.prediosWms,
         popupCartaCapas.zonaVector,
@@ -897,6 +1299,7 @@ async function pintarPopupTabCartaUrbana(p) {
           <span><i class="popup-carta-swatch popup-carta-swatch-zona"></i> Polígono de zona (intersección)</span>
           <span><i class="popup-carta-swatch popup-carta-swatch-wms"></i> Usos propuestos 2040</span>
           <span><i class="popup-carta-swatch popup-carta-swatch-sectores"></i> Sectores</span>
+          <span><i class="popup-carta-swatch popup-carta-swatch-distritos"></i> Distritos PDUCP</span>
         </div>
       </div>
     </div>`;
@@ -956,3 +1359,4 @@ window.popupCartaCentrarMapa = popupCartaCentrarMapa;
 window.popupCartaImprimirPlano = popupCartaImprimirPlano;
 window.popupCartaCapturarMapaDataUrl = popupCartaCapturarMapaDataUrl;
 window.cargarCartaUrbana2040 = cargarCartaUrbana2040;
+window.POPUP_CARTA_DISTRITOS_LAYER = POPUP_CARTA_DISTRITOS_LAYER;

@@ -15,6 +15,7 @@ from psycopg2.extras import execute_values
 
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
 from database import get_conn, asegurar_tabla_predio_condominio, asegurar_columna_folio_real_padron
+from routers.pducp_consulta import consultar_pducp_predio
 
 try:
     from database import get_geonode_conn
@@ -819,6 +820,94 @@ CARTA_URBANA_SECTORES_WMS_LAYERS = [
     "geonode:sectores",
 ]
 
+USO_PERMISO_EXACTOS = (
+    "usoprop_40", "usoprop40", "uso_prop_40", "usoprop", "uso_suelo", "g_uso",
+    "nom_uso", "tipo_uso", "desc_uso", "descripcion_uso", "usos_prop", "prop_au40",
+    "destino", "clasific", "leyenda", "simbolo", "label", "clase_uso",
+)
+USO_PERMISO_SUBSTR = (
+    "usoprop_40", "usoprop40", "usoprop", "desc_uso", "descripcion_uso", "nom_uso",
+    "tipo_uso", "uso_suelo", "g_uso", "usos_prop", "prop_au40", "clasific", "leyenda",
+    "simbolo", "destino",
+)
+USO_PERMISO_EXCLUIR = frozenset({
+    "uso_id", "id_uso", "cod_uso", "clave_uso", "tipo_uso_id", "gid", "fid",
+})
+USO_TEXTO_RE = re.compile(
+    r"(?i)(habitacional|comercio|industrial|equipamiento|mixto|conservaci|"
+    r"área verde|area verde|infraestructura|almacenamiento|reserva|existente|propuesto|agr[ií]cola)"
+)
+
+
+def _valor_prop_carta_valido(val) -> bool:
+    if val is None:
+        return False
+    s = str(val).strip()
+    return s not in ("", "NULL", "null", "None", "0", "-")
+
+
+def _tomar_prop_carta(props: dict, *candidatos: str, exacto: bool = False, excluir=None) -> str:
+    if not props:
+        return ""
+    claves = {str(k).lower(): k for k in props.keys()}
+    excluir = excluir or frozenset()
+    for cand in candidatos:
+        cand_l = cand.lower()
+        if exacto:
+            orig = claves.get(cand_l)
+            if orig and _valor_prop_carta_valido(props.get(orig)):
+                return str(props[orig]).strip()
+            continue
+        for kl, orig in claves.items():
+            if kl in excluir:
+                continue
+            if cand_l in kl and _valor_prop_carta_valido(props.get(orig)):
+                return str(props[orig]).strip()
+    return ""
+
+
+def _inferir_uso_permitido(props: Optional[dict]) -> str:
+    if not props:
+        return ""
+    uso = _tomar_prop_carta(props, *USO_PERMISO_EXACTOS, exacto=True)
+    if uso:
+        return uso
+    uso = _tomar_prop_carta(
+        props, *USO_PERMISO_SUBSTR, excluir=USO_PERMISO_EXCLUIR
+    )
+    if uso:
+        return uso
+    usos: List[str] = []
+    vistos = set()
+    for k, val in props.items():
+        if re.match(r"^(gid|fid|geom|the_geom|shape_|objectid|area|perim)", str(k), re.I):
+            continue
+        if not _valor_prop_carta_valido(val):
+            continue
+        s = str(val).strip()
+        if len(s) > 140 or not USO_TEXTO_RE.search(s):
+            continue
+        key = s.lower()
+        if key not in vistos:
+            vistos.add(key)
+            usos.append(s)
+    return " · ".join(usos[:4])
+
+
+def _combinar_usos_permitidos(*valores: str) -> str:
+    usos: List[str] = []
+    vistos = set()
+    for val in valores:
+        for parte in str(val or "").split("·"):
+            u = parte.strip()
+            if not u:
+                continue
+            key = u.lower()
+            if key not in vistos:
+                vistos.add(key)
+                usos.append(u)
+    return " · ".join(usos[:5])
+
 
 def _normalizar_atributos_carta_urbana(props: Optional[dict]) -> dict:
     if not props:
@@ -831,22 +920,24 @@ def _normalizar_atributos_carta_urbana(props: Optional[dict]) -> dict:
             for kl, orig in claves.items():
                 if cand_l in kl:
                     val = props.get(orig)
-                    if val is not None and str(val).strip() not in ("", "NULL", "null"):
+                    if _valor_prop_carta_valido(val):
                         return str(val).strip()
         return ""
 
-    return {
+    attrs = {
         "zona": tomar("zona", "zonific", "clave_zona", "c_zona", "simbolo", "simbol", "clave", "codigo", "cod_uso"),
-        "uso_permitido": tomar(
-            "usoprop_40", "usoprop", "uso", "uso_suelo", "g_uso", "descripcion", "nom_uso", "tipo_uso",
-            "desc_uso", "usos_prop", "prop_au40", "destino", "clasific"
-        ),
+        "uso_permitido": _inferir_uso_permitido(props),
         "densidad": tomar("densidad", "hab_ha", "viviendas", "vivienda", "dens"),
         "nivel": tomar("nivel", "altura", "plantas", "n_max", "niveles"),
         "instrumento": tomar("instrumento", "programa", "pdu", "plan", "carta", "au40"),
-        "observaciones": tomar("observ", "nota", "leyenda", "coment"),
+        "observaciones": tomar("observ", "nota", "coment"),
         "nombre_zona": tomar("nombre", "nom_zona", "desc_zona", "etiqueta", "desc", "descripcion"),
     }
+    if not attrs["observaciones"]:
+        obs = tomar("leyenda")
+        if obs and not USO_TEXTO_RE.search(obs):
+            attrs["observaciones"] = obs
+    return attrs
 
 
 def _extraer_codigo_sector(props: Optional[dict]) -> str:
@@ -987,35 +1078,58 @@ def _consultar_carta_urbana_geonode(cur, ewkt_predio: str, tablas: List[str]) ->
                 f"""
                 SELECT
                     t.*,
-                    ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry
+                    ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry,
+                    ST_Area(
+                        ST_Intersection(
+                            t.geom,
+                            ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                        )
+                    ) AS inter_area
                 FROM public.{tabla} t
                 WHERE t.geom IS NOT NULL
                   AND ST_Intersects(
                         t.geom,
                         ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
                   )
-                ORDER BY ST_Area(
-                    ST_Intersection(
-                        t.geom,
-                        ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
-                    )
-                ) DESC NULLS LAST
-                LIMIT 1;
+                ORDER BY inter_area DESC NULLS LAST
+                LIMIT 8;
                 """,
                 (ewkt_predio, ewkt_predio),
             )
-            row = cur.fetchone()
-            if not row:
+            rows = cur.fetchall() or []
+            if not rows:
                 continue
-            props = dict(row)
-            geometry = props.pop("geometry", None)
-            props.pop("geom", None)
+            usos: List[str] = []
+            best_props = None
+            geometry = None
+            for row in rows:
+                props = dict(row)
+                props.pop("inter_area", None)
+                row_geom = props.pop("geometry", None)
+                props.pop("geom", None)
+                if best_props is None:
+                    best_props = props
+                    geometry = row_geom
+                uso = _inferir_uso_permitido(props)
+                if uso:
+                    for parte in uso.split("·"):
+                        u = parte.strip()
+                        if u and u not in usos:
+                            usos.append(u)
+            if not best_props:
+                continue
+            attrs = _normalizar_atributos_carta_urbana(best_props)
+            if usos:
+                attrs["uso_permitido"] = _combinar_usos_permitidos(
+                    attrs.get("uso_permitido") or "",
+                    " · ".join(usos),
+                )
             return {
                 "origen": "geonode",
                 "tabla": tabla,
-                "properties": props,
+                "properties": best_props,
                 "geometry": geometry,
-                "atributos": _normalizar_atributos_carta_urbana(props),
+                "atributos": attrs,
             }
         except Exception:
             continue
@@ -1040,7 +1154,7 @@ def _consultar_carta_urbana_wms(lon: float, lat: float, layers: List[str]) -> Op
             "Y": "50",
             "SRS": "EPSG:4326",
             "INFO_FORMAT": "application/json",
-            "FEATURE_COUNT": "5",
+            "FEATURE_COUNT": "10",
         }
         url = CARTA_URBANA_2040_WMS_URL + "?" + urllib.parse.urlencode(params)
         try:
@@ -1049,17 +1163,76 @@ def _consultar_carta_urbana_wms(lon: float, lat: float, layers: List[str]) -> Op
             features = data.get("features") or []
             if not features:
                 continue
-            props = features[0].get("properties") or {}
+            usos: List[str] = []
+            best_props = None
+            best_geom = None
+            for feat in features:
+                props = feat.get("properties") or {}
+                if best_props is None:
+                    best_props = props
+                    best_geom = feat.get("geometry")
+                uso = _inferir_uso_permitido(props)
+                if uso:
+                    for parte in uso.split("·"):
+                        u = parte.strip()
+                        if u and u not in usos:
+                            usos.append(u)
+            props = best_props or {}
+            attrs = _normalizar_atributos_carta_urbana(props)
+            if usos:
+                attrs["uso_permitido"] = _combinar_usos_permitidos(
+                    attrs.get("uso_permitido") or "",
+                    " · ".join(usos),
+                )
             return {
                 "origen": "wms",
                 "layer": layer,
                 "properties": props,
-                "geometry": features[0].get("geometry"),
-                "atributos": _normalizar_atributos_carta_urbana(props),
+                "geometry": best_geom,
+                "atributos": attrs,
             }
         except Exception:
             continue
     return None
+
+
+def _enriquecer_carta_urbana_con_pducp(
+    payload: dict,
+    pducp: Optional[dict],
+) -> dict:
+    """Completa atributos vacíos de carta urbana con datos normativos PDUCP."""
+    if not pducp or not pducp.get("disponible"):
+        return payload
+
+    ui = pducp.get("campos_ui") or {}
+    carta = payload.get("carta_urbana")
+    if carta is not None:
+        attrs = carta.setdefault("atributos", {})
+        for campo, clave_ui in (
+            ("zona", "zona_clave"),
+            ("nombre_zona", "nombre_zona"),
+            ("densidad", "densidad"),
+            ("nivel", "nivel_altura"),
+            ("instrumento", "instrumento"),
+            ("observaciones", "observaciones"),
+            ("uso_permitido", "uso_permitido"),
+        ):
+            if not str(attrs.get(campo) or "").strip() and ui.get(clave_ui):
+                attrs[campo] = ui[clave_ui]
+
+    sector = payload.get("sector") or {}
+    if not str(sector.get("codigo") or "").strip() and pducp.get("sector_pducp"):
+        payload["sector"] = {
+            "codigo": pducp.get("sector_pducp"),
+            "nombre": pducp.get("sector_nombre") or "",
+            "origen": "pducp",
+            "layer": "diatritos_pdupm",
+            "distrito": pducp.get("distrito") or "",
+            "properties": sector.get("properties") or {},
+        }
+
+    payload["pducp"] = pducp
+    return payload
 
 
 def _carta_urbana_2040_payload(clave: str) -> dict:
@@ -1141,7 +1314,25 @@ def _carta_urbana_2040_payload(clave: str) -> dict:
                 "Publique geonode:usos_prop_au40 en el servidor WMS."
             )
 
-    return {
+    pducp = {"disponible": False, "mensaje": "Consulta PDUCP no disponible."}
+    try:
+        conn_pducp = get_conn()
+        cur_pducp = conn_pducp.cursor()
+        pducp = consultar_pducp_predio(
+            cur_pducp,
+            clave_norm,
+            row.get("uso_padron") or "",
+        )
+        cur_pducp.close()
+        conn_pducp.close()
+    except Exception:
+        pducp = {
+            "disponible": False,
+            "clave_catastral": clave_norm,
+            "mensaje": "No se pudo consultar datos PDUCP en catastro_bc.",
+        }
+
+    payload = {
         "clave_catastral": clave_norm,
         "uso_padron": row.get("uso_padron") or "",
         "colonia": row.get("colonia") or "",
@@ -1155,7 +1346,9 @@ def _carta_urbana_2040_payload(clave: str) -> dict:
         "wms_layers_intentadas": CARTA_URBANA_2040_WMS_LAYERS,
         "tablas_geonode_detectadas": tablas_detectadas,
         "mensaje": mensaje,
+        "pducp": pducp,
     }
+    return _enriquecer_carta_urbana_con_pducp(payload, pducp)
 
 
 @router.get("/padron/{clave}/carta-urbana-2040")

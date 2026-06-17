@@ -13,6 +13,7 @@ const FICHA_MAPA_CAPAS_PANEL_CSS = `
 .ficha-capas-overlay .dot-amber,.popup-capas-overlay .dot-amber{background:#d97706;}
 .ficha-capas-overlay .dot-blue,.popup-capas-overlay .dot-blue{background:#3b82f6;}
 .ficha-capas-overlay .dot-cyan,.popup-capas-overlay .dot-cyan{background:#06b6d4;}
+.ficha-capas-overlay .dot-teal,.popup-capas-overlay .dot-teal{background:#0d9488;}
 .ficha-capas-overlay .layer-percent,.popup-capas-overlay .layer-percent{font-size:11px;color:#64748b;font-weight:700;}
 .ficha-capas-overlay .layer-item input[type=range],.popup-capas-overlay .layer-item input[type=range]{width:100%;margin:0 0 6px;}
 .ficha-capas-overlay .layer-actions,.popup-capas-overlay .layer-actions{display:flex;gap:6px;}

@@ -1990,19 +1990,24 @@ body.popup-archivo-foto-lightbox-abierto {
 /* ══════════════ CARTA URBANA 2040 (popup predio) ══════════════ */
 .popup-carta-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 32%) 1fr;
-  gap: 12px;
-  min-height: 560px;
-  height: min(72vh, 680px);
+  grid-template-columns: minmax(300px, 34%) 1fr;
+  gap: 8px;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
+}
+
+#popupTabCartaUrbana.active {
+  overflow: hidden;
 }
 
 .popup-carta-panel-izq {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   min-width: 0;
   min-height: 0;
-  overflow: auto;
+  overflow: hidden;
 }
 
 .popup-carta-seccion {
@@ -2015,6 +2020,277 @@ body.popup-archivo-foto-lightbox-abierto {
 .popup-carta-seccion h4 {
   margin: 0 0 8px;
   font-size: 0.9rem;
+  color: #703341;
+}
+
+.popup-carta-seccion-compacta {
+  padding: 4px 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.popup-carta-seccion-compacta h4 {
+  display: none;
+}
+
+.popup-carta-resumen-head,
+.popup-carta-head-sector {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 3px;
+  padding-bottom: 3px;
+  border-bottom: 1px dashed #d8bdc5;
+  flex: 0 0 auto;
+}
+
+.popup-carta-sector-badge {
+  flex: 0 0 auto;
+  min-width: 28px;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 900;
+  color: #703341;
+  letter-spacing: 0.05em;
+  line-height: 1;
+}
+
+.popup-carta-head-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  font-size: 0.62rem;
+  line-height: 1.15;
+}
+
+.popup-carta-head-meta strong {
+  color: #703341;
+  font-size: 0.68rem;
+}
+
+.popup-carta-grid-ficha {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0;
+  border: 1px solid #efe6e8;
+  border-radius: 4px;
+  overflow: hidden;
+  flex: 0 0 auto;
+}
+
+.popup-carta-bloque-normativa {
+  margin-bottom: 4px;
+}
+
+.popup-carta-celda {
+  padding: 2px 4px;
+  min-height: 0;
+  border-right: 1px solid #efe6e8;
+  border-bottom: 1px solid #efe6e8;
+}
+
+.popup-carta-celda:nth-child(4n) {
+  border-right: none;
+}
+
+.popup-carta-celda.span2 {
+  grid-column: span 2;
+}
+
+.popup-carta-celda .popup-carta-label {
+  display: block;
+  font-size: 0.52rem;
+  line-height: 1.05;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #475569;
+}
+
+.popup-carta-celda .popup-carta-valor {
+  display: block;
+  font-size: 0.62rem;
+  line-height: 1.15;
+  font-weight: 700;
+  color: #703341;
+  word-break: break-word;
+}
+
+.popup-carta-head-meta span {
+  color: #64748b;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.popup-carta-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 6px;
+  flex: 1 1 auto;
+  min-height: 0;
+  align-content: start;
+}
+
+.popup-carta-campo-compact {
+  display: block;
+  padding: 2px 0;
+  border-bottom: none;
+  font-size: 0.68rem;
+}
+
+.popup-carta-campo-compact.span2 {
+  grid-column: span 2;
+}
+
+.popup-carta-campo-compact .popup-carta-label {
+  display: block;
+  font-size: 0.6rem;
+  line-height: 1.1;
+  margin-bottom: 0;
+}
+
+.popup-carta-campo-compact .popup-carta-valor {
+  display: block;
+  font-size: 0.7rem;
+  line-height: 1.2;
+  font-weight: 700;
+}
+
+.popup-carta-valor-obs .popup-carta-valor {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-weight: 600;
+  font-size: 0.66rem;
+}
+
+.popup-carta-meta-fuentes {
+  margin-top: 4px;
+  font-size: 0.58rem;
+  color: #64748b;
+  line-height: 1.25;
+  flex: 0 0 auto;
+}
+
+.popup-carta-matriz-compat {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-carta-matriz-head {
+  margin: 0 0 3px;
+  padding: 3px 5px;
+  font-size: 0.62rem;
+  color: #fff;
+  background: #703341;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  flex: 0 0 auto;
+  border-radius: 4px 4px 0 0;
+}
+
+.popup-carta-matriz-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0;
+  flex: 1 1 auto;
+  min-height: 0;
+  border: 1px solid #e2e8f0;
+  border-top: none;
+  border-radius: 0 0 4px 4px;
+  overflow: hidden;
+}
+
+.popup-carta-matriz-col {
+  background: #fafafa;
+  padding: 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #e2e8f0;
+}
+
+.popup-carta-matriz-col:last-child {
+  border-right: none;
+}
+
+.popup-carta-matriz-col strong {
+  display: block;
+  font-size: 0.56rem;
+  color: #334155;
+  margin: 0;
+  padding: 3px 4px;
+  background: #f1f5f9;
+  border-bottom: 1px solid #e2e8f0;
+  flex: 0 0 auto;
+}
+
+.popup-carta-matriz-col strong span {
+  color: #64748b;
+  font-weight: 700;
+}
+
+.popup-carta-matriz-col ul {
+  margin: 0;
+  padding: 2px 4px 2px 14px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  list-style: disc;
+}
+
+.popup-carta-matriz-col li {
+  font-size: 0.56rem;
+  line-height: 1.18;
+  margin-bottom: 1px;
+  color: #1e293b;
+}
+
+.popup-carta-matriz-col.popup-carta-matriz-c strong {
+  border-top: 2px solid #16a34a;
+}
+
+.popup-carta-matriz-col.popup-carta-matriz-cond strong {
+  border-top: 2px solid #d97706;
+}
+
+.popup-carta-matriz-col.popup-carta-matriz-np strong {
+  border-top: 2px solid #dc2626;
+}
+
+.popup-carta-matriz-vacio,
+.popup-carta-matriz-mas {
+  list-style: none;
+  margin-left: -12px;
+  color: #64748b;
+  font-style: italic;
+}
+
+.popup-carta-aviso-mini {
+  margin-top: 4px;
+  padding: 4px 6px;
+  font-size: 0.62rem;
+}
+
+.popup-carta-seccion-pducp {
+  margin-top: 10px;
+  border-top: 2px solid #c9a227;
+  background: #fffdf7;
+}
+.popup-carta-seccion-pducp h4 {
   color: #703341;
 }
 
@@ -2049,7 +2325,7 @@ body.popup-archivo-foto-lightbox-abierto {
 }
 
 .popup-carta-valor-sector {
-  font-size: 1.35rem !important;
+  font-size: 1.1rem !important;
   font-weight: 900 !important;
   color: #703341 !important;
   letter-spacing: 0.06em;
@@ -2142,7 +2418,7 @@ body.popup-archivo-foto-lightbox-abierto {
 .popup-carta-mapa-body {
   position: relative;
   flex: 1;
-  min-height: 420px;
+  min-height: 0;
   display: flex;
   flex-direction: column;
 }
@@ -2219,7 +2495,7 @@ body.popup-archivo-foto-lightbox-abierto {
 .popup-carta-mapa {
   position: relative;
   flex: 1;
-  min-height: 420px;
+  min-height: 0;
   overflow: hidden;
   border-radius: 0;
 }
@@ -2229,7 +2505,7 @@ body.popup-archivo-foto-lightbox-abierto {
   inset: 0;
   width: 100%;
   height: 100%;
-  min-height: 420px;
+  min-height: 0;
   z-index: 1;
 }
 
@@ -2286,6 +2562,15 @@ body.popup-archivo-foto-lightbox-abierto {
   background: rgba(37, 99, 235, 0.12);
   border: 2px dashed #2563eb;
   border-radius: 2px;
+}
+
+.popup-carta-swatch-distritos {
+  background: rgba(13, 148, 136, 0.2);
+  border: 2px solid #0d9488;
+}
+
+.popup-carta-capas-menu .dot-teal {
+  background: #0d9488;
 }
 
 /* ══════════════ COLONIA / FRACCIONAMIENTO (popup predio) ══════════════ */

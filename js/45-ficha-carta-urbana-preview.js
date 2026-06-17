@@ -16,6 +16,18 @@ const FICHA_CARTA_WMS_LAYER = typeof POPUP_CARTA_WMS_LAYER !== "undefined"
 const FICHA_CARTA_SECTORES_LAYER = typeof POPUP_CARTA_SECTORES_LAYER !== "undefined"
   ? POPUP_CARTA_SECTORES_LAYER
   : "sectores";
+const FICHA_CARTA_DISTRITOS_LAYER = typeof POPUP_CARTA_DISTRITOS_LAYER !== "undefined"
+  ? POPUP_CARTA_DISTRITOS_LAYER
+  : "geonode:diatritos_pdupm";
+const FICHA_CARTA_DISTRITOS_LAYERS = typeof POPUP_CARTA_DISTRITOS_LAYERS !== "undefined"
+  ? POPUP_CARTA_DISTRITOS_LAYERS
+  : [
+    "geonode:diatritos_pdupm",
+    "diatritos_pdupm",
+    "geonode:distritos_pdupm",
+    "distritos_pdupm"
+  ];
+const FICHA_CARTA_MATRIZ_LIMITE = 18;
 
 function fichaCartaEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
@@ -66,10 +78,29 @@ function fichaCartaSectorCodigo(cartaData) {
 }
 
 function fichaCartaAtributos(cartaData) {
-  return cartaData?.carta_urbana?.atributos
-    || (typeof popupCartaNormalizarAtributos === "function"
-      ? popupCartaNormalizarAtributos(cartaData?.carta_urbana?.properties)
-      : {});
+  if (cartaData && typeof popupCartaFusionarPducp === "function") {
+    popupCartaFusionarPducp(cartaData);
+  }
+  let attrs = cartaData?.carta_urbana?.atributos;
+  if (!attrs && typeof popupCartaNormalizarAtributos === "function") {
+    attrs = popupCartaNormalizarAtributos(cartaData?.carta_urbana?.properties);
+  }
+  attrs = attrs || {};
+  if (!String(attrs.uso_permitido || "").trim() && cartaData?.carta_urbana?.properties) {
+    const inferir = typeof popupCartaInferirUsoPermitido === "function"
+      ? popupCartaInferirUsoPermitido
+      : null;
+    if (inferir) {
+      const uso = inferir(cartaData.carta_urbana.properties);
+      if (uso) {
+        attrs = Object.assign({}, attrs, { uso_permitido: uso });
+        if (cartaData.carta_urbana) {
+          cartaData.carta_urbana.atributos = Object.assign({}, cartaData.carta_urbana.atributos, attrs);
+        }
+      }
+    }
+  }
+  return attrs;
 }
 
 function serializarFeaturesCartaFicha(cartaData) {
@@ -95,8 +126,72 @@ function serializarFeaturesCartaFicha(cartaData) {
     type: "FeatureCollection",
     features,
     wmsLayer: cartaData?.wms_layer || FICHA_CARTA_WMS_LAYER,
-    sectoresLayer: FICHA_CARTA_SECTORES_LAYER
+    sectoresLayer: FICHA_CARTA_SECTORES_LAYER,
+    distritosLayer: FICHA_CARTA_DISTRITOS_LAYER,
+    distritosLayers: FICHA_CARTA_DISTRITOS_LAYERS
   };
+}
+
+function fichaCartaPducpDatos(cartaData) {
+  const pducp = cartaData?.pducp;
+  if (!pducp?.disponible) return null;
+  const compat = pducp.compatibilidad_padron || {};
+  return {
+    distrito: fichaCartaVal(pducp.distrito),
+    sectorNormativo: fichaCartaVal(
+      pducp.sector_nombre
+        ? `${pducp.sector_pducp || ""} · ${pducp.sector_nombre}`.trim()
+        : pducp.sector_pducp
+    ),
+    cosCus: fichaCartaVal(pducp.cos_cus_texto),
+    densUni: fichaCartaVal(pducp.densidad_unifamiliar),
+    densMulti: fichaCartaVal(pducp.densidad_multifamiliar),
+    compatibilidad: fichaCartaVal(compat.resultado || compat.compatibilidad_desc || compat.compatibilidad),
+    actividad: fichaCartaVal(
+      [compat.codigo_actividad, compat.actividad].filter(Boolean).join(" · ")
+    )
+  };
+}
+
+function fichaCartaPducpGridHtml(cartaData) {
+  const p = fichaCartaPducpDatos(cartaData);
+  if (!p) return "";
+  return `
+    <div class="grid-datos grid-datos-pducp grid-datos-compact">
+      <div class="celda"><div class="label">Distrito PDUCP</div><div class="valor">${fichaCartaEsc(p.distrito)}</div></div>
+      <div class="celda span2"><div class="label">Sector normativo</div><div class="valor">${fichaCartaEsc(p.sectorNormativo)}</div></div>
+      <div class="celda"><div class="label">Compat. padrón</div><div class="valor">${fichaCartaEsc(p.compatibilidad)}</div></div>
+    </div>`;
+}
+
+function fichaCartaMatrizHtml(cartaData) {
+  const matriz = cartaData?.pducp?.matriz_compatibilidad;
+  if (!matriz?.disponible) return "";
+  const distrito = matriz.distrito || cartaData?.pducp?.distrito || "";
+  const cols = [
+    { key: "compatible", titulo: "Compatibles", cls: "matriz-c" },
+    { key: "condicionada", titulo: "Condicionadas", cls: "matriz-cond" },
+    { key: "no_permitida", titulo: "No permitidas", cls: "matriz-np" }
+  ];
+  let html = `<div class="grid-datos grid-datos-matriz">
+    <div class="celda pducp-head full">Matriz compatibilidad PDUCP · Distrito ${fichaCartaEsc(distrito)}</div>`;
+  cols.forEach(function(col) {
+    const items = (matriz[col.key] || []).slice(0, FICHA_CARTA_MATRIZ_LIMITE);
+    const total = (matriz.totales || {})[col.key] || (matriz[col.key] || []).length;
+    let lista = items.map(function(it) {
+      return fichaCartaEsc([it.codigo, it.actividad].filter(Boolean).join(" · "));
+    }).join("<br>");
+    if (!lista) lista = "—";
+    if (total > items.length) {
+      lista += `<br><span class="matriz-mas">+${total - items.length} más…</span>`;
+    }
+    html += `<div class="celda matriz-col ${col.cls}">
+      <div class="label">${fichaCartaEsc(col.titulo)} (${total})</div>
+      <div class="valor matriz-lista">${lista}</div>
+    </div>`;
+  });
+  html += `</div>`;
+  return html;
 }
 
 function fichaCartaHtmlLayerItem(id, opts) {
@@ -137,6 +232,13 @@ function fichaCartaLayerPanelHtml() {
       label: "Sectores",
       checked: true,
       opacity: 100
+    }),
+    fichaCartaHtmlLayerItem("distritos", {
+      checkboxId: "cartaChkDistritos",
+      dotClass: "dot-teal",
+      label: "Distritos PDUCP",
+      checked: true,
+      opacity: 72
     }),
     fichaCartaHtmlLayerItem("zona", {
       checkboxId: "cartaChkZona",
@@ -190,9 +292,9 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
   let previewMapCarta=null;
   const featuresCarta=${geoJson};
   const mapaInicialFicha=${mapaInicial};
-  const cartaCapaOrdenDef={predio:35,sectores:28,zona:18,carta:12,prediosWms:8,colonias:5};
+  const cartaCapaOrdenDef={predio:35,sectores:28,distritos:24,zona:18,carta:12,prediosWms:8,colonias:5};
   let cartaCapaOrdenEstado=Object.assign({},cartaCapaOrdenDef);
-  const cartaCapaProp={predio:"capaPredio",sectores:"capaSectores",zona:"capaZona",carta:"capaUsos",prediosWms:"capaPredios",colonias:"capaColonias"};
+  const cartaCapaProp={predio:"capaPredio",sectores:"capaSectores",distritos:"capaDistritos",zona:"capaZona",carta:"capaUsos",prediosWms:"capaPredios",colonias:"capaColonias"};
 
   function obtenerCapaFichaCarta(id){
     const c=window.__cartaPreviewCapas;
@@ -253,7 +355,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
   }
 
   function toggleCapaFichaCarta(id){
-    const chkMap={carta:"cartaChkUsos",sectores:"cartaChkSectores",predio:"cartaChkPredio",zona:"cartaChkZona",prediosWms:"cartaChkPrediosWms",colonias:"cartaChkColoniasWms"};
+    const chkMap={carta:"cartaChkUsos",sectores:"cartaChkSectores",distritos:"cartaChkDistritos",predio:"cartaChkPredio",zona:"cartaChkZona",prediosWms:"cartaChkPrediosWms",colonias:"cartaChkColoniasWms"};
     const capa=obtenerCapaFichaCarta(id);
     if(!capa)return;
     const chkId=chkMap[id];
@@ -268,16 +370,69 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
   }
 
   function crearWmsCarta(url,layers,visible,opacity,zIndex){
-    return new ol.layer.Tile({
+    const candidates=(Array.isArray(layers)?layers:[layers]).map(function(x){return String(x||"").trim();}).filter(Boolean);
+    if(!candidates.length)candidates.push("${FICHA_CARTA_WMS_LAYER}");
+    const capaInicial=candidates[0];
+    const capa=new ol.layer.Tile({
       visible:!!visible,
       opacity:opacity==null?0.88:opacity,
       zIndex:zIndex==null?5:zIndex,
       source:new ol.source.TileWMS({
         url:url,
-        params:{LAYERS:layers,TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
+        params:{LAYERS:capaInicial,TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
         serverType:"geoserver",
         crossOrigin:"anonymous"
       })
+    });
+    capa.set("wmsLayerCandidates",candidates);
+    capa.set("wmsLayerIndex",0);
+    capa.getSource().on("tileloaderror",function(){
+      const list=capa.get("wmsLayerCandidates")||[];
+      const idx=(capa.get("wmsLayerIndex")||0)+1;
+      if(idx<list.length){
+        capa.set("wmsLayerIndex",idx);
+        capa.getSource().updateParams({LAYERS:list[idx]});
+      }
+    });
+    resolverCapaWmsFicha("${FICHA_CARTA_GEONODE_WMS}",candidates).then(function(elegida){
+      if(!elegida||!capa.getSource())return;
+      capa.getSource().updateParams({LAYERS:elegida});
+      if(previewMapCarta)previewMapCarta.render();
+    });
+    return capa;
+  }
+
+  let fichaCartaCapasWmsCache=null;
+  let fichaCartaCapasWmsPromise=null;
+  function obtenerCapasWmsFicha(url){
+    if(fichaCartaCapasWmsCache)return Promise.resolve(fichaCartaCapasWmsCache);
+    if(fichaCartaCapasWmsPromise)return fichaCartaCapasWmsPromise;
+    fichaCartaCapasWmsPromise=fetch(url+"?SERVICE=WMS&REQUEST=GetCapabilities&VERSION=1.1.1",{cache:"no-store"})
+      .then(function(r){return r.ok?r.text():"";})
+      .then(function(txt){
+        const capas=[];
+        if(txt)txt.replace(/<Name>([^<]+)<\\/Name>/gi,function(_m,n){capas.push(String(n).trim());return _m;});
+        fichaCartaCapasWmsCache=capas;
+        return capas;
+      })
+      .catch(function(){fichaCartaCapasWmsCache=[];return [];});
+    return fichaCartaCapasWmsPromise;
+  }
+  function elegirCapaWmsFicha(candidates,disponibles){
+    const list=disponibles||[];
+    for(let i=0;i<candidates.length;i++){
+      const cand=String(candidates[i]||"").trim();
+      if(!cand)continue;
+      if(list.indexOf(cand)>=0)return cand;
+      const corto=cand.replace(/^geonode:/,"");
+      if(list.indexOf(corto)>=0)return corto;
+      if(list.indexOf("geonode:"+corto)>=0)return "geonode:"+corto;
+    }
+    return candidates[0]||"";
+  }
+  function resolverCapaWmsFicha(url,candidates){
+    return obtenerCapasWmsFicha(url).then(function(disponibles){
+      return elegirCapaWmsFicha(candidates,disponibles);
     });
   }
 
@@ -306,12 +461,14 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
 
     const wmsLayer=featuresCarta.wmsLayer||"${FICHA_CARTA_WMS_LAYER}";
     const sectoresLayer=featuresCarta.sectoresLayer||"${FICHA_CARTA_SECTORES_LAYER}";
+    const distritosLayers=featuresCarta.distritosLayers||${JSON.stringify(FICHA_CARTA_DISTRITOS_LAYERS)};
     const baseGoogleHybrid=new ol.layer.Tile({visible:true,source:new ol.source.XYZ({url:"https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",crossOrigin:"anonymous"})});
     const baseGoogleRoad=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",crossOrigin:"anonymous"})});
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
     const capaUsos=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",wmsLayer,true,0.88,cartaCapaOrdenDef.carta);
     const capaSectores=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",sectoresLayer,true,1,cartaCapaOrdenDef.sectores);
+    const capaDistritos=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",distritosLayers,true,0.72,cartaCapaOrdenDef.distritos);
     const capaPredios=crearWmsCarta("https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms","catastro_bc:predios_oficial",false,0.45,cartaCapaOrdenDef.prediosWms);
     const capaColonias=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}","colonias",false,0.45,cartaCapaOrdenDef.colonias);
 
@@ -330,11 +487,11 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
 
     previewMapCarta=new ol.Map({
       target:"previewCartaMap",
-      layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaPredios,capaColonias,capaZona,capaPredio],
+      layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaDistritos,capaPredios,capaColonias,capaZona,capaPredio],
       view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18}),
       controls:[]
     });
-    window.__cartaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaPredios,capaColonias,capaPredio,capaZona};
+    window.__cartaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaDistritos,capaPredios,capaColonias,capaPredio,capaZona};
     window.__cartaVistaUsuario=false;
     inicializarOrdenCapasFicha();
     if(typeof actualizarCapasFichaCarta==="function")actualizarCapasFichaCarta();
@@ -421,7 +578,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
   }
 
   function actualizarCapasFichaCarta(){
-    ["carta","sectores","predio","zona","prediosWms","colonias"].forEach(toggleCapaFichaCarta);
+    ["carta","sectores","distritos","predio","zona","prediosWms","colonias"].forEach(toggleCapaFichaCarta);
   }
 
   function cambiarBaseFichaCarta(){
@@ -578,7 +735,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
 
 function buildFichaCartaLayoutScript() {
   return `
-  const FICHA_PAPEL_CARTA={carta:{ancho:8.5,alto:11}};
+  const FICHA_PAPEL_CARTA={carta:{ancho:8.5,alto:11},matrizReservaIn:1.72,mapMinIn:1.65};
 
   function mapInToPx(mapIn){
     const inch=parseFloat(mapIn);
@@ -618,6 +775,10 @@ function buildFichaCartaLayoutScript() {
         if(head)px+=head.getBoundingClientRect().height;
         return;
       }
+      if(el.classList.contains("grid-datos-matriz")){
+        px+=FICHA_PAPEL_CARTA.matrizReservaIn*96;
+        return;
+      }
       if(el.classList.contains("aviso-impresion"))return;
       px+=el.getBoundingClientRect().height;
     });
@@ -631,13 +792,14 @@ function buildFichaCartaLayoutScript() {
     const root=document.documentElement;
     root.style.setProperty("--ficha-ancho",p.ancho+"in");
     root.style.setProperty("--ficha-alto",p.alto+"in");
+    root.style.setProperty("--ficha-matriz-alto",FICHA_PAPEL_CARTA.matrizReservaIn+"in");
     document.body.classList.add("papel-carta");
     document.body.classList.toggle("ficha-carta-layout-impresion",esImpresion);
     let reservado=medirReservadoCartaIn();
     const margenPagina=esImpresion?0.06:0.1;
     const altoPagina=esImpresion?(p.alto-margenPagina*2):p.alto;
-    let mapIn=altoPagina-reservado-(esImpresion?0.01:0.06);
-    mapIn=Math.max(2.3,+mapIn.toFixed(2));
+    let mapIn=altoPagina-reservado-(esImpresion?0.01:0.05);
+    mapIn=Math.max(FICHA_PAPEL_CARTA.mapMinIn,+mapIn.toFixed(2));
     root.style.setProperty("--ficha-media-map",mapIn+"in");
     if(esImpresion){
       root.style.setProperty("--ficha-contenido-alto",(reservado+mapIn).toFixed(2)+"in");
@@ -681,11 +843,18 @@ function construirHtmlFichaCartaUrbanaVentana(datos, cartaData, opciones) {
   const domicilio = typeof construirDomicilioFisicoFicha === "function"
     ? fichaCartaEsc(construirDomicilioFisicoFicha(datos?.p || {}, numof))
     : fichaCartaEsc(`${datos?.calle || ""} — ${coloniaTxt}`);
-  const zona = fichaCartaVal(attrs.zona || attrs.nombre_zona);
+  const zonaDisplay = fichaCartaVal(
+    [attrs.zona, attrs.nombre_zona].filter(function(v) {
+      return v && String(v).trim() !== "" && String(v).trim() !== "—";
+    }).filter(function(v, i, arr) {
+      return arr.indexOf(v) === i;
+    }).join(" · ")
+  );
   const densidad = fichaCartaVal(attrs.densidad);
   const nivel = fichaCartaVal(attrs.nivel);
-  const instrumento = fichaCartaVal(attrs.instrumento);
-  const observaciones = fichaCartaVal(attrs.observaciones);
+  const pducpHtml = fichaCartaPducpGridHtml(cartaData);
+  const matrizHtml = fichaCartaMatrizHtml(cartaData);
+  const distritoPducp = fichaCartaVal(cartaData?.pducp?.distrito);
   const fechaPie = new Date().toLocaleDateString("es-MX");
   const featuresPayload = serializarFeaturesCartaFicha(cartaData);
   const mapScript = buildFichaCartaMapScript(featuresPayload, mapaInicial);
@@ -700,26 +869,26 @@ function construirHtmlFichaCartaUrbanaVentana(datos, cartaData, opciones) {
 <title>Ficha Carta Urbana 2040 ${clave}</title>
 <link rel="stylesheet" href="${FICHA_CARTA_OL_CSS}">
 <style>
-:root{--guinda:#703341;--guinda-claro:#d8bdc5;--texto-valor:#1e293b;--ficha-ancho:8.5in;--ficha-alto:11in;--ficha-media-map:4.35in;}
-html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f3f3;color:var(--texto-valor);}
+:root{--guinda:#703341;--guinda-claro:#d8bdc5;--texto-valor:#1e293b;--ficha-ancho:8.5in;--ficha-alto:11in;--ficha-media-map:1.65in;--ficha-matriz-alto:1.72in;}
+html,body{margin:0;padding:0;font-family:Arial,Helvetica,sans-serif;background:#f3f3f3;color:var(--texto-valor);font-size:9px;}
 body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
-.toolbar{position:sticky;top:0;z-index:9999;background:#fff;border-bottom:1px solid #ddd;padding:8px 12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
-.toolbar button{border:none;background:var(--guinda);color:#fff;padding:7px 11px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:12px;}
+.toolbar{position:sticky;top:0;z-index:9999;background:#fff;border-bottom:1px solid #ddd;padding:6px 10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.toolbar button{border:none;background:var(--guinda);color:#fff;padding:6px 10px;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px;}
 .toolbar button.sec{background:#666;}
 .toolbar button:disabled{opacity:.55;cursor:not-allowed;}
-.carta-layer-panel{background:#fff;border-bottom:1px solid #ddd;padding:8px 14px;display:grid;grid-template-columns:minmax(280px,1fr) minmax(220px,1fr);gap:10px;font-size:12px;}
+.carta-layer-panel{background:#fff;border-bottom:1px solid #ddd;padding:6px 12px;display:grid;grid-template-columns:minmax(280px,1fr) minmax(220px,1fr);gap:8px;font-size:11px;}
 .carta-layer-panel.oculto{display:none!important;}
-.carta-layer-panel label{display:block;margin:4px 0;cursor:pointer;}
-.carta-layer-panel strong{display:block;margin-bottom:4px;color:#703341;}
+.carta-layer-panel label{display:block;margin:3px 0;cursor:pointer;}
+.carta-layer-panel strong{display:block;margin-bottom:3px;color:#703341;}
 ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS : ""}
-.contenedor{width:min(100%,var(--ficha-ancho));max-width:var(--ficha-ancho);height:auto;min-height:0;margin:12px auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12);border:1px solid var(--guinda);border-radius:6px;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column;}
-.encabezado{background:var(--guinda)!important;color:#fff!important;padding:10px 12px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:12px;border-bottom:3px solid #c9a227;}
-.enc-logo img{height:52px;max-width:220px;object-fit:contain;background:#fff;padding:3px 8px;border-radius:6px;}
+.contenedor{width:min(100%,var(--ficha-ancho));max-width:var(--ficha-ancho);height:auto;min-height:0;margin:8px auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.12);border:1px solid var(--guinda);border-radius:6px;overflow:hidden;box-sizing:border-box;display:flex;flex-direction:column;}
+.encabezado{background:var(--guinda)!important;color:#fff!important;padding:4px 8px;display:grid;grid-template-columns:auto minmax(0,1fr);align-items:center;gap:8px;border-bottom:2px solid #c9a227;}
+.enc-logo img{height:32px;max-width:150px;object-fit:contain;background:#fff;padding:1px 5px;border-radius:4px;}
 .enc-centro{text-align:center;}
-.enc-centro .titulo-carta{margin:0;font-size:20px;font-weight:900;color:#fff!important;letter-spacing:.4px;}
-.enc-centro .clave-carta{margin:5px 0 0;font-size:15px;font-weight:900;color:#fff!important;letter-spacing:.12em;}
-.seccion-simbologia{border-top:1px solid var(--guinda-claro);padding:4px 6px 5px;flex:0 0 auto;background:#fafafa;}
-.seccion-simbologia .sim-head{font-size:7.5px;font-weight:800;color:var(--guinda);text-transform:uppercase;margin-bottom:3px;letter-spacing:.45px;}
+.enc-centro .titulo-carta{margin:0;font-size:13px;font-weight:900;color:#fff!important;letter-spacing:.3px;line-height:1.1;}
+.enc-centro .clave-carta{margin:2px 0 0;font-size:10px;font-weight:900;color:#fff!important;letter-spacing:.08em;}
+.seccion-simbologia{border-top:1px solid var(--guinda-claro);padding:3px 5px 4px;flex:0 0 auto;background:#fafafa;}
+.seccion-simbologia .sim-head{font-size:6.5px;font-weight:800;color:var(--guinda);text-transform:uppercase;margin-bottom:2px;letter-spacing:.4px;}
 .sim-grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:2px 5px;align-items:start;}
 .sim-item{display:flex;align-items:flex-start;gap:3px;min-width:0;}
 .sim-swatch{flex:0 0 9px;width:9px;height:9px;margin-top:1px;border:1px solid #64748b;box-sizing:border-box;-webkit-print-color-adjust:exact!important;print-color-adjust:exact!important;}
@@ -746,17 +915,28 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
 .sim-ind-ex{background:#9333ea;border-color:#6b21a8;}
 .sim-hab-ex{background:#eab308;border-color:#a16207;}
 .grid-datos{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--guinda-claro);}
-.grid-datos .celda{border-right:1px solid #efe6e8;border-bottom:1px solid #efe6e8;padding:4px 7px;min-height:30px;box-sizing:border-box;}
+.grid-datos .celda{border-right:1px solid #efe6e8;border-bottom:1px solid #efe6e8;padding:1px 4px;min-height:14px;box-sizing:border-box;}
+.grid-datos-compact .celda{min-height:13px;padding:1px 3px;}
 .grid-datos .celda:last-child{border-right:none;}
 .grid-datos .full{grid-column:span 4;border-right:none;}
 .grid-datos .span2{grid-column:span 2;}
 .grid-datos .span3{grid-column:span 3;}
-.label{font-size:8px;color:#1e293b;font-weight:700;text-transform:uppercase;margin-bottom:1px;}
-.valor{font-size:10px;font-weight:800;color:var(--guinda);line-height:1.25;word-break:break-word;}
-.valor-uso-plan{color:var(--guinda);font-size:10px;}
-.valor-sector{color:var(--guinda);font-size:22px;font-weight:900;letter-spacing:.08em;line-height:1;}
+.grid-datos-pducp{border-top:1px solid #c9a227;background:#fffdf8;}
+.grid-datos-matriz{border-top:1px solid #c9a227;background:#fffdf8;grid-template-columns:repeat(3,1fr);height:var(--ficha-matriz-alto,1.72in);max-height:var(--ficha-matriz-alto,1.72in);overflow:hidden;}
+.grid-datos-matriz .pducp-head.full{grid-column:span 3;padding:2px 5px;font-size:6.5px;line-height:1.1;background:#703341;color:#fff;font-weight:800;text-transform:uppercase;}
+.grid-datos-matriz .matriz-col{min-height:0;height:100%;max-height:calc(var(--ficha-matriz-alto,1.72in) - 12px);overflow:hidden;vertical-align:top;padding:1px 3px;display:flex;flex-direction:column;}
+.grid-datos-matriz .matriz-col.matriz-c{border-top:2px solid #16a34a;}
+.grid-datos-matriz .matriz-col.matriz-cond{border-top:2px solid #d97706;}
+.grid-datos-matriz .matriz-col.matriz-np{border-top:2px solid #dc2626;}
+.grid-datos-matriz .matriz-col .label{font-size:6px;margin-bottom:0;flex:0 0 auto;}
+.grid-datos-matriz .matriz-lista{font-size:6.5px;font-weight:600;line-height:1.14;flex:1 1 auto;overflow:hidden;}
+.grid-datos-matriz .matriz-mas{font-style:italic;color:#64748b;font-size:5.8px;}
+.label{font-size:6px;color:#1e293b;font-weight:700;text-transform:uppercase;margin-bottom:0;line-height:1.05;}
+.valor{font-size:7.5px;font-weight:800;color:var(--guinda);line-height:1.12;word-break:break-word;}
+.valor-uso-plan{color:var(--guinda);font-size:7.5px;}
+.valor-sector{color:var(--guinda);font-size:11px;font-weight:900;letter-spacing:.05em;line-height:1;}
 .seccion-mapa{border-top:1px solid var(--guinda-claro);flex:0 0 auto;display:flex;flex-direction:column;}
-.seccion-mapa .media-head{background:var(--guinda);color:#fff;padding:4px 8px;font-size:9px;font-weight:800;letter-spacing:.55px;text-transform:uppercase;flex:0 0 auto;}
+.seccion-mapa .media-head{background:var(--guinda);color:#fff;padding:3px 6px;font-size:7.5px;font-weight:800;letter-spacing:.45px;text-transform:uppercase;flex:0 0 auto;}
 .carta-map-wrap{position:relative;width:100%;height:var(--ficha-media-map);min-height:var(--ficha-media-map);max-height:var(--ficha-media-map);flex:0 0 auto;overflow:hidden;background:#eaeaea;line-height:0;border:2px solid var(--guinda);box-sizing:border-box;box-shadow:inset 0 0 0 1px rgba(201,162,39,.45);}
 #previewCartaMap{position:absolute;inset:0;z-index:2;width:100%;height:100%;background:#eaeaea;}
 .carta-map-placeholder,.carta-map-print-snapshot{display:none;position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center;background:#eaeaea;z-index:1;}
@@ -764,9 +944,9 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
 .carta-map-loading{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(234,234,234,.92);color:#703341;font-size:12px;font-weight:700;z-index:4;}
 .carta-map-loading.oculto{display:none!important;}
 .carta-map-error{padding:16px;color:#991b1b;font-size:12px;font-weight:700;}
-.pie-ficha{display:flex;justify-content:space-between;align-items:center;padding:6px 10px 8px;border-top:1px solid var(--guinda-claro);font-size:9px;color:var(--guinda);font-weight:700;flex:0 0 auto;}
-.pie-ficha .leyenda-carta{color:var(--guinda);font-size:11px;font-weight:900;}
-.aviso-impresion{text-align:center;font-size:10px;color:#64748b;padding:6px 8px;font-style:italic;}
+.pie-ficha{display:flex;justify-content:space-between;align-items:center;padding:4px 8px 6px;border-top:1px solid var(--guinda-claro);font-size:7.5px;color:var(--guinda);font-weight:700;flex:0 0 auto;}
+.pie-ficha .leyenda-carta{color:var(--guinda);font-size:8.5px;font-weight:900;}
+.aviso-impresion{text-align:center;font-size:9px;color:#64748b;padding:4px 6px;font-style:italic;}
 @page{size:8.5in 11in portrait;margin:3mm;}
 @media print{
   html,body{width:8.5in;height:auto;margin:0!important;padding:0!important;background:#fff!important;}
@@ -802,21 +982,22 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
       </div>
     </header>
 
-    <div class="grid-datos">
+    <div class="grid-datos grid-datos-compact">
       <div class="celda full"><div class="label">Domicilio físico</div><div class="valor">${domicilio}</div></div>
       <div class="celda"><div class="label">Delegación</div><div class="valor">${delegacion}</div></div>
-      <div class="celda span3"><div class="label">Uso en padrón</div><div class="valor">${fichaCartaEsc(usoPadron)}</div></div>
+      <div class="celda span2"><div class="label">Uso en padrón</div><div class="valor">${fichaCartaEsc(usoPadron)}</div></div>
       <div class="celda"><div class="label">Sector</div><div class="valor valor-sector">${fichaCartaEsc(sector)}</div></div>
       <div class="celda span3"><div class="label">Uso permitido (plan)</div><div class="valor valor-uso-plan">${fichaCartaEsc(usoPlan)}</div></div>
-      <div class="celda"><div class="label">Zona / clave</div><div class="valor">${fichaCartaEsc(zona)}</div></div>
-      <div class="celda"><div class="label">Densidad</div><div class="valor">${fichaCartaEsc(densidad)}</div></div>
-      <div class="celda"><div class="label">Nivel / altura</div><div class="valor">${fichaCartaEsc(nivel)}</div></div>
-      <div class="celda"><div class="label">Instrumento / plan</div><div class="valor">${fichaCartaEsc(instrumento)}</div></div>
-      <div class="celda full"><div class="label">Observaciones</div><div class="valor">${fichaCartaEsc(observaciones)}</div></div>
+      <div class="celda span2"><div class="label">Zona / clave</div><div class="valor">${fichaCartaEsc(zonaDisplay)}</div></div>
+      <div class="celda span2"><div class="label">Densidad · COS / CUS</div><div class="valor">${fichaCartaEsc(densidad)} · ${fichaCartaEsc(nivel)}</div></div>
     </div>
 
+    ${pducpHtml}
+
+    ${matrizHtml}
+
     <section class="seccion-mapa">
-      <div class="media-head">Plano Carta Urbana 2040 · Sector ${fichaCartaEsc(sector)} · ${fichaCartaEsc(usoPlan)}</div>
+      <div class="media-head">Plano Carta Urbana 2040 · Sector ${fichaCartaEsc(sector)}${distritoPducp !== "—" ? " · Distrito " + fichaCartaEsc(distritoPducp) : ""} · ${fichaCartaEsc(usoPlan)}</div>
       <div class="carta-map-wrap" id="previewCartaMapWrap">
         <img id="previewCartaMapPlaceholder" class="carta-map-placeholder${placeholderActivo}" alt="">
         <div id="previewCartaMapLoading" class="carta-map-loading${mapaInicial ? " oculto" : ""}">Cargando plano…</div>
@@ -831,7 +1012,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
     </section>
 
     <div class="pie-ficha">
-      <span class="leyenda-carta">Sector ${fichaCartaEsc(sector)} · ${fichaCartaEsc(usoPlan)}</span>
+      <span class="leyenda-carta">Sector ${fichaCartaEsc(sector)}${distritoPducp !== "—" ? " · Distrito " + fichaCartaEsc(distritoPducp) : ""} · ${fichaCartaEsc(usoPlan)}</span>
       <span>${fichaCartaEsc(fechaPie)}</span>
     </div>
   </div>
