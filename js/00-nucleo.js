@@ -43,7 +43,7 @@ function tienePermiso(codigo) {
   const permiso = String(codigo || "").trim().toLowerCase();
   if (!permiso) return false;
   const perms = obtenerPermisosSesion();
-  if (perms.length) return perms.includes(permiso);
+  if (perms.includes(permiso)) return true;
   return _fallbackPermisoPorRol(permiso);
 }
 

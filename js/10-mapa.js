@@ -592,6 +592,7 @@ function programarZoomPredioSeleccionado(geometry, options = {}, seqCheck = null
     : null);
   if (!geom) return;
 
+  const delayMs = options.delayMs ?? 80;
   const opts = {
     maxZoom: 18,
     factorExpansion: 0.55,
@@ -604,7 +605,7 @@ function programarZoomPredioSeleccionado(geometry, options = {}, seqCheck = null
     setTimeout(function() {
       if (seqCheck !== null && seqCheck !== seleccionPredioSeq) return;
       hacerZoomAGeometria(geom, opts);
-    }, 380);
+    }, delayMs);
   });
 }
 

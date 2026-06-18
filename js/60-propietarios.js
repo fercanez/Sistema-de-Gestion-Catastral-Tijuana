@@ -2293,6 +2293,9 @@ if (typeof pintarFicha === 'function' && !window.__pintarFichaBaseV28b) {
       if (!fichaPinturaSigueVigenteV28b(claveEsperada, seqLocal)) return;
       enriquecida.__enriquecidaV28b = true;
       window.predioSeleccionado = enriquecida;
+      if (typeof refrescarPopupPredioSiAbierto === "function") {
+        refrescarPopupPredioSiAbierto(enriquecida);
+      }
       return window.__pintarFichaBaseV28b(enriquecida);
     } catch (e) {
       console.warn("No se pudo enriquecer ficha en segundo plano:", e);

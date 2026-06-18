@@ -9,9 +9,9 @@
   <link rel="stylesheet" href="css/10-mapa.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/20-ficha.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
-  <link rel="stylesheet" href="css/40-modales.css?v=20260614_v157_ficha_movible">
+  <link rel="stylesheet" href="css/40-modales.css?v=20260611_v158_catalogos_listbox">
   <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v150_panel_ocultar">
-  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260617_v170_matriz_compact">
+  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260611_v173_popup_resize_tabs">
   <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
   <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
   <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
@@ -436,6 +436,7 @@
         <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_USO_SUELO">🌿 Uso suelo</button>
         <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_ZONA_HOMOGENEA">🗺️ Zona H.</button>
         <button type="button" class="btn-mov-tipo" data-mov-tipo="NUMERO_OFICIAL">🔢 Núm. oficial</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CORRECCION_DOMICILIO">🏠 Corrección domicilio</button>
         <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_TITULARIDAD">👥 Titularidad</button>
         <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_NOMBRE">🪪 Cambio nombre</button>
         <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_CLAVE">🔑 Cambio clave</button>
@@ -753,19 +754,21 @@
       <button type="button" class="popup-predio-btn-cerrar" onclick="cerrarPopupPredioWorkspace()" title="Cerrar">×</button>
     </header>
     <nav class="popup-predio-tabs" aria-label="Pestañas del predio">
-      <button type="button" class="popup-predio-tab active" data-tab="datos-generales" onclick="mostrarPopupPredioTab('datos-generales')">Datos Generales</button>
-      <button type="button" class="popup-predio-tab" data-tab="construcciones" onclick="mostrarPopupPredioTab('construcciones')">Construcciones/Medidas</button>
-      <button type="button" class="popup-predio-tab" data-tab="archivo" onclick="mostrarPopupPredioTab('archivo')">Archivo Digitalizado</button>
-      <button type="button" class="popup-predio-tab" data-tab="documento-rppc" onclick="mostrarPopupPredioTab('documento-rppc')">Documento RPPC</button>
-      <button type="button" class="popup-predio-tab" data-tab="numeros-oficiales" onclick="mostrarPopupPredioTab('numeros-oficiales')">Números Oficiales</button>
-      <button type="button" class="popup-predio-tab" data-tab="carta-urbana" onclick="mostrarPopupPredioTab('carta-urbana')">Carta Urbana 2040</button>
-      <button type="button" class="popup-predio-tab" data-tab="colonia" onclick="mostrarPopupPredioTab('colonia')">Colonia/Fraccionamiento</button>
-      <button type="button" class="popup-predio-tab" data-tab="zona-homogenea" onclick="mostrarPopupPredioTab('zona-homogenea')">Zona Homogénea</button>
+      <button type="button" class="popup-predio-tab active" data-tab="datos-generales" title="Datos Generales" onclick="mostrarPopupPredioTab('datos-generales')">Datos</button>
+      <button type="button" class="popup-predio-tab" data-tab="construcciones" title="Construcciones y Medidas" onclick="mostrarPopupPredioTab('construcciones')">Construcción</button>
+      <button type="button" class="popup-predio-tab" data-tab="archivo" title="Archivo Digitalizado" onclick="mostrarPopupPredioTab('archivo')">Archivo</button>
+      <button type="button" class="popup-predio-tab" data-tab="control-urbano" title="Control Urbano" onclick="mostrarPopupPredioTab('control-urbano')">Ctrl. Urbano</button>
+      <button type="button" class="popup-predio-tab" data-tab="documento-rppc" title="Documento RPPC" onclick="mostrarPopupPredioTab('documento-rppc')">RPPC</button>
+      <button type="button" class="popup-predio-tab" data-tab="numeros-oficiales" title="Números Oficiales" onclick="mostrarPopupPredioTab('numeros-oficiales')">Núm. Oficial</button>
+      <button type="button" class="popup-predio-tab" data-tab="carta-urbana" title="Carta Urbana 2040" onclick="mostrarPopupPredioTab('carta-urbana')">Carta 2040</button>
+      <button type="button" class="popup-predio-tab" data-tab="colonia" title="Colonia / Fraccionamiento" onclick="mostrarPopupPredioTab('colonia')">Colonia</button>
+      <button type="button" class="popup-predio-tab" data-tab="zona-homogenea" title="Zona Homogénea" onclick="mostrarPopupPredioTab('zona-homogenea')">Zona H.</button>
     </nav>
     <div class="popup-predio-body">
       <div id="popupTabDatosGenerales" class="popup-tab-panel active" data-tab="datos-generales"></div>
       <div id="popupTabConstrucciones" class="popup-tab-panel" data-tab="construcciones"></div>
       <div id="popupTabArchivo" class="popup-tab-panel" data-tab="archivo"></div>
+      <div id="popupTabControlUrbano" class="popup-tab-panel" data-tab="control-urbano"></div>
       <div id="popupTabDocumentoRppc" class="popup-tab-panel" data-tab="documento-rppc"></div>
       <div id="popupTabNumerosOficiales" class="popup-tab-panel" data-tab="numeros-oficiales"></div>
       <div id="popupTabCartaUrbana" class="popup-tab-panel" data-tab="carta-urbana"></div>
@@ -1085,12 +1088,13 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/00-nucleo.js?v=20260618_v175_sesion_manzana"></script>
-<script src="js/10-mapa.js?v=20260611_v159_folio_rppc"></script>
-<script src="js/20-ficha.js?v=20260618_v176_manzana_geojson"></script>
+<script src="js/00-nucleo.js?v=20260611_v176_permisos_fallback"></script>
+<script src="js/10-mapa.js?v=20260611_v177_zoom_busqueda"></script>
+<script src="js/20-ficha.js?v=20260611_v177_busqueda_respuesta"></script>
 <script src="js/40-pdf.js?v=20260611_v160_ficha_folio"></script>
-<script src="js/30-busqueda.js?v=20260611_v159_rendimiento"></script>
-<script src="js/05-modulos-portal.js?v=20260611_v165_popup_rapido"></script>
+<script src="js/30-busqueda.js?v=20260611_v178_popup_titularidad"></script>
+<script src="js/05-modulos-portal.js?v=20260611_v180_popup_resize_tabs"></script>
+<script src="js/11-control-urbano.js?v=20260611_v2_control_urbano_historial"></script>
 <script src="js/52-popup-rppc.js?v=20260611_v164_rppc_api"></script>
 <script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
 <script src="js/46-ficha-mapa-capas.js?v=20260617_v168_uso_dist"></script>
@@ -1105,9 +1109,9 @@
 <script src="https://cdn.jsdelivr.net/npm/jsts@2.11.0/dist/jsts.min.js"></script>
 <script src="js/51-edicion-cartografica.js?v=20260611_v150_guardar_subdiv"></script>
 <script src="js/50-admin.js?v=20260613_v137_vigencia_matriz"></script>
-<script src="js/60-propietarios.js?v=20260611_v164_pintura_rapida"></script>
+<script src="js/60-propietarios.js?v=20260611_v178_popup_titularidad"></script>
 <script src="js/72-movimientos-modulo.js?v=20260611_v159_capas_min"></script>
-<script src="js/70-movimientos.js?v=20260611_v158_nombres_usuario"></script>
+<script src="js/70-movimientos.js?v=20260611_v182_catalogos_listbox"></script>
 <script src="js/44-cedula-numero-oficial-preview.js?v=20260613_v121_capas_unif"></script>
 <script src="js/41-ficha-preview.js?v=20260611_v161_capas_toggle"></script>
 <script src="js/42-ficha-cartografia.js?v=20260611_v161_capas_toggle"></script>

@@ -264,9 +264,11 @@ body.panel-oculto-activo .app-institucional .btn-mostrar-panel {
 .popup-predio-window {
   position: relative;
   z-index: 1;
-  width: min(1360px, 98vw);
-  height: min(88vh, 900px);
+  width: min(1580px, 98vw);
+  height: min(88vh, 920px);
+  min-width: 960px;
   min-height: 520px;
+  max-width: 99vw;
   max-height: 94vh;
   margin: auto;
   background: #fff;
@@ -276,7 +278,20 @@ body.panel-oculto-activo .app-institucional .btn-mostrar-panel {
   display: flex;
   flex-direction: column;
   box-shadow: 0 10px 40px rgba(0, 0, 0, .38);
-  resize: vertical;
+  resize: both;
+}
+
+.popup-predio-window::after {
+  content: "";
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  width: 14px;
+  height: 14px;
+  pointer-events: none;
+  opacity: 0.45;
+  background:
+    linear-gradient(135deg, transparent 0 55%, #703341 55% 60%, transparent 60% 68%, #703341 68% 73%, transparent 73% 100%);
 }
 
 /* Encabezado vino — esquinas superiores redondeadas */
@@ -355,37 +370,39 @@ body.panel-oculto-activo .app-institucional .btn-mostrar-panel {
   line-height: 1;
 }
 
-/* Pestañas horizontales — estilo legacy institucional */
+/* Pestañas — rejilla adaptable sin barra horizontal */
 .popup-predio-tabs {
-  display: flex !important;
-  flex-direction: row !important;
-  flex-wrap: nowrap !important;
-  align-items: stretch;
+  display: grid !important;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
   gap: 0;
   background: #f0e6e3;
   border-bottom: 2px solid #703341;
   padding: 0;
-  overflow-x: auto;
-  overflow-y: hidden;
+  overflow: hidden;
+  flex-shrink: 0;
 }
 
 .popup-predio-workspace button.popup-predio-tab {
-  width: auto !important;
-  flex: 0 0 auto !important;
-  display: inline-block !important;
+  width: 100% !important;
+  flex: initial !important;
+  display: block !important;
   margin: 0 !important;
-  padding: 8px 12px !important;
-  font-size: 10px !important;
+  padding: 7px 6px !important;
+  font-size: 9px !important;
   font-weight: 800 !important;
   text-transform: uppercase;
-  letter-spacing: .2px;
+  letter-spacing: 0;
+  line-height: 1.2;
   color: #4a4444 !important;
   background: #e6d8d4 !important;
   border: 0 !important;
   border-right: 1px solid #c4b0aa !important;
+  border-bottom: 1px solid #d8c8c3 !important;
   border-radius: 0 !important;
   cursor: pointer;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
+  min-height: 36px;
 }
 
 .popup-predio-workspace button.popup-predio-tab:hover:not(.active) {
@@ -1379,6 +1396,431 @@ body.popup-archivo-foto-lightbox-abierto {
   color: #9a3412;
   background: #fff7ed;
   font-weight: 600;
+}
+
+/* --- Control Urbano (popup predio) --- */
+.popup-cu-layout {
+  padding: 12px 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.popup-cu-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #fff 0%, #f8fafc 100%);
+}
+
+.popup-cu-intro h3 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  color: #0f172a;
+}
+
+.popup-cu-intro p {
+  margin: 0;
+  font-size: 12px;
+  color: #475569;
+  line-height: 1.45;
+}
+
+.popup-cu-solo-lectura {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  background: #f1f5f9;
+  border: 1px solid #cbd5e1;
+  border-radius: 999px;
+  padding: 4px 10px;
+  white-space: nowrap;
+}
+
+.popup-cu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.popup-cu-doc-card {
+  border: 1px solid #dbe3ee;
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 280px;
+}
+
+.popup-cu-doc-card.con-documento {
+  border-color: #86efac;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.15);
+}
+
+.popup-cu-doc-head {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.popup-cu-doc-icono {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.popup-cu-doc-head h4 {
+  margin: 0;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.popup-cu-doc-head p {
+  margin: 2px 0 0;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.popup-cu-doc-vigente-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.popup-cu-doc-preview {
+  flex: 0 0 auto;
+  min-height: 120px;
+  max-height: 180px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 8px;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  padding: 4px;
+}
+
+.popup-cu-doc-placeholder {
+  font-size: 12px;
+  color: #94a3b8;
+  text-align: center;
+}
+
+.popup-cu-doc-img {
+  max-width: 100%;
+  max-height: 170px;
+  object-fit: contain;
+  border-radius: 6px;
+}
+
+.popup-cu-doc-iframe {
+  width: 100%;
+  height: 170px;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.popup-cu-doc-pdf {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.popup-cu-doc-pdf-icono {
+  font-size: 34px;
+}
+
+.popup-cu-doc-pdf-nombre {
+  font-size: 11px;
+  color: #334155;
+  word-break: break-all;
+}
+
+.popup-cu-doc-meta {
+  font-size: 11px;
+  color: #475569;
+  line-height: 1.4;
+}
+
+.popup-cu-doc-historial {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.popup-cu-doc-historial-titulo {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.popup-cu-doc-lista {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 120px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fafbfc;
+}
+
+.popup-cu-doc-lista-vacio {
+  padding: 10px 12px;
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.popup-cu-doc-lista-item {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.popup-cu-doc-lista-item:last-child {
+  border-bottom: 0;
+}
+
+.popup-cu-doc-lista-item.activo .popup-cu-doc-lista-btn {
+  background: #eff6ff;
+  border-left: 3px solid #2563eb;
+}
+
+.popup-cu-doc-lista-btn {
+  flex: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  padding: 7px 10px;
+  border: 0;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+}
+
+.popup-cu-doc-lista-btn:hover {
+  background: #f1f5f9;
+}
+
+.popup-cu-doc-lista-fecha {
+  font-size: 10px;
+  color: #64748b;
+  white-space: nowrap;
+}
+
+.popup-cu-doc-lista-nombre {
+  font-size: 11px;
+  color: #0f172a;
+  word-break: break-all;
+}
+
+.popup-cu-doc-badge {
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: #166534;
+  background: #dcfce7;
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.popup-cu-doc-lista-abrir {
+  flex: 0 0 34px;
+  border: 0;
+  border-left: 1px solid #e2e8f0;
+  background: #fff;
+  color: #2563eb;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.popup-cu-doc-lista-abrir:hover {
+  background: #eff6ff;
+}
+
+.popup-cu-doc-btn-ver-int {
+  border-color: #a7f3d0;
+  color: #047857;
+}
+
+.popup-cu-doc-acciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.popup-cu-doc-btn {
+  border: 1px solid #cbd5e1;
+  background: #fff;
+  color: #0f172a;
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.popup-cu-doc-btn:hover {
+  background: #f8fafc;
+}
+
+.popup-cu-doc-btn:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+.popup-cu-doc-btn-ver {
+  border-color: #93c5fd;
+  color: #1d4ed8;
+}
+
+.popup-cu-doc-btn-borrar {
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+
+.popup-cu-nota {
+  margin: 0;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: #475569;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.popup-cu-nota-alerta {
+  color: #9a3412;
+  background: #fff7ed;
+  border-color: #fed7aa;
+  font-weight: 600;
+}
+
+.popup-cu-ayuda {
+  margin: 0;
+  font-size: 10px;
+  color: #94a3b8;
+}
+
+.popup-cu-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 12050;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+}
+
+.popup-cu-lightbox.oculto {
+  display: none;
+}
+
+.popup-cu-lightbox-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.popup-cu-lightbox-panel {
+  position: relative;
+  z-index: 1;
+  width: min(96vw, 920px);
+  max-height: 92vh;
+  background: #fff;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.25);
+}
+
+.popup-cu-lightbox-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.popup-cu-lightbox-acciones {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.popup-cu-lightbox-cerrar {
+  border: 0;
+  background: #f1f5f9;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.popup-cu-lightbox-body {
+  flex: 1;
+  min-height: 320px;
+  max-height: calc(92vh - 52px);
+  overflow: auto;
+  background: #f8fafc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.popup-cu-lightbox-img {
+  max-width: 100%;
+  max-height: calc(92vh - 70px);
+  object-fit: contain;
+}
+
+.popup-cu-lightbox-iframe {
+  width: 100%;
+  height: calc(92vh - 70px);
+  min-height: 420px;
+  border: 0;
+  background: #fff;
+}
+
+.popup-cu-lightbox-sinvisor {
+  padding: 24px;
+  color: #64748b;
+  text-align: center;
+}
+
+body.popup-cu-lightbox-abierto {
+  overflow: hidden;
+}
+
+@media (max-width: 960px) {
+  .popup-cu-grid {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 960px) {
@@ -3239,6 +3681,16 @@ body.popup-archivo-foto-lightbox-abierto {
     grid-template-areas:
       "nav resumen cerrar"
       "clave clave clave";
+  }
+
+  .popup-predio-window {
+    min-width: 0;
+    width: 98vw !important;
+    resize: vertical;
+  }
+
+  .popup-predio-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
   }
 }
 

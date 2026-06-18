@@ -199,17 +199,48 @@ def _obtener_fila_padron(cur, clave: str):
     return cur.fetchone()
 
 
+def _resolver_id_catalogo_nombre(cur, tabla: str, campo: str, nombre: str):
+    nombre_norm = str(nombre or "").strip().upper()
+    if not nombre_norm:
+        return None
+    cur.execute(
+        f"""
+        SELECT id FROM catalogos.{tabla}
+        WHERE UPPER(TRIM({campo})) = %s
+          AND COALESCE(activo, TRUE) = TRUE
+        LIMIT 1;
+        """,
+        (nombre_norm,),
+    )
+    row = cur.fetchone()
+    if not row:
+        return None
+    return int(row["id"] if isinstance(row, dict) else row[0])
+
+
 def _sincronizar_campos_a_predios(cur, clave: str, updates: dict):
     """Propaga al predio cartografico los campos que existan en catastro.predios."""
     if not updates:
         return
     cols_pred = columnas_tabla(cur, "catastro", "predios")
+    sync = dict(updates)
+    if "colonia" in sync and "colonia_id" in cols_pred:
+        colonia_id = _resolver_id_catalogo_nombre(cur, "cat_colonias", "nombre_colonia", sync["colonia"])
+        if colonia_id is not None:
+            sync["colonia_id"] = colonia_id
+    if "calle" in sync and "calle_id" in cols_pred:
+        calle_id = _resolver_id_catalogo_nombre(cur, "cat_calles", "nombre_calle", sync["calle"])
+        if calle_id is not None:
+            sync["calle_id"] = calle_id
     sets, params = [], []
-    for col, val in updates.items():
+    for col, val in sync.items():
         if col not in cols_pred:
             continue
         sets.append(f"{col} = %s")
-        params.append(_coerce_valor_padron(col, val))
+        if col in ("colonia_id", "calle_id"):
+            params.append(int(val))
+        else:
+            params.append(_coerce_valor_padron(col, val))
     if not sets:
         return
     params.append(clave)
@@ -1125,6 +1156,7 @@ def aplicar_movimiento_padron(
                     "CAMBIO_SUPERFICIE", "CAMBIO_CONSTRUCCION", "CAMBIO_USO_SUELO",
                     "CAMBIO_ZONA_HOMOGENEA", "NUMERO_OFICIAL",
                     "ASIGNACION_NUMERO_OFICIAL", "CAMBIO_NUMERO_OFICIAL",
+                    "CORRECCION_DOMICILIO",
                 ]:
                     actualizado = _aplicar_campos_desde_detalles(cur, clave, detalles, mov)
                     zona_adic = None

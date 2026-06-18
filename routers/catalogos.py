@@ -6,12 +6,19 @@ from psycopg2.extras import RealDictCursor
 from pydantic import BaseModel
 
 from auth.dependencies import requerir_permiso
+from auth.permisos_operativos import requerir_alguno
 from database import get_conn
 from routers.propietarios import registrar_auditoria_simple_v28, upper_clean_v28
 
 router = APIRouter(tags=["catalogos"])
 
-_permiso_catalogos_lectura = requerir_permiso("consulta")
+_permiso_catalogos_lectura = requerir_alguno(
+    "consulta",
+    "ver_expediente",
+    "editar_catastro",
+    "solicitar_movimientos",
+    "aplicar_movimientos",
+)
 _permiso_catalogos_escritura = requerir_permiso("editar_catastro")
 
 
@@ -242,8 +249,6 @@ def buscar_calles_mantenimiento(
     usuario_actual: dict = Depends(_permiso_catalogos_lectura),
 ):
     texto = upper_clean_v28(q) or ""
-    if not texto:
-        return {"total": 0, "resultados": []}
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             rows = _buscar_mantenimiento_catalogo(
@@ -425,8 +430,6 @@ def buscar_colonias_mantenimiento(
     usuario_actual: dict = Depends(_permiso_catalogos_lectura),
 ):
     texto = upper_clean_v28(q) or ""
-    if not texto:
-        return {"total": 0, "resultados": []}
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             rows = _buscar_mantenimiento_catalogo(

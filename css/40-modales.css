@@ -1166,6 +1166,46 @@
   background: #f8fafc !important;
 }
 
+.modal-movimiento-right select.mov-catalogo-listbox {
+  min-height: 132px !important;
+  max-height: 168px !important;
+  overflow-y: auto !important;
+  background: #fff !important;
+  padding: 4px !important;
+}
+
+.modal-movimiento-right select.mov-catalogo-listbox option {
+  padding: 6px 8px !important;
+  border-radius: 4px !important;
+}
+
+.modal-movimiento-right .mov-catalogo-contador {
+  font-size: 11px !important;
+  color: #64748b !important;
+  margin: -4px 0 8px !important;
+  line-height: 1.35 !important;
+}
+
+.modal-movimiento-right .mov-catalogo-contador.busy {
+  color: #b45309 !important;
+}
+
+.modal-movimiento-right .mov-catalogo-contador.ok {
+  color: #15803d !important;
+}
+
+#movPadron_colonia_filtro,
+#movPadron_calle_filtro {
+  width: 100% !important;
+  box-sizing: border-box !important;
+  border: 1px solid #cbd5e1 !important;
+  border-radius: 10px !important;
+  padding: 10px 12px !important;
+  font-size: 13px !important;
+  margin-bottom: 8px !important;
+  background: #fff !important;
+}
+
 #movPadron_zona_homogenea_filtro {
   width: 100% !important;
   box-sizing: border-box !important;

@@ -713,7 +713,10 @@ function extraerGeojsonPrefetchDesdeCapas(claveNorm) {
       if (f?.getGeometry()) return format.writeFeatureObject(f);
     }
   } catch (e) {}
-  return window._cacheFeaturePredioPorClave?.[claveNorm] || null;
+  return window._cacheGeojsonPorClave?.[claveNorm]
+    || (window._cacheFeaturePredioPorClave?.[claveNorm]?.geometry
+      ? window._cacheFeaturePredioPorClave[claveNorm]
+      : null);
 }
 
 async function cargarDesdeBusqueda(registro, opciones) {
@@ -724,14 +727,11 @@ async function cargarDesdeBusqueda(registro, opciones) {
   const claveNorm = String(clave).trim().toUpperCase();
   const geojsonPrefetch = opciones.geojsonPrefetch
     || extraerGeojsonPrefetchDesdeCapas(claveNorm);
-  const featurePrefetch = opciones.featurePrefetch
-    || window._cacheFeaturePredioPorClave?.[claveNorm]
-    || geojsonPrefetch;
 
   if (typeof seleccionarPorClave === "function") {
     await seleccionarPorClave(claveNorm, "busqueda", {
       geojsonPrefetch: geojsonPrefetch,
-      featurePrefetch: featurePrefetch
+      registroBusqueda: registro
     });
   }
 
@@ -831,8 +831,8 @@ async function obtenerGeojsonPorClaveParaZoom(clave, dibujado) {
       const data = await r.json();
       const claveNorm = String(clave || "").trim().toUpperCase();
       if (data && data.geometry) {
-        window._cacheFeaturePredioPorClave = window._cacheFeaturePredioPorClave || {};
-        window._cacheFeaturePredioPorClave[claveNorm] = data;
+        window._cacheGeojsonPorClave = window._cacheGeojsonPorClave || {};
+        window._cacheGeojsonPorClave[claveNorm] = data;
         return data;
       }
       return null;
@@ -872,7 +872,15 @@ async function zoomAResultadosBusqueda(resultados) {
 
   // Un solo resultado: seleccionarPorClave carga /ficha una vez (mapa + ficha + popup).
   if (resultados.length === 1 && resultados[0].clave_catastral) {
-    await seleccionarPorClave(resultados[0].clave_catastral, "busqueda");
+    const p = resultados[0];
+    let geojsonPrefetch = null;
+    if (esPredioDibujadoBusqueda(p)) {
+      geojsonPrefetch = await obtenerGeojsonPorClaveParaZoom(p.clave_catastral, p.dibujado);
+    }
+    await seleccionarPorClave(p.clave_catastral, "busqueda", {
+      registroBusqueda: p,
+      geojsonPrefetch: geojsonPrefetch
+    });
     return;
   }
 

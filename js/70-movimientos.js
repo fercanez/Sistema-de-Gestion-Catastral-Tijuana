@@ -1154,6 +1154,15 @@ const CATALOGO_MOVIMIENTOS_PADRON = {
       { key: "numof", label: "Numero oficial", padronKey: "numof", tipo: "numero_oficial", required: true }
     ]
   },
+  CORRECCION_DOMICILIO: {
+    titulo: "Correccion de domicilio",
+    icono: "🏠",
+    desc: "Corrige colonia y calle del predio segun catalogos institucionales (colonias y calles).",
+    campos: [
+      { key: "colonia", label: "Colonia / fraccionamiento", padronKey: "colonia", tipo: "catalogo_colonia" },
+      { key: "calle", label: "Calle", padronKey: "calle", tipo: "catalogo_calle" }
+    ]
+  },
   CAMBIO_CLAVE: {
     titulo: "Cambio de clave",
     icono: "🔑",
@@ -1293,6 +1302,280 @@ async function cargarCatalogoZonasHomogeneas(anio) {
   return rows;
 }
 
+async function cargarCatalogoColoniasMov(q) {
+  const texto = String(q || "").trim();
+  const r = await fetch(
+    `${API}/catalogos/colonias/mantenimiento/buscar?q=${encodeURIComponent(texto)}&limite=150&_=${Date.now()}`,
+    { cache: "no-store", headers: typeof authHeaders === "function" ? authHeaders() : {} }
+  );
+  const data = await r.json().catch(function() { return {}; });
+  if (!r.ok) {
+    throw new Error(errorApiMov(data, "No se pudo cargar el catalogo de colonias"));
+  }
+  return data.resultados || [];
+}
+
+async function cargarCatalogoCallesMov(q) {
+  const texto = String(q || "").trim();
+  const r = await fetch(
+    `${API}/catalogos/calles/mantenimiento/buscar?q=${encodeURIComponent(texto)}&limite=150&_=${Date.now()}`,
+    { cache: "no-store", headers: typeof authHeaders === "function" ? authHeaders() : {} }
+  );
+  const data = await r.json().catch(function() { return {}; });
+  if (!r.ok) {
+    throw new Error(errorApiMov(data, "No se pudo cargar el catalogo de calles"));
+  }
+  return data.resultados || [];
+}
+
+function nombreItemCatalogoColonia(item) {
+  return String(item?.nombre_colonia || item?.nombre || "").trim().toUpperCase();
+}
+
+function nombreItemCatalogoCalle(item) {
+  return String(item?.nombre_calle || item?.nombre || "").trim().toUpperCase();
+}
+
+function asegurarOpcionCatalogoColonia(rows, valorPadron) {
+  const nom = String(valorPadron || "").trim().toUpperCase();
+  const lista = Array.isArray(rows) ? rows.slice() : [];
+  if (nom && !lista.some(function(r) { return nombreItemCatalogoColonia(r) === nom; })) {
+    lista.unshift({ nombre_colonia: nom, origen: "padron" });
+  }
+  return lista;
+}
+
+function asegurarOpcionCatalogoCalle(rows, valorPadron) {
+  const nom = String(valorPadron || "").trim().toUpperCase();
+  const lista = Array.isArray(rows) ? rows.slice() : [];
+  if (nom && !lista.some(function(r) { return nombreItemCatalogoCalle(r) === nom; })) {
+    lista.unshift({ nombre_calle: nom, origen: "padron" });
+  }
+  return lista;
+}
+
+function htmlOpcionesCatalogoColonia(opciones, seleccionada) {
+  const actual = String(seleccionada || "").trim().toUpperCase();
+  let html = `<option value="">— Sin cambio —</option>`;
+  (opciones || []).forEach(function(item) {
+    const nom = nombreItemCatalogoColonia(item);
+    if (!nom) return;
+    const sel = actual && nom === actual ? " selected" : "";
+    const extra = item.origen === "padron" ? " (padrón actual)" : "";
+    html += `<option value="${escapeHtml(nom)}"${sel}>${escapeHtml(nom + extra)}</option>`;
+  });
+  return html;
+}
+
+function htmlOpcionesCatalogoCalle(opciones, seleccionada) {
+  const actual = String(seleccionada || "").trim().toUpperCase();
+  let html = `<option value="">— Sin cambio —</option>`;
+  (opciones || []).forEach(function(item) {
+    const nom = nombreItemCatalogoCalle(item);
+    if (!nom) return;
+    const sel = actual && nom === actual ? " selected" : "";
+    const extra = item.origen === "padron" ? " (padrón actual)" : "";
+    html += `<option value="${escapeHtml(nom)}"${sel}>${escapeHtml(nom + extra)}</option>`;
+  });
+  return html;
+}
+
+let movCatalogoColoniaTimer = null;
+let movCatalogoCalleTimer = null;
+const MOV_CATALOGO_MIN_BUSQUEDA = 2;
+
+function actualizarDatalistCatalogoMov(datalistId, rows, nombreFn) {
+  const dl = document.getElementById(datalistId);
+  if (!dl) return;
+  const vistos = new Set();
+  let html = "";
+  (rows || []).forEach(function(item) {
+    const nom = nombreFn(item);
+    if (!nom || vistos.has(nom)) return;
+    vistos.add(nom);
+    html += `<option value="${escapeHtml(nom)}"></option>`;
+  });
+  dl.innerHTML = html;
+}
+
+function actualizarContadorCatalogoMov(contadorId, texto, estado) {
+  const el = document.getElementById(contadorId);
+  if (!el) return;
+  el.textContent = texto || "";
+  el.classList.remove("busy", "ok", "err");
+  if (estado) el.classList.add(estado);
+}
+
+function aplicarSeleccionCatalogoDesdeFiltro(selectId, filtroId) {
+  const sel = document.getElementById(selectId);
+  const filtroEl = document.getElementById(filtroId);
+  if (!sel || !filtroEl) return;
+  const ant = String(sel.dataset.anterior || "").trim().toUpperCase();
+  const filtro = String(filtroEl.value || "").trim().toUpperCase();
+  if (!filtro) return;
+
+  const opciones = Array.from(sel.options).filter(function(opt, idx) {
+    return idx > 0 && opt.value;
+  });
+  const exacta = opciones.find(function(o) { return o.value.toUpperCase() === filtro; });
+  if (exacta && exacta.value.toUpperCase() !== ant) {
+    sel.value = exacta.value;
+    return;
+  }
+  const coincidencias = opciones.filter(function(o) {
+    const v = o.value.toUpperCase();
+    return v !== ant && (v.indexOf(filtro) >= 0 || filtro.indexOf(v) >= 0);
+  });
+  if (coincidencias.length === 1) {
+    sel.value = coincidencias[0].value;
+  }
+}
+
+function sincronizarCatalogosMovimientoPadron() {
+  aplicarSeleccionCatalogoDesdeFiltro("movPadron_colonia", "movPadron_colonia_filtro");
+  aplicarSeleccionCatalogoDesdeFiltro("movPadron_calle", "movPadron_calle_filtro");
+}
+
+function onCatalogoColoniaMovChange() {
+  const sel = document.getElementById("movPadron_colonia");
+  const filtro = document.getElementById("movPadron_colonia_filtro");
+  if (sel && filtro && sel.value) filtro.value = sel.value;
+}
+window.onCatalogoColoniaMovChange = onCatalogoColoniaMovChange;
+
+function onCatalogoCalleMovChange() {
+  const sel = document.getElementById("movPadron_calle");
+  const filtro = document.getElementById("movPadron_calle_filtro");
+  if (sel && filtro && sel.value) filtro.value = sel.value;
+}
+window.onCatalogoCalleMovChange = onCatalogoCalleMovChange;
+
+async function recargarSelectColoniaMov(q) {
+  const sel = document.getElementById("movPadron_colonia");
+  if (!sel) return;
+  const valorPrevio = sel.value;
+  const ant = String(sel.dataset.anterior || movPadronEstado.ficha?.colonia || "").trim().toUpperCase();
+  const fichaActual = movPadronEstado.ficha?.colonia || sel.dataset.anterior || "";
+  const texto = String(q || "").trim();
+  try {
+    let rows = [];
+    if (texto.length >= MOV_CATALOGO_MIN_BUSQUEDA) {
+      actualizarContadorCatalogoMov("movPadron_colonia_contador", "Buscando colonias...", "busy");
+      rows = await cargarCatalogoColoniasMov(texto);
+    } else {
+      actualizarContadorCatalogoMov(
+        "movPadron_colonia_contador",
+        texto.length
+          ? "Escriba al menos " + MOV_CATALOGO_MIN_BUSQUEDA + " caracteres para buscar."
+          : "Escriba en el buscador para ver colonias del catalogo."
+      );
+    }
+    rows = asegurarOpcionCatalogoColonia(rows, fichaActual);
+    sel.innerHTML = htmlOpcionesCatalogoColonia(rows, "");
+    actualizarDatalistCatalogoMov("movPadron_colonia_datalist", rows, nombreItemCatalogoColonia);
+    const prevNorm = String(valorPrevio || "").trim().toUpperCase();
+    if (prevNorm && prevNorm !== ant) sel.value = valorPrevio;
+    aplicarSeleccionCatalogoDesdeFiltro("movPadron_colonia", "movPadron_colonia_filtro");
+    if (texto.length >= MOV_CATALOGO_MIN_BUSQUEDA) {
+      const nCat = rows.filter(function(r) {
+        return nombreItemCatalogoColonia(r) && nombreItemCatalogoColonia(r) !== ant;
+      }).length;
+      actualizarContadorCatalogoMov(
+        "movPadron_colonia_contador",
+        nCat
+          ? nCat + " resultado(s). Elija en la lista o use la sugerencia del buscador."
+          : "Sin coincidencias en catalogo. Refine la busqueda.",
+        nCat ? "ok" : ""
+      );
+    }
+  } catch (e) {
+    actualizarContadorCatalogoMov("movPadron_colonia_contador", e.message || String(e), "err");
+    setMovPadronMensaje(e.message || String(e), false);
+  }
+}
+
+async function recargarSelectCalleMov(q) {
+  const sel = document.getElementById("movPadron_calle");
+  if (!sel) return;
+  const valorPrevio = sel.value;
+  const ant = String(sel.dataset.anterior || movPadronEstado.ficha?.calle || "").trim().toUpperCase();
+  const fichaActual = movPadronEstado.ficha?.calle || sel.dataset.anterior || "";
+  const texto = String(q || "").trim();
+  try {
+    let rows = [];
+    if (texto.length >= MOV_CATALOGO_MIN_BUSQUEDA) {
+      actualizarContadorCatalogoMov("movPadron_calle_contador", "Buscando calles...", "busy");
+      rows = await cargarCatalogoCallesMov(texto);
+    } else {
+      actualizarContadorCatalogoMov(
+        "movPadron_calle_contador",
+        texto.length
+          ? "Escriba al menos " + MOV_CATALOGO_MIN_BUSQUEDA + " caracteres para buscar."
+          : "Escriba en el buscador para ver calles del catalogo."
+      );
+    }
+    rows = asegurarOpcionCatalogoCalle(rows, fichaActual);
+    sel.innerHTML = htmlOpcionesCatalogoCalle(rows, "");
+    actualizarDatalistCatalogoMov("movPadron_calle_datalist", rows, nombreItemCatalogoCalle);
+    const prevNorm = String(valorPrevio || "").trim().toUpperCase();
+    if (prevNorm && prevNorm !== ant) sel.value = valorPrevio;
+    aplicarSeleccionCatalogoDesdeFiltro("movPadron_calle", "movPadron_calle_filtro");
+    if (texto.length >= MOV_CATALOGO_MIN_BUSQUEDA) {
+      const nCat = rows.filter(function(r) {
+        return nombreItemCatalogoCalle(r) && nombreItemCatalogoCalle(r) !== ant;
+      }).length;
+      actualizarContadorCatalogoMov(
+        "movPadron_calle_contador",
+        nCat
+          ? nCat + " resultado(s). Elija en la lista o use la sugerencia del buscador."
+          : "Sin coincidencias en catalogo. Refine la busqueda.",
+        nCat ? "ok" : ""
+      );
+    }
+  } catch (e) {
+    actualizarContadorCatalogoMov("movPadron_calle_contador", e.message || String(e), "err");
+    setMovPadronMensaje(e.message || String(e), false);
+  }
+}
+
+function onFiltroColoniaMovInput() {
+  clearTimeout(movCatalogoColoniaTimer);
+  movCatalogoColoniaTimer = setTimeout(function() {
+    const q = document.getElementById("movPadron_colonia_filtro")?.value || "";
+    recargarSelectColoniaMov(q);
+  }, 280);
+}
+window.onFiltroColoniaMovInput = onFiltroColoniaMovInput;
+
+function onFiltroCalleMovInput() {
+  clearTimeout(movCatalogoCalleTimer);
+  movCatalogoCalleTimer = setTimeout(function() {
+    const q = document.getElementById("movPadron_calle_filtro")?.value || "";
+    recargarSelectCalleMov(q);
+  }, 280);
+}
+window.onFiltroCalleMovInput = onFiltroCalleMovInput;
+
+function filtrarSelectCatalogoMov(selectId, filtroId) {
+  const filtro = (document.getElementById(filtroId)?.value || "").trim().toUpperCase();
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  Array.from(sel.options).forEach(function(opt, idx) {
+    if (idx === 0) {
+      opt.hidden = false;
+      return;
+    }
+    const txt = (opt.textContent || "").toUpperCase();
+    opt.hidden = filtro !== "" && txt.indexOf(filtro) === -1;
+  });
+}
+window.filtrarSelectCatalogoColoniaMov = function() {
+  filtrarSelectCatalogoMov("movPadron_colonia", "movPadron_colonia_filtro");
+};
+window.filtrarSelectCatalogoCalleMov = function() {
+  filtrarSelectCatalogoMov("movPadron_calle", "movPadron_calle_filtro");
+};
+
 function filtrarSelectZonaHomogenea() {
   const filtro = (document.getElementById("movPadron_zona_homogenea_filtro")?.value || "").trim().toUpperCase();
   const sel = document.getElementById("movPadron_zona_homogenea");
@@ -1375,8 +1658,26 @@ function asegurarModalMovimientoPadron() {
 function setMovPadronMensaje(texto, ok) {
   const el = document.getElementById("movPadronMensaje");
   if (!el) return;
-  el.textContent = texto || "";
+  let msg = texto;
+  if (msg && typeof msg === "object") {
+    msg = typeof extraerMensajeApi === "function"
+      ? extraerMensajeApi(msg, "Error en la solicitud")
+      : JSON.stringify(msg);
+  }
+  el.textContent = msg || "";
   el.className = "modal-mov-msg " + (ok ? "ok" : "error");
+}
+
+function errorApiMov(errJson, fallback) {
+  if (typeof extraerMensajeApi === "function") {
+    return extraerMensajeApi(errJson, fallback);
+  }
+  const d = errJson?.detail;
+  if (typeof d === "string") return d;
+  if (Array.isArray(d)) {
+    return d.map(function(x) { return x.msg || x.message || String(x); }).join("; ");
+  }
+  return fallback;
 }
 
 function cerrarModalMovimientoPadron() {
@@ -1528,6 +1829,40 @@ function renderCamposMovimientoPadron(cfg, ficha, catalogos) {
       return;
     }
 
+    if (c.tipo === "catalogo_colonia") {
+      const actual = String(ficha?.colonia || "").trim().toUpperCase();
+      const opciones = catalogos.colonias || [];
+      html += `<label class="input-label-mini">${escapeHtml(c.label)}</label>`;
+      html += `<input type="text" id="movPadron_colonia_filtro" list="movPadron_colonia_datalist" autocomplete="off" placeholder="Escriba para buscar colonia..." oninput="onFiltroColoniaMovInput()" onblur="sincronizarCatalogosMovimientoPadron()">`;
+      html += `<datalist id="movPadron_colonia_datalist"></datalist>`;
+      html += `<div id="movPadron_colonia_contador" class="mov-catalogo-contador">Escriba en el buscador para ver colonias del catalogo.</div>`;
+      html += `<select id="movPadron_${c.key}" class="mov-catalogo-listbox" size="6" data-campo="${c.key}" data-tipo="catalogo_colonia" data-anterior="${escapeHtml(actual)}" onchange="onCatalogoColoniaMovChange()">`;
+      html += htmlOpcionesCatalogoColonia(opciones, "");
+      html += `</select>`;
+      if (actual) {
+        html += `<div class="mov-valor-anterior">Actual: ${escapeHtml(actual)}</div>`;
+      }
+      html += `<div class="mov-valor-anterior">Seleccione del catalogo institucional. Deje «Sin cambio» si no aplica.</div>`;
+      return;
+    }
+
+    if (c.tipo === "catalogo_calle") {
+      const actual = String(ficha?.calle || "").trim().toUpperCase();
+      const opciones = catalogos.calles || [];
+      html += `<label class="input-label-mini">${escapeHtml(c.label)}</label>`;
+      html += `<input type="text" id="movPadron_calle_filtro" list="movPadron_calle_datalist" autocomplete="off" placeholder="Escriba para buscar calle (ej. LUCIO BLANCO)..." oninput="onFiltroCalleMovInput()" onblur="sincronizarCatalogosMovimientoPadron()">`;
+      html += `<datalist id="movPadron_calle_datalist"></datalist>`;
+      html += `<div id="movPadron_calle_contador" class="mov-catalogo-contador">Escriba en el buscador para ver calles del catalogo.</div>`;
+      html += `<select id="movPadron_${c.key}" class="mov-catalogo-listbox" size="6" data-campo="${c.key}" data-tipo="catalogo_calle" data-anterior="${escapeHtml(actual)}" onchange="onCatalogoCalleMovChange()">`;
+      html += htmlOpcionesCatalogoCalle(opciones, "");
+      html += `</select>`;
+      if (actual) {
+        html += `<div class="mov-valor-anterior">Actual: ${escapeHtml(actual)}</div>`;
+      }
+      html += `<div class="mov-valor-anterior">Seleccione del catalogo institucional. Deje «Sin cambio» si no aplica.</div>`;
+      return;
+    }
+
     if (c.tipo === "regimen_condominio") {
       html += `<label class="input-label-mini">${escapeHtml(c.label)}${c.required ? " *" : ""}</label>`;
       html += `<select id="movPadron_${c.key}" data-campo="${c.key}" data-tipo="regimen_condominio" onchange="toggleMovRegimenCondominioAlta()">`;
@@ -1642,7 +1977,10 @@ async function abrirModalMovimientoPadron(tipo) {
 
   let catalogoUsos = [];
   let catalogoZonas = [];
+  let catalogoColonias = [];
+  let catalogoCalles = [];
   const anioZona = (cfg.campos || []).find(function(c) { return c.tipo === "zona_homogenea"; })?.anio || ANIO_FISCAL_ZONA_HOMOGENEA;
+  const fichaMov = movPadronEstado.ficha || {};
 
   if ((cfg.campos || []).some(function(c) { return c.tipo === "uso_tasa"; })) {
     try {
@@ -1658,8 +1996,29 @@ async function abrirModalMovimientoPadron(tipo) {
       setMovPadronMensaje(e.message || "No se pudo cargar catalogo de zonas homogeneas", false);
     }
   }
+  if ((cfg.campos || []).some(function(c) { return c.tipo === "catalogo_colonia"; })) {
+    catalogoColonias = [];
+  }
+  if ((cfg.campos || []).some(function(c) { return c.tipo === "catalogo_calle"; })) {
+    catalogoCalles = [];
+  }
 
-  renderCamposMovimientoPadron(cfg, movPadronEstado.ficha, { usos: catalogoUsos, zonas: catalogoZonas });
+  renderCamposMovimientoPadron(cfg, movPadronEstado.ficha, {
+    usos: catalogoUsos,
+    zonas: catalogoZonas,
+    colonias: catalogoColonias,
+    calles: catalogoCalles
+  });
+
+  if ((cfg.campos || []).some(function(c) { return c.tipo === "catalogo_colonia"; })) {
+    const fCol = String(fichaMov.colonia || "").trim();
+    const filtroCol = document.getElementById("movPadron_colonia_filtro");
+    if (filtroCol && fCol) filtroCol.value = fCol;
+    recargarSelectColoniaMov(fCol);
+  }
+  if ((cfg.campos || []).some(function(c) { return c.tipo === "catalogo_calle"; })) {
+    recargarSelectCalleMov("");
+  }
 
   document.getElementById("modalMovimientoPadron").classList.remove("oculto");
 }
@@ -1673,6 +2032,8 @@ async function guardarModalMovimientoPadron() {
     const tipo = movPadronEstado.tipo;
     const cfg = CATALOGO_MOVIMIENTOS_PADRON[tipo];
     if (!cfg) throw new Error("Tipo de movimiento invalido");
+
+    sincronizarCatalogosMovimientoPadron();
 
     let tipoGuardar = tipo;
     if (tipo === "NUMERO_OFICIAL") {
@@ -1859,6 +2220,34 @@ async function guardarModalMovimientoPadron() {
         return;
       }
 
+      if (c.tipo === "catalogo_colonia" || c.tipo === "catalogo_calle") {
+        const el = document.getElementById("movPadron_" + c.key);
+        const val = String(el?.value || "").trim().toUpperCase();
+        const valAnt = String(el?.dataset?.anterior || "").trim().toUpperCase();
+        const filtroId = c.tipo === "catalogo_colonia" ? "movPadron_colonia_filtro" : "movPadron_calle_filtro";
+        const filtroTxt = String(document.getElementById(filtroId)?.value || "").trim();
+        if (!val && filtroTxt) {
+          throw new Error(
+            "Seleccione " + c.label.toLowerCase() + " en el desplegable (no solo en el buscador). " +
+            "Escriba en el buscador y elija la opcion que coincida."
+          );
+        }
+        if (!val) return;
+        if (valAnt && val === valAnt) return;
+        if (valAnt) datosAnteriores[c.key] = valAnt;
+        datosNuevos[c.key] = val;
+        detalles.push({
+          grupo: "PADRON",
+          campo: c.key,
+          etiqueta: c.label.toUpperCase(),
+          valor_anterior: valAnt,
+          valor_nuevo: val,
+          tipo_dato: "texto",
+          requiere_validacion: true
+        });
+        return;
+      }
+
       if (c.tipo === "regimen_condominio") {
         const regimen = (document.getElementById("movPadron_condominio")?.value || "").trim().toUpperCase();
         if (c.required && !regimen) throw new Error("Seleccione el tipo de tenencia (C, P, G, S, R o E)");
@@ -1939,6 +2328,10 @@ async function guardarModalMovimientoPadron() {
 
     if (!cfg.sinClaveOrigen && !clave) throw new Error("Indique la clave catastral.");
 
+    if (tipo === "CORRECCION_DOMICILIO" && !detalles.length) {
+      throw new Error("Indique al menos un cambio de colonia o calle (distinto al valor actual).");
+    }
+
     const payload = {
       clave_catastral: cfg.sinClaveOrigen ? (datosNuevos.clave_catastral || null) : clave,
       clave_catastral_anterior: clave || null,
@@ -1958,7 +2351,7 @@ async function guardarModalMovimientoPadron() {
     });
 
     const data = await r.json().catch(function() { return {}; });
-    if (!r.ok) throw new Error(data.detail || data.message || "No se pudo guardar la solicitud");
+    if (!r.ok) throw new Error(errorApiMov(data, data.message || "No se pudo guardar la solicitud"));
 
     const mov = data.movimiento || data;
     setMovPadronMensaje("Solicitud creada: " + (mov.folio || mov.id || ""), true);

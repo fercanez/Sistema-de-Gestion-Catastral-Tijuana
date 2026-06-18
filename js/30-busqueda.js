@@ -229,6 +229,7 @@ function limpiarBusquedaCatastral() {
   if (typeof claveSeleccionadaActual !== "undefined") claveSeleccionadaActual = "";
   window.predioSeleccionado = null;
   if (window._cacheFeaturePredioPorClave) window._cacheFeaturePredioPorClave = {};
+  if (window._cacheGeojsonPorClave) window._cacheGeojsonPorClave = {};
 
   if (typeof cerrarPopupPredioWorkspace === "function") cerrarPopupPredioWorkspace();
   if (typeof cerrarFichaFlotante === "function") cerrarFichaFlotante();
@@ -258,6 +259,13 @@ async function buscarAvanzado() {
 
   const tipoBusqueda = detectarTipoBusquedaActiva();
   const soloClaveExacta = clave.length >= 8 && !nombre && !colonia && !calle && !numero && !folio;
+
+  if (typeof seleccionPredioSeq !== "undefined") seleccionPredioSeq++;
+  if (soloClaveExacta && clave) {
+    mostrarFichaCargando(clave.trim().toUpperCase());
+    if (typeof limpiarResultadosZoom === "function") limpiarResultadosZoom();
+    if (typeof vectorSource !== "undefined" && vectorSource) vectorSource.clear();
+  }
   limpiarContornoSeleccion();
 
   try {
@@ -304,6 +312,12 @@ async function buscarAvanzado() {
     if (!resultados || resultados.length === 0) {
       div.innerHTML = "<p>Sin resultados.</p>";
       renderizarTablaResultados([], total);
+      if (soloClaveExacta && clave) {
+        const fichaEl = document.getElementById("ficha");
+        if (fichaEl) {
+          fichaEl.innerHTML = `<div class="ficha-section"><b>Sin resultados</b> para la clave ${val(clave.trim().toUpperCase())}.</div>`;
+        }
+      }
       return;
     }
 
@@ -344,6 +358,12 @@ async function buscarAvanzado() {
     console.error("Error en búsqueda avanzada:", e);
     actualizarContadorBusqueda(0, tipoBusqueda, 0);
     mostrarAvisoTotalResultados(0, 0);
+    if (soloClaveExacta && clave) {
+      const fichaEl = document.getElementById("ficha");
+      if (fichaEl) {
+        fichaEl.innerHTML = `<div class="ficha-section"><b>Error al consultar</b> la clave ${val(clave.trim().toUpperCase())}. Intente de nuevo.</div>`;
+      }
+    }
   }
 }
 
@@ -369,6 +389,40 @@ async function fetchFeaturePredioOpcional(url) {
   } catch {
     return null;
   }
+}
+
+function fichaDatosCompletos(feature, claveNorm) {
+  const p = feature?.properties || feature;
+  if (!p || typeof p !== "object") return false;
+  const clave = String(p.clave_catastral || "").trim().toUpperCase();
+  if (clave && clave !== claveNorm) return false;
+  return !!(p.nombre_completo || p.propietario || p.descripcion_uso
+    || p.tiene_expediente !== undefined || p.tiene_documentos !== undefined);
+}
+
+function mostrarFichaCargando(claveNorm) {
+  const clave = val(claveNorm);
+  const html = `
+    <div class="ficha-title" style="display:flex;justify-content:space-between;align-items:center;">
+      <span>Ficha predial institucional</span>
+      <span style="font-style:italic;font-size:14px;">${clave}</span>
+    </div>
+    <div class="ficha-section ficha-cargando">
+      <div class="ficha-row"><b>Consultando predio…</b><span>${clave}</span></div>
+    </div>`;
+  const ficha = document.getElementById("ficha");
+  if (ficha) ficha.innerHTML = html;
+  if (typeof pintarFichaFlotante === "function") {
+    pintarFichaFlotante({ clave_catastral: claveNorm, __cargando: true });
+  }
+}
+
+function pintarFichaResumenBusqueda(registro) {
+  if (!registro) return;
+  const p = Object.assign({}, registro);
+  p.clave_catastral = String(p.clave_catastral || "").trim().toUpperCase();
+  if (typeof pintarFicha === "function") pintarFicha(p);
+  else if (typeof pintarFichaFlotante === "function") pintarFichaFlotante(p);
 }
 
 function construirFeatureDesdePrefetch(geojsonPrefetch, claveNorm) {
@@ -409,18 +463,35 @@ function guardarFeaturePredioEnCache(claveNorm, feature) {
   window._cacheFeaturePredioPorClave[claveNorm] = feature;
 }
 
+function guardarGeojsonPredioEnCache(claveNorm, geo) {
+  if (!claveNorm || !geo?.geometry) return;
+  window._cacheGeojsonPorClave = window._cacheGeojsonPorClave || {};
+  window._cacheGeojsonPorClave[claveNorm] = geo;
+}
+
 async function cargarFeaturePredio(claveNorm, geojsonPrefetch, seq, opciones) {
   opciones = opciones || {};
-  const ts = Date.now();
-  let feature = normalizarFeaturePredioApi(opciones.featurePrefetch, claveNorm);
+  const geoUrl = `${API}/predios/${encodeURIComponent(claveNorm)}/geojson?_=${Date.now()}`;
+  const fichaUrl = `${API}/padron/${encodeURIComponent(claveNorm)}/ficha?_=${Date.now()}`;
 
-  if (!feature) {
-    feature = await fetchFeaturePredioOpcional(
-      `${API}/padron/${encodeURIComponent(claveNorm)}/ficha?_=${ts}`
-    );
-    feature = normalizarFeaturePredioApi(feature, claveNorm);
-  }
+  const geoInicial = geojsonPrefetch?.geometry
+    ? geojsonPrefetch
+    : (window._cacheGeojsonPorClave?.[claveNorm] || null);
+
+  const [geoRes, fichaRes] = await Promise.all([
+    geoInicial ? Promise.resolve(geoInicial) : fetchFeaturePredioOpcional(geoUrl),
+    fetchFeaturePredioOpcional(fichaUrl)
+  ]);
+
   if (seq !== seleccionPredioSeq) return null;
+
+  let feature = normalizarFeaturePredioApi(fichaRes, claveNorm);
+  if (!feature && geoRes?.geometry) {
+    feature = construirFeatureDesdePrefetch(geoRes, claveNorm);
+  } else if (feature && geoRes?.geometry) {
+    feature.geometry = geoRes.geometry;
+  }
+
   if (!feature) {
     if (geojsonPrefetch?.geometry) {
       feature = construirFeatureDesdePrefetch(geojsonPrefetch, claveNorm);
@@ -439,8 +510,9 @@ async function cargarFeaturePredio(claveNorm, geojsonPrefetch, seq, opciones) {
     enriquecerFeatureConExpedienteEnSegundoPlano(claveNorm, feature, seq);
   }
 
-  if (geojsonPrefetch?.geometry) {
-    feature.geometry = geojsonPrefetch.geometry;
+  if (geoRes?.geometry) {
+    feature.geometry = geoRes.geometry;
+    guardarGeojsonPredioEnCache(claveNorm, geoRes);
   }
 
   guardarFeaturePredioEnCache(claveNorm, feature);
@@ -468,6 +540,9 @@ async function enriquecerFeatureConExpedienteEnSegundoPlano(claveNorm, feature, 
   if (document.body.classList.contains("popup-predio-abierto") &&
       typeof actualizarPopupPredioHeader === "function") {
     actualizarPopupPredioHeader(feature.properties);
+    if (typeof refrescarPopupPredioSiAbierto === "function") {
+      refrescarPopupPredioSiAbierto(feature.properties);
+    }
   }
 }
 
@@ -477,6 +552,29 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
   const claveNorm = String(clave).trim().toUpperCase();
   const claveAnterior = claveSeleccionadaActual;
   const seq = ++seleccionPredioSeq;
+
+  if (claveNorm !== claveAnterior && typeof limpiarContornoSeleccion === "function") {
+    limpiarContornoSeleccion();
+  }
+
+  mostrarFichaCargando(claveNorm);
+  if (typeof actualizarBreadcrumbPredio === "function") {
+    actualizarBreadcrumbPredio(claveNorm, opciones.registroBusqueda || null);
+  }
+  if (opciones.registroBusqueda) {
+    pintarFichaResumenBusqueda(opciones.registroBusqueda);
+  }
+
+  if (document.body.classList.contains("popup-predio-abierto")) {
+    if (typeof limpiarCachePopupPredio === "function") limpiarCachePopupPredio();
+    if (typeof actualizarPopupPredioHeader === "function") {
+      const prelim = Object.assign(
+        { clave_catastral: claveNorm },
+        opciones.registroBusqueda || {}
+      );
+      actualizarPopupPredioHeader(prelim);
+    }
+  }
 
   // Feedback visual inmediato: si el clic en el mapa ya trajo la geometría
   // (vía /predios/intersecta), pintamos el contorno y reencuadramos sin esperar
@@ -502,7 +600,7 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
         if (debeZoomPre) {
           const enMovPre = typeof enModoMovimientosCatastrales === "function" && enModoMovimientosCatastrales();
           if (!enMovPre) {
-            programarZoomPredioSeleccionado(geomPre, {}, seq);
+            programarZoomPredioSeleccionado(geomPre, { delayMs: origen === "busqueda" ? 0 : 80 }, seq);
             zoomYaAplicado = true;
           }
         }
@@ -513,7 +611,6 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
   }
 
   const featureGeojson = await cargarFeaturePredio(claveNorm, geojsonPrefetch, seq, {
-    featurePrefetch: opciones?.featurePrefetch,
     omitirExpediente: opciones?.omitirExpediente === true
   });
   if (seq !== seleccionPredioSeq) return;
@@ -592,7 +689,11 @@ async function seleccionarPorClave(clave, origen = "programa", opciones = {}) {
     if (enMov && typeof activarVistaContextoPredioMovimientos === "function") {
       await activarVistaContextoPredioMovimientos(geomParaZoom, claveNorm, window.predioSeleccionado || ficha);
     } else {
-      programarZoomPredioSeleccionado(geomParaZoom, {}, seq);
+      programarZoomPredioSeleccionado(
+        geomParaZoom,
+        { delayMs: origen === "busqueda" ? 0 : 80 },
+        seq
+      );
     }
   }
 

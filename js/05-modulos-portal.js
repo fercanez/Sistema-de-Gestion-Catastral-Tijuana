@@ -21,6 +21,7 @@ const POPUP_MINI_CAPA_PROP = {
 };
 let popupTitularidadSubTab = "titulares";
 let popupTitularidadCache = null;
+let popupDatosGeneralesSeq = 0;
 
 const POPUP_TIPOS_TENENCIA = {
   C: { codigo: "C", nombre: "Condominio", desc: "Régimen en condominio." },
@@ -88,14 +89,65 @@ const MODULOS_PORTAL_DEF = [
 ];
 
 const POPUP_PREDIO_TABS = [
-  { id: "datos-generales", label: "Datos Generales" },
-  { id: "construcciones", label: "Construcciones/Medidas" },
-  { id: "archivo", label: "Archivo Digitalizado" },
-  { id: "numeros-oficiales", label: "Números Oficiales" },
-  { id: "carta-urbana", label: "Carta Urbana 2040" },
-  { id: "colonia", label: "Colonia/Fraccionamiento" },
-  { id: "zona-homogenea", label: "Zona Homogénea" }
+  { id: "datos-generales", label: "Datos" },
+  { id: "construcciones", label: "Construcción" },
+  { id: "archivo", label: "Archivo" },
+  { id: "control-urbano", label: "Ctrl. Urbano" },
+  { id: "documento-rppc", label: "RPPC" },
+  { id: "numeros-oficiales", label: "Núm. Oficial" },
+  { id: "carta-urbana", label: "Carta 2040" },
+  { id: "colonia", label: "Colonia" },
+  { id: "zona-homogenea", label: "Zona H." }
 ];
+
+const POPUP_PREDIO_SIZE_KEY = "catastro_popup_predio_size";
+
+function aplicarTamanoPopupPredioGuardado() {
+  const win = document.querySelector(".popup-predio-window");
+  if (!win) return;
+  try {
+    const raw = localStorage.getItem(POPUP_PREDIO_SIZE_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const w = Number(parsed?.w);
+    const h = Number(parsed?.h);
+    if (w >= 900 && w <= window.innerWidth - 16) win.style.width = `${w}px`;
+    if (h >= 480 && h <= window.innerHeight - 16) win.style.height = `${h}px`;
+  } catch (e) {}
+}
+
+function guardarTamanoPopupPredio() {
+  const win = document.querySelector(".popup-predio-window");
+  if (!win) return;
+  try {
+    localStorage.setItem(POPUP_PREDIO_SIZE_KEY, JSON.stringify({
+      w: win.offsetWidth,
+      h: win.offsetHeight
+    }));
+  } catch (e) {}
+}
+
+function engancharResizePopupPredio() {
+  const win = document.querySelector(".popup-predio-window");
+  if (!win || win.dataset.resizeHook === "1") return;
+  win.dataset.resizeHook = "1";
+  let timer = null;
+  const onResize = function() {
+    clearTimeout(timer);
+    timer = setTimeout(function() {
+      guardarTamanoPopupPredio();
+      if (typeof popupMiniMap !== "undefined" && popupMiniMap?.updateSize) {
+        try { popupMiniMap.updateSize(); } catch (e) {}
+      }
+      if (typeof map !== "undefined" && map?.updateSize) {
+        try { map.updateSize(); } catch (e) {}
+      }
+    }, 120);
+  };
+  if (typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(onResize).observe(win);
+  }
+}
 
 function ocultarTabsExtraGestionCatastral() {
   const idsOcultar = ["tabHerramientas", "tabAnalisisZonas", "tabCondominios", "tabMovimientos", "tabAdministracion"];
@@ -338,15 +390,29 @@ function popupHayCopropiedad(p, titularidad) {
   return props.some(x => String(x.tipo_titularidad || "").toUpperCase() === "COPROPIETARIO");
 }
 
+function titularidadPerteneceAPredio(titularidad, claveNorm) {
+  if (!titularidad || !claveNorm) return false;
+  const c = String(titularidad.clave_catastral || "").trim().toUpperCase();
+  const esperada = String(claveNorm || "").trim().toUpperCase();
+  return !c || c === esperada;
+}
+
+function limpiarCachePopupPredio() {
+  popupTitularidadCache = null;
+  popupDatosGeneralesSeq++;
+}
+
 function popupNombreContribuyente(p, titularidad) {
-  const props = titularidad?.propietarios || [];
+  const claveNorm = String(p?.clave_catastral || "").trim().toUpperCase();
+  const tit = titularidadPerteneceAPredio(titularidad, claveNorm) ? titularidad : null;
+  const props = tit?.propietarios || [];
   if (props.length && typeof formatearNombreVisibleTitularidad === "function") {
     const fmt = formatearNombreVisibleTitularidad(props);
     if (fmt) return fmt;
   }
   const nombre = String(p?.nombre_completo || p?.propietario || "").trim();
   if (!nombre) return "—";
-  if (popupHayCopropiedad(p, titularidad) && !/\bY\s+COP\.?\b/i.test(nombre)) {
+  if (popupHayCopropiedad(p, tit) && !/\bY\s+COP\.?\b/i.test(nombre)) {
     const limpio = nombre.replace(/\s+(Y\s+COP\.?.*)?$/i, "").trim();
     return `${limpio || nombre} Y COP.`;
   }
@@ -923,17 +989,26 @@ function actualizarPopupPredioHeader(p) {
   }
 }
 
+function actualizarPopupNombreContribuyenteEnPanel(panel, p, titularidad) {
+  if (!panel) return;
+  const nombreFinal = popupNombreContribuyente(p, titularidad);
+  const nombreEl = panel.querySelector(".popup-legacy-row-nombre .popup-legacy-val");
+  if (nombreEl) nombreEl.textContent = nombreFinal;
+}
+
 async function pintarPopupTabDatosGenerales(p) {
   const panel = document.getElementById("popupTabDatosGenerales");
   if (!panel) return;
 
+  const clave = String(p?.clave_catastral || claveSeleccionadaActual || "").trim().toUpperCase();
+  const seq = ++popupDatosGeneralesSeq;
+
   destruirPopupMiniMap();
 
-  const clave = String(p?.clave_catastral || claveSeleccionadaActual || "").trim().toUpperCase();
   const supDoc = typeof formatoNumero === "function" ? formatoNumero(p?.sup_documental) : p?.sup_documental;
   const valor = typeof formatoMoneda === "function" ? formatoMoneda(p?.valor2026) : p?.valor2026;
   const adeudo = typeof formatoMoneda === "function" ? formatoMoneda(p?.adeudo_total) : p?.adeudo_total;
-  const nombreContrib = popupNombreContribuyente(p, popupTitularidadCache);
+  const nombreContrib = popupNombreContribuyente(p, null);
 
   panel.innerHTML = `
     <div class="popup-datos-grid popup-datos-grid-legacy">
@@ -985,14 +1060,13 @@ async function pintarPopupTabDatosGenerales(p) {
     cargarTitularidadPredioPopup(clave, p),
     actualizarPopupVistaCartografica(p)
   ]);
+  if (seq !== popupDatosGeneralesSeq) return;
+  if (!titularidadPerteneceAPredio(titularidad, clave)) return;
+
   popupTitularidadCache = titularidad;
   pintarPopupTitularidadSeccion(titularidad, p);
-
-  const nombreFinal = popupNombreContribuyente(p, titularidad);
-  const nombreEl = panel.querySelector(".popup-legacy-row-nombre .popup-legacy-val");
-  if (nombreEl && nombreFinal && nombreFinal !== "—") {
-    nombreEl.textContent = nombreFinal;
-  }
+  actualizarPopupNombreContribuyenteEnPanel(panel, p, titularidad);
+  actualizarPopupPredioHeader(p);
 }
 
 function pintarPopupTabPlaceholder(panelId, titulo, detalle) {
@@ -1336,6 +1410,11 @@ async function pintarPopupPredioTab(tabId, p) {
   if (tabAnterior === "documento-rppc" && tabId !== "documento-rppc") {
     if (typeof destruirPopupRppc === "function") destruirPopupRppc();
   }
+  if (tabAnterior === "control-urbano" && tabId !== "control-urbano") {
+    if (typeof window.popupControlUrbanoClaveActual !== "undefined") {
+      window.popupControlUrbanoClaveActual = "";
+    }
+  }
   document.querySelectorAll(".popup-predio-tab").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.tab === tabId);
   });
@@ -1353,6 +1432,14 @@ async function pintarPopupPredioTab(tabId, p) {
         "Cuadro de construcción, medición de vértices y edición cartográfica — módulo en desarrollo.");
     }
   }   else if (tabId === "archivo") await pintarPopupTabArchivo(clave, p);
+  else if (tabId === "control-urbano") {
+    if (typeof pintarPopupTabControlUrbano === "function") {
+      await pintarPopupTabControlUrbano(clave, p);
+    } else {
+      pintarPopupTabPlaceholder("popupTabControlUrbano", "Control Urbano",
+        "Carga de licencia de construcción y uso de suelo — recargue la página con Ctrl+F5.");
+    }
+  }
   else if (tabId === "documento-rppc") {
     if (typeof pintarPopupTabRppc === "function") {
       await pintarPopupTabRppc(clave, p);
@@ -1421,6 +1508,18 @@ function mostrarPopupPredioTab(tabId) {
   pintarPopupPredioTab(tabId, p);
 }
 
+function refrescarPopupPredioSiAbierto(p) {
+  if (!document.body.classList.contains("popup-predio-abierto")) return;
+  const claveAct = String(claveSeleccionadaActual || "").trim().toUpperCase();
+  const claveP = String(p?.clave_catastral || "").trim().toUpperCase();
+  if (claveAct && claveP && claveAct !== claveP) return;
+  actualizarPopupPredioHeader(p);
+  if (popupPredioTabActiva === "datos-generales") {
+    const panel = document.getElementById("popupTabDatosGenerales");
+    actualizarPopupNombreContribuyenteEnPanel(panel, p, popupTitularidadCache);
+  }
+}
+
 async function abrirPopupPredioWorkspace(ficha) {
   if (!enModoGestionCatastral()) return;
 
@@ -1430,10 +1529,14 @@ async function abrirPopupPredioWorkspace(ficha) {
 
   if (typeof cerrarFichaFlotante === "function") cerrarFichaFlotante();
 
+  limpiarCachePopupPredio();
+
   overlay.classList.remove("oculto");
   document.body.classList.add("popup-predio-abierto");
+  engancharResizePopupPredio();
+  aplicarTamanoPopupPredioGuardado();
   actualizarPopupPredioHeader(p);
-  await pintarPopupPredioTab("datos-generales", p);
+  await pintarPopupPredioTab(popupPredioTabActiva || "datos-generales", p);
 
   if (typeof map !== "undefined" && map) {
     setTimeout(() => map.updateSize(), 200);
@@ -1444,6 +1547,7 @@ function cerrarPopupPredioWorkspace() {
   if (typeof destruirPopupRppc === "function") destruirPopupRppc();
   document.getElementById("popupPredioWorkspace")?.classList.add("oculto");
   document.body.classList.remove("popup-predio-abierto");
+  limpiarCachePopupPredio();
   destruirPopupMiniMap();
   if (typeof destruirPopupConstruccionesMedicion === "function") destruirPopupConstruccionesMedicion();
   if (typeof destruirPopupNumerosOficiales === "function") destruirPopupNumerosOficiales();
@@ -1458,12 +1562,16 @@ async function navegarPopupPredio(delta) {
   let idx = popupPredioIndiceActual >= 0 ? popupPredioIndiceActual : 0;
   idx = (idx + delta + claves.length) % claves.length;
   const clave = claves[idx];
+  const filas = gridEstado?.filtrados || gridEstado?.todos || [];
+  const registro = filas.find(r => String(r.clave_catastral || "").trim().toUpperCase() === clave) || null;
+  if (typeof limpiarCachePopupPredio === "function") limpiarCachePopupPredio();
   if (typeof seleccionarPorClave === "function") {
-    await seleccionarPorClave(clave, "popup-nav");
+    await seleccionarPorClave(clave, "popup-nav", { registroBusqueda: registro });
   }
 }
 
 function engancharPortalModulos() {
+  engancharResizePopupPredio();
   if (typeof abrirFichaFlotante === "function" && !window.__abrirFichaFlotantePortal) {
     window.__abrirFichaFlotantePortal = abrirFichaFlotante;
     abrirFichaFlotante = function() {
@@ -1483,6 +1591,8 @@ window.mostrarSelectorModulos = mostrarSelectorModulos;
 window.entrarModuloPortal = entrarModuloPortal;
 window.volverSelectorModulos = volverSelectorModulos;
 window.enModoGestionCatastral = enModoGestionCatastral;
+window.limpiarCachePopupPredio = limpiarCachePopupPredio;
+window.refrescarPopupPredioSiAbierto = refrescarPopupPredioSiAbierto;
 window.abrirPopupPredioWorkspace = abrirPopupPredioWorkspace;
 window.cerrarPopupPredioWorkspace = cerrarPopupPredioWorkspace;
 window.mostrarPopupPredioTab = mostrarPopupPredioTab;

@@ -55,11 +55,13 @@ def permisos_por_rol(rol):
         perms = permisos_por_rol_db(cur, rol)
         cur.close()
         conn.close()
-        return perms
+        fallback = set(_permisos_fallback(rol))
+        return sorted(fallback | set(perms))
     except Exception:
         return _permisos_fallback(rol)
 
 
 def usuario_tiene_permiso(usuario_actual: dict, permiso: str) -> bool:
     rol = normalizar_rol(usuario_actual.get("rol"))
-    return permiso in set(permisos_por_rol(rol))
+    efectivos = set(permisos_por_rol(rol))
+    return permiso in efectivos

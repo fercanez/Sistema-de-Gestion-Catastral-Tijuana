@@ -112,7 +112,8 @@ def aplicar_movimiento_padron(
 
                 if tipo in ["CAMBIO_SUPERFICIE", "CAMBIO_CONSTRUCCION", "CAMBIO_USO_SUELO",
                             "CAMBIO_ZONA_HOMOGENEA", "NUMERO_OFICIAL",
-                            "ASIGNACION_NUMERO_OFICIAL", "CAMBIO_NUMERO_OFICIAL"]:
+                            "ASIGNACION_NUMERO_OFICIAL", "CAMBIO_NUMERO_OFICIAL",
+                            "CORRECCION_DOMICILIO"]:
                     actualizado = _aplicar_campos_desde_detalles(cur, clave, detalles, mov)
                     _registrar_auditoria_aplicar(cur, movimiento_id, clave, f"APLICAR_{tipo}", estado_ant,
                         f"Cambio aplicado ({tipo})", {"actualizado": _fila_a_dict(actualizado)}, usuario, ip)
