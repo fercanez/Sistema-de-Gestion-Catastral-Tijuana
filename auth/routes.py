@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from config import ACCESS_TOKEN_EXPIRE_MINUTES
+from config import ACCESS_TOKEN_EXPIRE_MINUTES, SESSION_INACTIVITY_MINUTES
 from database import get_conn
 from auth.acl import ACL_BACKEND, normalizar_rol, permisos_por_rol, usuario_tiene_permiso
 from auth.accesos_modulo import modulos_visibles_usuario
@@ -13,6 +13,8 @@ from auth.dependencies import (
     verificar_password,
 )
 from auth.models import LoginRequest
+from auth.sessions import crear_sesion, cerrar_sesion_por_jti
+import secrets
 
 router = APIRouter(tags=["auth"])
 
@@ -74,11 +76,15 @@ def login(datos: LoginRequest, request: Request):
 
         modulos = modulos_visibles_usuario(cur, row["id"], row["rol"])
 
+        jti = secrets.token_urlsafe(32)
+        user_agent = (request.headers.get("user-agent") or "")[:500]
+        crear_sesion(row["id"], jti, ip_cliente, user_agent)
+
         token = crear_token_acceso({
             "sub": row["usuario"],
             "rol": row["rol"],
             "nombre": row["nombre_completo"],
-        })
+        }, jti=jti)
 
         registrar_auditoria_login(usuario_input, ip_cliente, True, "Login correcto")
 
@@ -91,6 +97,7 @@ def login(datos: LoginRequest, request: Request):
             "permisos": permisos_por_rol(row["rol"]),
             "modulos": modulos,
             "expira_minutos": ACCESS_TOKEN_EXPIRE_MINUTES,
+            "inactividad_minutos": SESSION_INACTIVITY_MINUTES,
         }
 
     except HTTPException:
@@ -108,6 +115,14 @@ def login(datos: LoginRequest, request: Request):
                 conn.close()
         except Exception:
             pass
+
+
+@router.post("/logout")
+def logout(usuario_actual: dict = Depends(obtener_usuario_actual)):
+    jti = usuario_actual.get("jti")
+    if jti:
+        cerrar_sesion_por_jti(jti)
+    return {"ok": True, "mensaje": "Sesión cerrada"}
 
 
 @router.get("/me")
@@ -144,6 +159,7 @@ def me(usuario_actual: dict = Depends(obtener_usuario_actual)):
         "rol": rol,
         "permisos": permisos_por_rol(rol),
         "modulos": modulos,
+        "inactividad_minutos": SESSION_INACTIVITY_MINUTES,
     }
 
 

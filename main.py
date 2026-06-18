@@ -6,6 +6,7 @@ from fastapi.responses import FileResponse, RedirectResponse
 
 import config  # noqa: F401 - valida SECRET_KEY al importar
 from database import get_conn, asegurar_tabla_predio_condominio
+from auth.sessions import ensure_sesiones_table
 from auth.routes import router as auth_router
 from routers.movimientos import router as movimientos_router
 from routers.movimientos_legacy import router as movimientos_legacy_router
@@ -43,6 +44,8 @@ def startup_migraciones():
         with get_conn() as conn:
             with conn.cursor() as cur:
                 asegurar_tabla_predio_condominio(cur, conn)
+                ensure_sesiones_table(cur)
+                conn.commit()
     except Exception:
         pass
 

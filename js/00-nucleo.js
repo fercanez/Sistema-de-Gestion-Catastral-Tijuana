@@ -2,6 +2,9 @@
 /* --- v21: Login institucional JWT --- */
 const TOKEN_KEY_CATASTRO = "catastro_bc_token";
 const USER_KEY_CATASTRO = "catastro_bc_usuario";
+const SESION_INACTIVIDAD_MIN_DEFAULT = 15;
+let sesionInactividadTimer = null;
+let sesionExpulsando = false;
 
 function obtenerTokenInstitucional() {
   return localStorage.getItem(TOKEN_KEY_CATASTRO) || "";
@@ -75,8 +78,142 @@ function guardarSesionInstitucional(data) {
     rol: data.rol,
     permisos: data.permisos || [],
     modulos: data.modulos || [],
-    expira_minutos: data.expira_minutos
+    expira_minutos: data.expira_minutos,
+    inactividad_minutos: data.inactividad_minutos || SESION_INACTIVIDAD_MIN_DEFAULT
   }));
+}
+
+function obtenerInactividadSesionMs() {
+  const mins = Number(obtenerUsuarioSesion()?.inactividad_minutos);
+  if (mins > 0) return mins * 60 * 1000;
+  return SESION_INACTIVIDAD_MIN_DEFAULT * 60 * 1000;
+}
+
+function _throttleSesion(fn, waitMs) {
+  let ultimo = 0;
+  return function throttled() {
+    const ahora = Date.now();
+    if (ahora - ultimo < waitMs) return;
+    ultimo = ahora;
+    fn();
+  };
+}
+
+let sesionUltimaActividadMs = 0;
+
+function registrarActividadSesion() {
+  if (!obtenerTokenInstitucional()) return;
+  sesionUltimaActividadMs = Date.now();
+  reprogramarTimerInactividadSesion();
+}
+
+function reprogramarTimerInactividadSesion() {
+  clearTimeout(sesionInactividadTimer);
+  if (!obtenerTokenInstitucional()) return;
+  sesionInactividadTimer = setTimeout(verificarInactividadSesion, obtenerInactividadSesionMs());
+}
+
+function verificarInactividadSesion() {
+  if (!obtenerTokenInstitucional()) return;
+  const limite = obtenerInactividadSesionMs();
+  if (Date.now() - sesionUltimaActividadMs < limite - 1000) {
+    reprogramarTimerInactividadSesion();
+    return;
+  }
+  const mins = Math.round(limite / 60000);
+  expulsarSesionInstitucional(`Su sesión se cerró por inactividad (${mins} minutos). Vuelva a iniciar sesión.`);
+}
+
+function iniciarControlInactividadSesion() {
+  detenerControlInactividadSesion();
+  const marcar = _throttleSesion(registrarActividadSesion, 20000);
+  const eventos = ["mousedown", "mousemove", "keydown", "touchstart", "scroll", "click"];
+  eventos.forEach(function(ev) {
+    document.addEventListener(ev, marcar, { passive: true });
+  });
+  window.__sesionInactividadMarcar = marcar;
+  window.__sesionInactividadEventos = eventos;
+  document.addEventListener("visibilitychange", onVisibilidadPestanaSesion);
+  registrarActividadSesion();
+}
+
+function onVisibilidadPestanaSesion() {
+  if (document.visibilityState === "visible" && obtenerTokenInstitucional()) {
+    validarSesionInstitucional({ silencioso: true });
+  }
+}
+
+function detenerControlInactividadSesion() {
+  clearTimeout(sesionInactividadTimer);
+  sesionInactividadTimer = null;
+  if (window.__sesionInactividadMarcar && window.__sesionInactividadEventos) {
+    window.__sesionInactividadEventos.forEach(function(ev) {
+      document.removeEventListener(ev, window.__sesionInactividadMarcar);
+    });
+  }
+  window.__sesionInactividadMarcar = null;
+  window.__sesionInactividadEventos = null;
+  document.removeEventListener("visibilitychange", onVisibilidadPestanaSesion);
+}
+
+async function cerrarSesionEnServidor() {
+  const token = obtenerTokenInstitucional();
+  if (!token) return;
+  try {
+    await fetch(`${API}/logout`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch (e) {
+    console.warn("No se pudo cerrar sesión en servidor:", e);
+  }
+}
+
+async function expulsarSesionInstitucional(mensaje) {
+  if (sesionExpulsando) return;
+  sesionExpulsando = true;
+  try {
+    detenerControlInactividadSesion();
+    await cerrarSesionEnServidor();
+    if (typeof cerrarPopupPredioWorkspace === "function") cerrarPopupPredioWorkspace();
+    document.getElementById("selectorModulosOverlay")?.classList.add("oculto");
+    document.getElementById("appInstitucional")?.classList.add("oculto");
+    document.body.classList.remove("portal-modulo-activo", "modo-gestion-catastral", "modo-portal-completo", "popup-predio-abierto");
+    limpiarSesionInstitucional();
+    mostrarLoginInstitucional();
+    if (mensaje) setLoginMensaje(mensaje, "error");
+  } finally {
+    sesionExpulsando = false;
+  }
+}
+
+function instalarInterceptorSesion401() {
+  if (window.__sesionFetchInterceptor) return;
+  const fetchOriginal = window.fetch.bind(window);
+  window.fetch = async function fetchConSesion(url, options) {
+    const resp = await fetchOriginal(url, options);
+    if (resp.status !== 401 || !obtenerTokenInstitucional() || sesionExpulsando) return resp;
+    const urlStr = String(url || "");
+    if (urlStr.includes("/login") || urlStr.includes("/logout") || urlStr.includes("/me")) return resp;
+    let usaBearer = false;
+    const headers = options?.headers;
+    if (headers instanceof Headers) {
+      usaBearer = (headers.get("Authorization") || "").includes("Bearer");
+    } else if (headers && typeof headers === "object") {
+      const auth = headers.Authorization || headers.authorization || "";
+      usaBearer = String(auth).includes("Bearer");
+    }
+    if (!usaBearer) return resp;
+    let detalle = "Su sesión ya no es válida. Vuelva a iniciar sesión.";
+    try {
+      const clon = resp.clone();
+      const data = await clon.json();
+      if (data?.detail) detalle = typeof data.detail === "string" ? data.detail : detalle;
+    } catch (e) { /* ignore */ }
+    expulsarSesionInstitucional(detalle);
+    return resp;
+  };
+  window.__sesionFetchInterceptor = true;
 }
 
 function limpiarSesionInstitucional() {
@@ -110,6 +247,7 @@ function mostrarSistemaInstitucional(usuario) {
 
   aplicarPermisosVisuales(usuario?.rol || "consulta");
   iniciarRelojInstitucional();
+  iniciarControlInactividadSesion();
 
   if (typeof mostrarSelectorModulos === "function") {
     mostrarSelectorModulos(usuario);
@@ -194,11 +332,12 @@ async function loginInstitucional() {
   }
 }
 
-async function validarSesionInstitucional() {
+async function validarSesionInstitucional(opciones) {
+  opciones = opciones || {};
   const token = obtenerTokenInstitucional();
 
   if (!token) {
-    mostrarLoginInstitucional();
+    if (!opciones.silencioso) mostrarLoginInstitucional();
     return false;
   }
 
@@ -210,7 +349,12 @@ async function validarSesionInstitucional() {
     });
 
     if (!r.ok) {
-      throw new Error("Sesión expirada");
+      let detalle = "Sesión expirada";
+      try {
+        const err = await r.json();
+        if (err?.detail) detalle = typeof err.detail === "string" ? err.detail : detalle;
+      } catch (e) { /* ignore */ }
+      throw new Error(detalle);
     }
 
     const data = await r.json();
@@ -220,26 +364,32 @@ async function validarSesionInstitucional() {
       nombre: data.nombre,
       rol: data.rol,
       permisos: data.permisos || [],
-      modulos: data.modulos || []
+      modulos: data.modulos || [],
+      inactividad_minutos: data.inactividad_minutos || SESION_INACTIVIDAD_MIN_DEFAULT
     };
 
     localStorage.setItem(USER_KEY_CATASTRO, JSON.stringify(usuario));
-    mostrarSistemaInstitucional(usuario);
+    if (!opciones.silencioso) {
+      mostrarSistemaInstitucional(usuario);
+    } else {
+      registrarActividadSesion();
+    }
     return true;
 
   } catch (e) {
     console.warn("Sesión inválida:", e);
-    limpiarSesionInstitucional();
-    mostrarLoginInstitucional();
+    await expulsarSesionInstitucional(e.message || "Sesión expirada. Vuelva a iniciar sesión.");
     return false;
   }
 }
 
-function cerrarSesionInstitucional() {
+async function cerrarSesionInstitucional() {
   if (typeof cerrarPopupPredioWorkspace === "function") cerrarPopupPredioWorkspace();
   document.getElementById("selectorModulosOverlay")?.classList.add("oculto");
   document.getElementById("appInstitucional")?.classList.add("oculto");
   document.body.classList.remove("portal-modulo-activo", "modo-gestion-catastral", "modo-portal-completo", "popup-predio-abierto");
+  detenerControlInactividadSesion();
+  await cerrarSesionEnServidor();
   limpiarSesionInstitucional();
   mostrarLoginInstitucional();
 }
@@ -292,6 +442,7 @@ function aplicarPermisosVisuales(rol) {
 }
 
 function prepararEventosLoginInstitucional() {
+  instalarInterceptorSesion401();
   const usuario = document.getElementById("loginUsuario");
   const pass = document.getElementById("loginPassword");
 

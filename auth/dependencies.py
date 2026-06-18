@@ -1,13 +1,15 @@
 from datetime import datetime, timedelta
+import secrets
 
 from fastapi import Depends, HTTPException, Security, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
-from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES
+from config import SECRET_KEY, ALGORITHM, ACCESS_TOKEN_EXPIRE_MINUTES, SESSION_INACTIVITY_MINUTES
 from database import get_conn
 from auth.acl import ACL_BACKEND, normalizar_rol, permisos_por_rol, usuario_tiene_permiso
+from auth.sessions import validar_sesion_activa, cerrar_sesion_por_jti
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="login")
@@ -51,11 +53,43 @@ def verificar_password(password_plano: str, password_hash: str) -> bool:
     return pwd_context.verify(password_plano, password_hash)
 
 
-def crear_token_acceso(data: dict, expires_delta: timedelta | None = None) -> str:
+def crear_token_acceso(data: dict, jti: str | None = None, expires_delta: timedelta | None = None) -> str:
     datos = data.copy()
+    token_jti = jti or secrets.token_urlsafe(32)
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    datos.update({"exp": expire})
+    datos.update({"exp": expire, "jti": token_jti})
     return jwt.encode(datos, SECRET_KEY, algorithm=ALGORITHM)
+
+
+def decodificar_token_acceso(token: str) -> dict:
+    try:
+        return jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+    except JWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido o expirado",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
+
+def resolver_usuario_desde_token(token: str) -> dict:
+    payload = decodificar_token_acceso(token)
+    usuario = payload.get("sub")
+    if usuario is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Token inválido",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    jti = payload.get("jti")
+    sesion = validar_sesion_activa(jti)
+    return {
+        "usuario": sesion["usuario"],
+        "rol": sesion["rol"] or payload.get("rol"),
+        "nombre": sesion["nombre"] or payload.get("nombre"),
+        "jti": jti,
+        "usuario_id": sesion["usuario_id"],
+    }
 
 
 def registrar_auditoria_login(usuario: str, ip: str, exito: bool, mensaje: str):
@@ -87,31 +121,7 @@ def registrar_auditoria_login(usuario: str, ip: str, exito: bool, mensaje: str):
 
 
 def obtener_usuario_actual(token: str = Depends(oauth2_scheme)):
-    try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        usuario = payload.get("sub")
-        rol = payload.get("rol")
-        nombre = payload.get("nombre")
-
-        if usuario is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token inválido",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-        return {
-            "usuario": usuario,
-            "rol": rol,
-            "nombre": nombre,
-        }
-
-    except JWTError:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token inválido o expirado",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
+    return resolver_usuario_desde_token(token)
 
 
 def requerir_roles(*roles_permitidos):
@@ -127,32 +137,39 @@ def requerir_roles(*roles_permitidos):
 
 def require_role(roles_permitidos: list):
     async def verifier(token: str = Security(oauth2_scheme)):
-        credentials_exception = HTTPException(status_code=401, detail="No autorizado")
-
-        try:
-            payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-            usuario = payload.get("sub")
-            if usuario is None:
-                raise credentials_exception
-        except JWTError:
-            raise credentials_exception
+        usuario_actual = resolver_usuario_desde_token(token)
+        usuario = usuario_actual["usuario"]
+        usuario_id = usuario_actual.get("usuario_id")
 
         conn = get_conn()
         cur = conn.cursor()
-        cur.execute(
-            """
-            SELECT id, usuario
-            FROM seguridad.usuarios
-            WHERE usuario = %s
-            AND activo = TRUE
-            """,
-            (usuario,),
-        )
-        user = cur.fetchone()
-        if not user:
-            raise credentials_exception
+        if not usuario_id:
+            cur.execute(
+                """
+                SELECT id, usuario
+                FROM seguridad.usuarios
+                WHERE usuario = %s
+                AND activo = TRUE
+                """,
+                (usuario,),
+            )
+            user = cur.fetchone()
+            if not user:
+                cur.close()
+                conn.close()
+                raise HTTPException(status_code=401, detail="No autorizado")
+            usuario_id = user["id"]
+        else:
+            cur.execute(
+                "SELECT id, usuario FROM seguridad.usuarios WHERE id = %s AND activo = TRUE;",
+                (usuario_id,),
+            )
+            user = cur.fetchone()
+            if not user:
+                cur.close()
+                conn.close()
+                raise HTTPException(status_code=401, detail="No autorizado")
 
-        usuario_id = user["id"]
         roles = obtener_roles_usuario(usuario_id, conn)
         cur.close()
         conn.close()
