@@ -4,7 +4,7 @@ from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
-from database import get_conn
+from database import get_conn, filas_a_lista
 from auth.models import (
     UsuarioNuevo,
     UsuarioActualizar,
@@ -73,7 +73,7 @@ async def obtener_auditoria(
 
         return {
             "total": len(rows),
-            "auditoria": rows
+            "auditoria": filas_a_lista(rows)
         }
 
     except Exception as e:
@@ -133,7 +133,7 @@ async def obtener_usuarios(
 
         return {
             "total": len(rows),
-            "usuarios": rows
+            "usuarios": filas_a_lista(rows)
         }
 
     except Exception as e:

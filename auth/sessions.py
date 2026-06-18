@@ -174,6 +174,15 @@ def validar_sesion_activa(jti: str) -> dict:
             "jti": jti,
         }
 
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Sesión no válida",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+
     finally:
         try:
             if cur:

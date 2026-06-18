@@ -1,5 +1,7 @@
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from datetime import date, datetime
+from decimal import Decimal
 
 from config import DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD, GEONODE_DB_NAME
 
@@ -39,6 +41,32 @@ def columnas_tabla(cur, esquema: str, tabla: str) -> set:
         (esquema, tabla),
     )
     return {r["column_name"] for r in cur.fetchall()}
+
+
+def valor_json_serializable(valor):
+    """Convierte tipos de PostgreSQL a JSON estándar."""
+    if valor is None:
+        return None
+    if isinstance(valor, Decimal):
+        return float(valor)
+    if isinstance(valor, (datetime, date)):
+        return valor.isoformat()
+    if isinstance(valor, dict):
+        return {k: valor_json_serializable(v) for k, v in valor.items()}
+    if isinstance(valor, (list, tuple)):
+        return [valor_json_serializable(v) for v in valor]
+    return valor
+
+
+def fila_a_dict(fila):
+    if not fila:
+        return {}
+    raw = fila if isinstance(fila, dict) else dict(fila)
+    return {k: valor_json_serializable(v) for k, v in raw.items()}
+
+
+def filas_a_lista(filas):
+    return [fila_a_dict(f) for f in (filas or [])]
 
 
 def asegurar_tabla_predio_condominio(cur, conn) -> None:

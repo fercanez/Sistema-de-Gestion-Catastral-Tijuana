@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 
 from auth.dependencies import obtener_usuario_actual, requerir_permiso, registrar_auditoria
-from database import get_conn, asegurar_columna_folio_real_padron
+from database import get_conn, filas_a_lista, asegurar_columna_folio_real_padron
 
 router = APIRouter(tags=["expediente"])
 
@@ -725,23 +725,35 @@ def dashboard_cartografico(usuario_actual: dict = Depends(obtener_usuario_actual
         """)
         base = cur.fetchone()
 
-        cur.execute("""
-            SELECT
-                COUNT(*) AS total_cambios,
-                COUNT(*) FILTER (WHERE requiere_revision = true) AS requieren_revision,
-                COUNT(*) FILTER (WHERE prioridad = 'ALTA') AS prioridad_alta,
-                COUNT(*) FILTER (WHERE prioridad = 'MEDIA') AS prioridad_media,
-                COUNT(*) FILTER (WHERE prioridad = 'BAJA') AS prioridad_baja
-            FROM auditoria.cambios_geometricos_predios;
-        """)
-        cambios = cur.fetchone()
+        cambios = {
+            "total_cambios": 0,
+            "requieren_revision": 0,
+            "prioridad_alta": 0,
+            "prioridad_media": 0,
+            "prioridad_baja": 0,
+        }
+        try:
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total_cambios,
+                    COUNT(*) FILTER (WHERE requiere_revision = true) AS requieren_revision,
+                    COUNT(*) FILTER (WHERE prioridad = 'ALTA') AS prioridad_alta,
+                    COUNT(*) FILTER (WHERE prioridad = 'MEDIA') AS prioridad_media,
+                    COUNT(*) FILTER (WHERE prioridad = 'BAJA') AS prioridad_baja
+                FROM auditoria.cambios_geometricos_predios;
+            """)
+            row_cambios = cur.fetchone()
+            if row_cambios:
+                cambios = dict(row_cambios)
+        except Exception:
+            pass
 
         cur.close()
         conn.close()
 
-        total = base["total_predios"] or 0
-        dibujados = base["dibujados"] or 0
-        sin_geometria = base["sin_geometria"] or 0
+        total = int(base["total_predios"] or 0)
+        dibujados = int(base["dibujados"] or 0)
+        sin_geometria = int(base["sin_geometria"] or 0)
         cobertura = round((dibujados / total) * 100, 2) if total > 0 else 0
 
         return {
@@ -749,11 +761,11 @@ def dashboard_cartografico(usuario_actual: dict = Depends(obtener_usuario_actual
             "dibujados": dibujados,
             "sin_geometria": sin_geometria,
             "cobertura": cobertura,
-            "cambios_geometricos": cambios["total_cambios"] or 0,
-            "requieren_revision": cambios["requieren_revision"] or 0,
-            "prioridad_alta": cambios["prioridad_alta"] or 0,
-            "prioridad_media": cambios["prioridad_media"] or 0,
-            "prioridad_baja": cambios["prioridad_baja"] or 0
+            "cambios_geometricos": int(cambios.get("total_cambios") or 0),
+            "requieren_revision": int(cambios.get("requieren_revision") or 0),
+            "prioridad_alta": int(cambios.get("prioridad_alta") or 0),
+            "prioridad_media": int(cambios.get("prioridad_media") or 0),
+            "prioridad_baja": int(cambios.get("prioridad_baja") or 0)
         }
 
     except Exception as e:
@@ -883,9 +895,9 @@ def dashboard_fiscal(usuario_actual: dict = Depends(obtener_usuario_actual)):
                 "con_cedula": expediente["con_cedula"] or 0,
                 "con_historial": expediente["con_historial"] or 0
             },
-            "top_colonias_adeudo": top_colonias,
-            "resumen_por_uso": por_uso,
-            "resumen_por_zona": por_zona
+            "top_colonias_adeudo": filas_a_lista(top_colonias),
+            "resumen_por_uso": filas_a_lista(por_uso),
+            "resumen_por_zona": filas_a_lista(por_zona)
         }
 
     except Exception as e:
