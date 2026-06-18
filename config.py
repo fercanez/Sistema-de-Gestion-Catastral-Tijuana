@@ -37,6 +37,7 @@ RPPC_SESSION_PATH = os.getenv(
     "RPPC_SESSION_PATH",
     "/rppapp/inicio?remoto=1",
 ).strip()
+RPPC_LOGIN_PATH = os.getenv("RPPC_LOGIN_PATH", "").strip()
 RPPC_REPORTES_PREFIX = os.getenv(
     "RPPC_REPORTES_PREFIX",
     "/WebAPI/Servicios/Reportes",
