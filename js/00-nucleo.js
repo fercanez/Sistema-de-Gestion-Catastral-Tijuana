@@ -204,6 +204,15 @@ function instalarInterceptorSesion401() {
       usaBearer = String(auth).includes("Bearer");
     }
     if (!usaBearer) return resp;
+
+    const token = obtenerTokenInstitucional();
+    try {
+      const check = await fetchOriginal(`${API}/me`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (check.ok) return resp;
+    } catch (e) { /* confirmar cierre abajo */ }
+
     let detalle = "Su sesión ya no es válida. Vuelva a iniciar sesión.";
     try {
       const clon = resp.clone();

@@ -822,10 +822,10 @@ async function obtenerGeojsonPorClaveParaZoom(clave, dibujado) {
   }
 
   try {
-    const r = await fetch(`${API}/padron/${encodeURIComponent(clave)}/ficha?_=${Date.now()}`, {
-      cache: "no-store",
-      headers: authHeaders()
-    });
+    const r = await fetch(
+      `${API}/predios/${encodeURIComponent(clave)}/geojson?_=${Date.now()}`,
+      { cache: "no-store", headers: authHeaders() }
+    );
 
     if (r.ok) {
       const data = await r.json();
@@ -835,8 +835,6 @@ async function obtenerGeojsonPorClaveParaZoom(clave, dibujado) {
         window._cacheFeaturePredioPorClave[claveNorm] = data;
         return data;
       }
-      if (data && data.geojson && data.geojson.geometry) return data.geojson;
-      if (data && data.feature && data.feature.geometry) return data.feature;
       return null;
     }
   } catch (e) {
@@ -844,6 +842,20 @@ async function obtenerGeojsonPorClaveParaZoom(clave, dibujado) {
   }
 
   return null;
+}
+
+async function ejecutarEnPool(items, limite, fn) {
+  const resultados = new Array(items.length);
+  let cursor = 0;
+  async function worker() {
+    while (cursor < items.length) {
+      const idx = cursor++;
+      resultados[idx] = await fn(items[idx], idx);
+    }
+  }
+  const workers = Math.min(Math.max(1, limite), items.length);
+  await Promise.all(Array.from({ length: workers }, worker));
+  return resultados;
 }
 
 function esPredioDibujadoBusqueda(p) {
@@ -868,7 +880,7 @@ async function zoomAResultadosBusqueda(resultados) {
   const limite = Math.min(dibujados.length || resultados.length, 50);
   const candidatos = (dibujados.length ? dibujados : resultados).slice(0, limite);
 
-  const promesas = candidatos.map(async (p, idx) => {
+  const promesas = ejecutarEnPool(candidatos, 6, async function(p, idx) {
     const clave = p.clave_catastral;
     const geo = await obtenerGeojsonPorClaveParaZoom(clave, p.dibujado);
     if (!geo || !geo.geometry) return null;
@@ -888,7 +900,7 @@ async function zoomAResultadosBusqueda(resultados) {
     return feature;
   });
 
-  await Promise.all(promesas);
+  await promesas;
 
   const features = resultadosSource.getFeatures();
   if (features.length === 0) return;
