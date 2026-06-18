@@ -15,7 +15,11 @@ from psycopg2.extras import execute_values
 
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
 from database import get_conn, asegurar_tabla_predio_condominio, asegurar_columna_folio_real_padron
-from routers.pducp_consulta import consultar_pducp_predio
+try:
+    from routers.pducp_consulta import consultar_pducp_predio
+except ImportError:
+    def consultar_pducp_predio(*args, **kwargs):
+        return {"disponible": False, "mensaje": "Módulo PDUCP no instalado en el servidor."}
 
 try:
     from database import get_geonode_conn

@@ -25,7 +25,6 @@ from config import (
     RPPC_COOKIE,
     RPPC_DOCUMENTO_ACTION,
     RPPC_INSCRIPCIONES_ACTION,
-    RPPC_LOGIN_PATH,
     RPPC_MOVIMIENTOS_ACTION,
     RPPC_PASSWORD,
     RPPC_REPORTES_PREFIX,
@@ -37,6 +36,8 @@ from config import (
     RPPC_TIMEOUT_POST,
     RPPC_USUARIO,
 )
+import config as _config_mod
+RPPC_LOGIN_PATH = getattr(_config_mod, "RPPC_LOGIN_PATH", os.getenv("RPPC_LOGIN_PATH", "")).strip()
 from database import get_conn, asegurar_columna_folio_real_padron
 
 router = APIRouter(prefix="/rppc", tags=["rppc"])
