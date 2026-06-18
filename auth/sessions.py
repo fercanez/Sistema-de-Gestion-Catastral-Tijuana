@@ -1,4 +1,4 @@
-"""Sesiones activas: una por usuario, expiración por inactividad."""
+"""Sesiones activas: una por usuario y tipo (web / servicio), expiración por inactividad."""
 from datetime import datetime, timedelta, timezone
 
 from fastapi import HTTPException, status
@@ -6,11 +6,14 @@ from fastapi import HTTPException, status
 from config import SESSION_INACTIVITY_MINUTES
 from database import get_conn
 
+TIPOS_SESION_VALIDOS = frozenset({"web", "servicio"})
+
 DDL_SESIONES_TABLA = """
 CREATE TABLE IF NOT EXISTS seguridad.sesiones_activas (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL REFERENCES seguridad.usuarios(id) ON DELETE CASCADE,
     jti VARCHAR(64) NOT NULL UNIQUE,
+    tipo VARCHAR(20) NOT NULL DEFAULT 'web',
     ip VARCHAR(64),
     user_agent TEXT,
     creada_en TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -19,13 +22,42 @@ CREATE TABLE IF NOT EXISTS seguridad.sesiones_activas (
 """
 
 DDL_SESIONES_INDICE = """
-CREATE UNIQUE INDEX IF NOT EXISTS idx_sesiones_usuario_unico
-    ON seguridad.sesiones_activas (usuario_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_sesiones_usuario_tipo
+    ON seguridad.sesiones_activas (usuario_id, tipo);
 """
+
+
+def normalizar_tipo_sesion(tipo: str | None) -> str:
+    valor = (tipo or "web").strip().lower()
+    return valor if valor in TIPOS_SESION_VALIDOS else "web"
+
+
+def ip_es_interna(ip: str) -> bool:
+    host = (ip or "").strip().lower()
+    if host == "desconocida" or not host:
+        return False
+    if host in ("127.0.0.1", "::1", "localhost"):
+        return True
+    if host.startswith("10.") or host.startswith("192.168."):
+        return True
+    if host.startswith("172."):
+        partes = host.split(".")
+        if len(partes) >= 2:
+            try:
+                segundo = int(partes[1])
+                return 16 <= segundo <= 31
+            except ValueError:
+                return False
+    return False
 
 
 def ensure_sesiones_table(cur) -> None:
     cur.execute(DDL_SESIONES_TABLA)
+    cur.execute(
+        "ALTER TABLE seguridad.sesiones_activas "
+        "ADD COLUMN IF NOT EXISTS tipo VARCHAR(20) NOT NULL DEFAULT 'web';"
+    )
+    cur.execute("DROP INDEX IF EXISTS seguridad.idx_sesiones_usuario_unico;")
     cur.execute(DDL_SESIONES_INDICE)
 
 
@@ -33,7 +65,14 @@ def _ahora_utc() -> datetime:
     return datetime.now(timezone.utc)
 
 
-def crear_sesion(usuario_id: int, jti: str, ip: str = "", user_agent: str = "") -> None:
+def crear_sesion(
+    usuario_id: int,
+    jti: str,
+    ip: str = "",
+    user_agent: str = "",
+    tipo: str = "web",
+) -> None:
+    tipo_norm = normalizar_tipo_sesion(tipo)
     conn = None
     cur = None
     try:
@@ -41,16 +80,19 @@ def crear_sesion(usuario_id: int, jti: str, ip: str = "", user_agent: str = "") 
         cur = conn.cursor()
         ensure_sesiones_table(cur)
         cur.execute(
-            "DELETE FROM seguridad.sesiones_activas WHERE usuario_id = %s;",
-            (usuario_id,),
+            """
+            DELETE FROM seguridad.sesiones_activas
+            WHERE usuario_id = %s AND tipo = %s;
+            """,
+            (usuario_id, tipo_norm),
         )
         cur.execute(
             """
             INSERT INTO seguridad.sesiones_activas
-                (usuario_id, jti, ip, user_agent, creada_en, ultima_actividad)
-            VALUES (%s, %s, %s, %s, now(), now());
+                (usuario_id, jti, tipo, ip, user_agent, creada_en, ultima_actividad)
+            VALUES (%s, %s, %s, %s, %s, now(), now());
             """,
-            (usuario_id, jti, ip or None, (user_agent or "")[:500] or None),
+            (usuario_id, jti, tipo_norm, ip or None, (user_agent or "")[:500] or None),
         )
         conn.commit()
     finally:
@@ -108,6 +150,7 @@ def validar_sesion_activa(jti: str) -> dict:
             SELECT
                 s.usuario_id,
                 s.ultima_actividad,
+                s.tipo,
                 u.usuario,
                 u.nombre_completo,
                 u.rol,
@@ -172,6 +215,7 @@ def validar_sesion_activa(jti: str) -> dict:
             "nombre": row["nombre_completo"],
             "rol": row["rol"],
             "jti": jti,
+            "tipo_sesion": row.get("tipo") or "web",
         }
 
     except HTTPException:

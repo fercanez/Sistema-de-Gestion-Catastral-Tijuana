@@ -13,7 +13,7 @@ from auth.dependencies import (
     verificar_password,
 )
 from auth.models import LoginRequest
-from auth.sessions import crear_sesion, cerrar_sesion_por_jti
+from auth.sessions import crear_sesion, cerrar_sesion_por_jti, normalizar_tipo_sesion, ip_es_interna
 import secrets
 
 router = APIRouter(tags=["auth"])
@@ -76,9 +76,19 @@ def login(datos: LoginRequest, request: Request):
 
         modulos = modulos_visibles_usuario(cur, row["id"], row["rol"])
 
+        tipo_sesion = normalizar_tipo_sesion(datos.tipo_sesion)
+        if tipo_sesion == "servicio" and not ip_es_interna(ip_cliente):
+            registrar_auditoria_login(
+                usuario_input, ip_cliente, False, "Login servicio rechazado (IP externa)"
+            )
+            raise HTTPException(
+                status_code=403,
+                detail="Login de servicio solo permitido desde el servidor local",
+            )
+
         jti = secrets.token_urlsafe(32)
         user_agent = (request.headers.get("user-agent") or "")[:500]
-        crear_sesion(row["id"], jti, ip_cliente, user_agent)
+        crear_sesion(row["id"], jti, ip_cliente, user_agent, tipo=tipo_sesion)
 
         token = crear_token_acceso({
             "sub": row["usuario"],

@@ -29,7 +29,11 @@ PREFIJOS = [
 
 
 def obtener_token() -> str:
-    data = json.dumps({"usuario": SGC_USUARIO, "password": SGC_PASSWORD}).encode("utf-8")
+    data = json.dumps({
+        "usuario": SGC_USUARIO,
+        "password": SGC_PASSWORD,
+        "tipo_sesion": "servicio",
+    }).encode("utf-8")
     req = urllib.request.Request(
         f"{API_BASE}/login",
         data=data,

@@ -4,6 +4,7 @@ from pydantic import BaseModel
 class LoginRequest(BaseModel):
     usuario: str
     password: str
+    tipo_sesion: str | None = None
 
 
 class UsuarioNuevo(BaseModel):
