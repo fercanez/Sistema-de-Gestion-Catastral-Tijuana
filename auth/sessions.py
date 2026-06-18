@@ -6,7 +6,7 @@ from fastapi import HTTPException, status
 from config import SESSION_INACTIVITY_MINUTES
 from database import get_conn
 
-DDL_SESIONES = """
+DDL_SESIONES_TABLA = """
 CREATE TABLE IF NOT EXISTS seguridad.sesiones_activas (
     id SERIAL PRIMARY KEY,
     usuario_id INTEGER NOT NULL REFERENCES seguridad.usuarios(id) ON DELETE CASCADE,
@@ -16,14 +16,17 @@ CREATE TABLE IF NOT EXISTS seguridad.sesiones_activas (
     creada_en TIMESTAMPTZ NOT NULL DEFAULT now(),
     ultima_actividad TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+"""
 
+DDL_SESIONES_INDICE = """
 CREATE UNIQUE INDEX IF NOT EXISTS idx_sesiones_usuario_unico
     ON seguridad.sesiones_activas (usuario_id);
 """
 
 
 def ensure_sesiones_table(cur) -> None:
-    cur.execute(DDL_SESIONES)
+    cur.execute(DDL_SESIONES_TABLA)
+    cur.execute(DDL_SESIONES_INDICE)
 
 
 def _ahora_utc() -> datetime:

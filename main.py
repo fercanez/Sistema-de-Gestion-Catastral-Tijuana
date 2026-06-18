@@ -1,4 +1,5 @@
 """Punto de entrada de la API catastral. Registra routers por modulo."""
+import logging
 import os
 
 from fastapi import FastAPI, HTTPException, Request
@@ -37,6 +38,8 @@ app.include_router(propietarios_router)
 app.include_router(catalogos_router)
 app.include_router(rppc_router)
 
+logger = logging.getLogger("catastro-api")
+
 
 @app.on_event("startup")
 def startup_migraciones():
@@ -46,8 +49,8 @@ def startup_migraciones():
                 asegurar_tabla_predio_condominio(cur, conn)
                 ensure_sesiones_table(cur)
                 conn.commit()
-    except Exception:
-        pass
+    except Exception as e:
+        logger.exception("Error en migraciones de arranque: %s", e)
 
 
 @app.get("/")
