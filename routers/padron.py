@@ -1729,7 +1729,7 @@ def _zona_homogenea_payload(clave: str) -> dict:
             TRIM(COALESCE(p.calle, '')) AS calle,
             TRIM(COALESCE(p.numof, '')) AS numof,
             UPPER(TRIM(COALESCE(p.zonah, ''))) AS zonah,
-            TRIM(COALESCE(p.id_tasa, '')) AS id_tasa,
+            TRIM(COALESCE(p.id_tasa::text, '')) AS id_tasa,
             p.porcentaje_tasa,
             p.valor2026,
             ST_AsEWKT(ST_Transform(g.geom, 32611)) AS ewkt_32611,
