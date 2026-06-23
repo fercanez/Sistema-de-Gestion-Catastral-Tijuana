@@ -35,6 +35,11 @@ function _fallbackPermisoPorRol(codigo) {
     editar_nombre_contribuyente: ["admin", "supervisor", "catastro"],
     solicitar_movimientos: ["admin", "supervisor", "catastro"],
     aplicar_movimientos: ["admin", "supervisor"],
+    gestionar_marca_agua: ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion"],
+    ver_pestana_archivo: ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion"],
+    ver_pestana_control_urbano: ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion"],
+    ver_pestana_rppc: ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion"],
+    ver_pestana_zona_homogenea: ["admin", "supervisor", "catastro", "cartografia", "fiscalizacion"],
   };
   return (mapa[codigo] || []).includes(rol);
 }
@@ -69,6 +74,41 @@ function puedeSolicitarMovimientos() {
 function puedeAplicarMovimientos() {
   return tienePermiso("aplicar_movimientos");
 }
+
+function puedeGestionarMarcaAguaDocumento() {
+  return tienePermiso("gestionar_marca_agua");
+}
+
+function esRolConsultaInstitucional() {
+  return String(obtenerRolSesion()).trim().toLowerCase() === "consulta";
+}
+
+window.esRolConsultaInstitucional = esRolConsultaInstitucional;
+
+function permisoPestanaPopupPredio(tabId) {
+  const mapa = {
+    archivo: "ver_pestana_archivo",
+    "control-urbano": "ver_pestana_control_urbano",
+    "documento-rppc": "ver_pestana_rppc",
+    "zona-homogenea": "ver_pestana_zona_homogenea"
+  };
+  return mapa[String(tabId || "").trim()] || "";
+}
+
+function puedeVerPestanaPopupPredio(tabId) {
+  const tab = String(tabId || "").trim();
+  if (tab === "zona-homogenea") return puedeVerDatosZonaHomogenea();
+  const permiso = permisoPestanaPopupPredio(tabId);
+  if (!permiso) return true;
+  return tienePermiso(permiso);
+}
+
+function puedeVerDatosZonaHomogenea() {
+  if (esRolConsultaInstitucional()) return false;
+  return tienePermiso("ver_pestana_zona_homogenea");
+}
+
+window.puedeVerDatosZonaHomogenea = puedeVerDatosZonaHomogenea;
 
 function guardarSesionInstitucional(data) {
   localStorage.setItem(TOKEN_KEY_CATASTRO, data.access_token);
@@ -447,6 +487,10 @@ function aplicarPermisosVisuales(rol) {
   const tabAdmin = document.getElementById("tabAdministracion");
   if (tabAdmin && tabAdmin.classList.contains("active")) {
     tabAdmin.style.display = "";
+  }
+
+  if (typeof aplicarVisibilidadPestanasPopupPredio === "function") {
+    aplicarVisibilidadPestanasPopupPredio();
   }
 }
 

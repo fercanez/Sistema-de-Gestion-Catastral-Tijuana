@@ -21,6 +21,7 @@ from routers.rppc import router as rppc_router
 VISOR_DIR = "/var/www/catastro"
 VISOR_JS_DIR = os.path.join(VISOR_DIR, "js")
 VISOR_CSS_DIR = os.path.join(VISOR_DIR, "css")
+VISOR_IMG_DIR = os.path.join(VISOR_DIR, "img")
 
 app = FastAPI(
     title="API Sistema de Gestion Catastral BC",
@@ -99,6 +100,14 @@ def visor():
 @app.get("/visor/logomxli.png")
 def servir_logo():
     return FileResponse(f"{VISOR_DIR}/logomxli.png", media_type="image/png")
+
+
+@app.get("/visor/img/{filename}")
+def servir_img_visor(filename: str):
+    return FileResponse(
+        _archivo_visor_seguro(VISOR_IMG_DIR, filename),
+        media_type="image/png",
+    )
 
 
 def _archivo_visor_seguro(base_dir: str, filename: str) -> str:

@@ -482,6 +482,7 @@ async function exportarFichaCatastralPdf(datos, imagenes = {}) {
 
   const streetImg = imagenes.streetImg || null;
   const mapaImg = imagenes.mapaImg || null;
+  const mostrarZona = !(typeof puedeVerDatosZonaHomogenea === "function") || puedeVerDatosZonaHomogenea();
   const logoImg = typeof obtenerLogoInstitucionalDataUrl === "function"
     ? await obtenerLogoInstitucionalDataUrl()
     : null;
@@ -549,8 +550,8 @@ async function exportarFichaCatastralPdf(datos, imagenes = {}) {
   const yGrid2 = 60;
   celdaPdf("MANZANA", datos.seg.manzana, margen, yGrid2, colW);
   celdaPdf("LOTE", datos.seg.lote, margen + colW, yGrid2, colW);
-  celdaPdf("ZONA HOMOGÉNEA", datos.zonah, margen + colW * 2, yGrid2, colW);
-  celdaPdf("VALOR /M²", datos.valorUnitTxt, margen + colW * 3, yGrid2, colW);
+  if (mostrarZona) celdaPdf("ZONA HOMOGÉNEA", datos.zonah, margen + colW * 2, yGrid2, colW);
+  celdaPdf("VALOR /M²", datos.valorUnitTxt, margen + (mostrarZona ? colW * 3 : colW * 2), yGrid2, colW);
 
   celdaPdf("USO PREDIAL", datos.uso, margen, 72, pageW - margen * 2);
 
@@ -716,6 +717,8 @@ async function generarPDFInstitucional() {
       return;
     }
 
+    const mostrarZona = !(typeof puedeVerDatosZonaHomogenea === "function") || puedeVerDatosZonaHomogenea();
+
     if (btn) {
       btn.disabled = true;
       btn.innerText = "⏳ Generando PDF...";
@@ -848,7 +851,7 @@ async function generarPDFInstitucional() {
     row("Colonia", p.colonia, pageW/2 + 2, pageW - 18, y + 27);
     row("Calle", p.calle, 18, pageW/2, y + 36);
     row("# Oficial", p.numof, pageW/2 + 2, pageW - 18, y + 36);
-    row("Zona H.", p.zona_homogenea || p.zonah, 18, pageW/2, y + 45);
+    if (mostrarZona) row("Zona H.", p.zona_homogenea || p.zonah, 18, pageW/2, y + 45);
     row("Uso", p.descripcion_uso, pageW/2 + 2, pageW - 18, y + 45);
 
     y += 68;

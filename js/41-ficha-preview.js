@@ -675,6 +675,7 @@ function buildFichaVentanaLayoutScript() {
     if(!cont)return 2.85;
     let px=0;
     Array.from(cont.children).forEach(function(el){
+      if(el.classList.contains("ficha-marca-agua-overlay")||el.classList.contains("aviso-marca-ficha-consulta"))return;
       if(el.classList.contains("seccion-media")){
         const head=el.querySelector(".media-head");
         if(head)px+=head.getBoundingClientRect().height;
@@ -719,8 +720,8 @@ function buildFichaVentanaLayoutScript() {
     const margenVertical=esImpresion?0.08:0.2;
     let reservado=medirReservadoContenidoIn();
     if(esImpresion)reservado=Math.max(2.28,reservado-0.12);
-    let util=Math.max(4.75,p.alto-margenVertical-reservado);
-    if(esImpresion)util+=0.18;
+    let util=p.alto-margenVertical-reservado-(esImpresion?0.04:0);
+    util=Math.max(4.75,+util.toFixed(2));
     const streetIn=+(util*p.ratioStreet).toFixed(2);
     const mapIn=+(util-streetIn).toFixed(2);
     const root=document.documentElement;
@@ -859,6 +860,10 @@ function construirHtmlFichaCatastralVentana(datos, featureGeoJSONString, streetV
     : `document.getElementById("previewMap").innerHTML="<div class='media-vacio'>Sin geometría cartográfica para este predio.</div>";`;
   const streetScript = buildFichaVentanaStreetScript(datos.lat, datos.lon, hIni, pIni);
   const layoutScript = buildFichaVentanaLayoutScript();
+  const mostrarZonah = !(typeof puedeVerDatosZonaHomogenea === "function") || puedeVerDatosZonaHomogenea();
+  const htmlCampoZonah = mostrarZonah
+    ? `<div class="campo"><div class="label">Zona homogénea</div><div class="valor">${fichaVentanaEsc(datos.zonah)}</div></div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="es" class="papel-carta">
@@ -1001,6 +1006,8 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
     width:var(--ficha-ancho)!important;
     max-width:var(--ficha-ancho)!important;
     min-height:calc(var(--ficha-alto) - 0.12in)!important;
+    max-height:calc(var(--ficha-alto) - 0.12in)!important;
+    overflow:hidden!important;
     margin:0 auto!important;
     box-shadow:none!important;
     border:1px solid var(--guinda)!important;
@@ -1113,7 +1120,7 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
         <div class="campo"><div class="label">Superficie</div><div class="valor">${fichaVentanaEsc(supTxt)}</div></div>
         <div class="campo"><div class="label">Manzana</div><div class="valor">${fichaVentanaEsc(datos.seg?.manzana || "—")}</div></div>
         <div class="campo"><div class="label">Lote</div><div class="valor">${fichaVentanaEsc(datos.seg?.lote || "—")}</div></div>
-        <div class="campo"><div class="label">Zona homogénea</div><div class="valor">${fichaVentanaEsc(datos.zonah)}</div></div>
+        ${htmlCampoZonah}
         <div class="campo"><div class="label">Valor /m²</div><div class="valor">${fichaVentanaEsc(datos.valorUnitTxt)}</div></div>
         <div class="campo full"><div class="label">Uso predial</div><div class="valor">${fichaVentanaEsc(datos.uso)}</div></div>
       </div>
@@ -1176,14 +1183,21 @@ async function abrirVentanaFichaCatastralGeneral() {
 
   const featureGeoJSONString = serializarFeatureFichaVentana(datos);
   const streetVistaInicial = leerVistaStreetPopupParaFicha();
+  const htmlFicha = construirHtmlFichaCatastralVentana(datos, featureGeoJSONString, streetVistaInicial);
+  if (typeof abrirVentanaHtmlFichaInstitucional === "function") {
+    return abrirVentanaHtmlFichaInstitucional(htmlFicha, "width=1200,height=900");
+  }
   const win = window.open("", "_blank", "width=1200,height=900");
   if (!win) {
     alert("El navegador bloqueó la ventana de vista previa. Permita ventanas emergentes para este sitio.");
     return null;
   }
-
   win.document.open();
-  win.document.write(construirHtmlFichaCatastralVentana(datos, featureGeoJSONString, streetVistaInicial));
+  win.document.write(
+    typeof escribirHtmlFichaVentanaConMarcaConsulta === "function"
+      ? escribirHtmlFichaVentanaConMarcaConsulta(htmlFicha)
+      : htmlFicha
+  );
   win.document.close();
   return win;
 }

@@ -4364,9 +4364,8 @@ async function aplicarTitularPadronMasivo() {
           `<br><small>No cierres esta ventana. Lote ${formatoNumeroEntero(pasadas)}.</small>`
         );
 
-        // Corte de seguridad: si un lote no aplicó NADA, ya no hay progreso posible
-        // (quedan solo predios con conflicto irresoluble). Terminamos para no ciclar.
-        if (Number(data.aplicados || 0) === 0) break;
+        // Corte de seguridad: si un lote no aplicó nada y dice que no hay más, terminamos.
+        if (Number(data.aplicados || 0) === 0 && !hayMas) break;
       }
     } finally {
       progreso.close();

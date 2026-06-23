@@ -19,7 +19,7 @@ import tempfile
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
-from auth.dependencies import obtener_usuario_actual
+from auth.permisos_operativos import requerir_pestana_rppc
 from config import (
     RPPC_BASE_URL,
     RPPC_COOKIE,
@@ -2530,7 +2530,7 @@ def _probar_conexion_rppc(folio_prueba: int = 3454) -> dict[str, Any]:
     return resultado
 
 @router.post("/sesion/renovar")
-def renovar_sesion_rppc(usuario_actual: dict = Depends(obtener_usuario_actual)):
+def renovar_sesion_rppc(usuario_actual: dict = Depends(requerir_pestana_rppc)):
     ok = _renovar_cookie_rppc_runtime()
     if ok:
         _reset_rppc_opener()
@@ -2544,7 +2544,7 @@ def renovar_sesion_rppc(usuario_actual: dict = Depends(obtener_usuario_actual)):
 @router.get("/diagnostico")
 def diagnostico_rppc(
     folio_prueba: int = 3454,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     return _probar_conexion_rppc(folio_prueba)
 
@@ -2552,7 +2552,7 @@ def diagnostico_rppc(
 @router.get("/movimientos/folio/{folio_real}")
 def movimientos_por_folio(
     folio_real: int,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     _, _, movimientos = _obtener_partida_por_folio(folio_real)
     return {
@@ -2565,7 +2565,7 @@ def movimientos_por_folio(
 @router.get("/resolver/folio/{folio_real}")
 def resolver_por_folio(
     folio_real: int,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     return _resolver_documento_por_folio(folio_real)
 
@@ -2573,7 +2573,7 @@ def resolver_por_folio(
 @router.get("/inmuebles/clave/{clave_catastral}")
 def inmuebles_por_clave(
     clave_catastral: str,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     clave = _normalizar_clave(clave_catastral)
     datos = _consultar_inmuebles_rppc_por_clave(clave)
@@ -2591,7 +2591,7 @@ def inmuebles_por_clave(
 @router.get("/resolver/clave/{clave_catastral}")
 def resolver_por_clave(
     clave_catastral: str,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     clave = _normalizar_clave(clave_catastral)
     folio_real = _obtener_folio_por_clave(clave)
@@ -2610,12 +2610,16 @@ def resolver_por_clave(
 
 
 @router.get("/pdf/doc/{doc_tramite_id}")
-def pdf_por_doc(doc_tramite_id: int):
+def pdf_por_doc(doc_tramite_id: int, usuario_actual: dict = Depends(requerir_pestana_rppc)):
     return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")
 
 
 @router.get("/pdf/partida/{partida}")
-def pdf_por_partida(partida: int, clave_catastral: str | None = None):
+def pdf_por_partida(
+    partida: int,
+    clave_catastral: str | None = None,
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
+):
     clave = _normalizar_clave(clave_catastral or "") or None
     return _stream_pdf(
         f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}",
@@ -2626,7 +2630,7 @@ def pdf_por_partida(partida: int, clave_catastral: str | None = None):
 
 
 @router.get("/pdf/folio/{folio_real}")
-def pdf_por_folio(folio_real: int):
+def pdf_por_folio(folio_real: int, usuario_actual: dict = Depends(requerir_pestana_rppc)):
     data = _resolver_documento_por_folio(folio_real)
     if data.get("doc_tramite_id"):
         doc_ref = data["doc_tramite_id"]
@@ -2643,7 +2647,7 @@ def pdf_por_folio(folio_real: int):
 @router.get("/pdf/clave/{clave_catastral}")
 def pdf_por_clave(
     clave_catastral: str,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     clave = _normalizar_clave(clave_catastral)
     folio_real = _obtener_folio_por_clave(clave)
@@ -2663,5 +2667,5 @@ def pdf_por_clave(
 
 
 @router.get("/visor/pdf/doc/{doc_tramite_id}")
-def visor_pdf_por_doc(doc_tramite_id: int):
+def visor_pdf_por_doc(doc_tramite_id: int, usuario_actual: dict = Depends(requerir_pestana_rppc)):
     return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")

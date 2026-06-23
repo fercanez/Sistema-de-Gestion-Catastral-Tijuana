@@ -1025,7 +1025,7 @@ async function pintarPopupTabDatosGenerales(p) {
           ${popupCampo("Valor 2026", valor)}
           ${popupCampo("Adeudo total", adeudo)}
           ${popupCampo("Uso de suelo predial", p?.descripcion_uso)}
-          ${popupCampo("Zona homogénea", popupZonaHomogenea(p))}
+          ${(typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea()) ? popupCampo("Zona homogénea", popupZonaHomogenea(p)) : ""}
           ${popupCampo("Folio real", typeof textoFolioReal === "function" ? textoFolioReal(p) : (p?.folio_real || "—"))}
         </div>
         ${htmlSeccionTitularidadPopup()}
@@ -1365,16 +1365,28 @@ async function pintarPopupTabArchivo(clave, p) {
     : urlArchivoDigitalExterno(claveNorm);
   popupArchivoClaveActual = claveNorm;
 
+  const botonesMarca = typeof htmlBotonesMarcaAguaDocumento === "function"
+    ? htmlBotonesMarcaAguaDocumento("popupArchivoBtnMarcaAgua", "toggleMarcaAguaArchivoExterno()", "imprimirArchivoConMarcaAgua()")
+    : "";
+  const overlayMarca = typeof htmlOverlayMarcaAguaDocumento === "function"
+    ? htmlOverlayMarcaAguaDocumento("popupArchivoMarcaAguaOverlay")
+    : "";
+
   panel.innerHTML = `
     <div class="popup-archivo-layout">
       <section class="popup-archivo-panel popup-archivo-externo">
         <header class="popup-archivo-head">
           <span>Archivo digital externo</span>
-          <a class="popup-archivo-link-externo" href="${popupEsc(urlExt)}" target="_blank" rel="noopener noreferrer">Abrir en nueva pestaña</a>
+          <div class="popup-archivo-head-acciones">
+            ${botonesMarca}
+            <a class="popup-archivo-link-externo" href="${popupEsc(urlExt)}" target="_blank" rel="noopener noreferrer">Abrir en nueva pestaña</a>
+          </div>
         </header>
-        <div class="popup-archivo-iframe-wrap">
+        <div class="popup-archivo-iframe-wrap" id="popupArchivoVisorWrap">
           <iframe id="popupArchivoDigitalExternoFrame" class="popup-archivo-iframe" title="Archivo digital ${popupEsc(claveNorm)}" src="${popupEsc(urlExt)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          ${overlayMarca}
         </div>
+        <p class="popup-marca-agua-aviso">Los documentos se muestran con la leyenda «Documento sin validez oficial». Use «Imprimir con marca» para conservar la leyenda al imprimir desde este visor.</p>
         <div class="popup-archivo-clave-ref">Clave catastral: <b>${popupEsc(claveNorm)}</b></div>
       </section>
       <section class="popup-archivo-panel popup-archivo-fotos">
@@ -1386,10 +1398,17 @@ async function pintarPopupTabArchivo(clave, p) {
       </section>
     </div>`;
 
+  if (typeof inicializarMarcaAguaArchivoExterno === "function") {
+    inicializarMarcaAguaArchivoExterno();
+  }
+
   await cargarFotografiasArchivo(claveNorm, p);
 }
 
 async function pintarPopupPredioTab(tabId, p) {
+  if (typeof puedeVerPestanaPopupPredio === "function" && !puedeVerPestanaPopupPredio(tabId)) {
+    tabId = "datos-generales";
+  }
   const tabAnterior = popupPredioTabActiva;
   popupPredioTabActiva = tabId;
   if (tabAnterior === "construcciones" && tabId !== "construcciones") {
@@ -1503,7 +1522,30 @@ async function generarFichaCatastralGeneral() {
   alert("El generador de ficha no está disponible. Recargue la página con Ctrl+F5.");
 }
 
+function aplicarVisibilidadPestanasPopupPredio() {
+  document.querySelectorAll(".popup-predio-tab").forEach(function(btn) {
+    const tabId = btn.dataset.tab || "";
+    const permitido = typeof puedeVerPestanaPopupPredio === "function"
+      ? puedeVerPestanaPopupPredio(tabId)
+      : true;
+    btn.style.display = permitido ? "" : "none";
+    btn.setAttribute("aria-hidden", permitido ? "false" : "true");
+    btn.disabled = !permitido;
+  });
+  const activa = typeof popupPredioTabActiva !== "undefined" ? popupPredioTabActiva : "";
+  if (activa && typeof puedeVerPestanaPopupPredio === "function" && !puedeVerPestanaPopupPredio(activa)) {
+    popupPredioTabActiva = "datos-generales";
+    const p = window.predioSeleccionado || {};
+    if (document.body.classList.contains("popup-predio-abierto")) {
+      pintarPopupPredioTab("datos-generales", p);
+    }
+  }
+}
+
 function mostrarPopupPredioTab(tabId) {
+  if (typeof puedeVerPestanaPopupPredio === "function" && !puedeVerPestanaPopupPredio(tabId)) {
+    tabId = "datos-generales";
+  }
   const p = window.predioSeleccionado || {};
   pintarPopupPredioTab(tabId, p);
 }
@@ -1536,7 +1578,12 @@ async function abrirPopupPredioWorkspace(ficha) {
   engancharResizePopupPredio();
   aplicarTamanoPopupPredioGuardado();
   actualizarPopupPredioHeader(p);
-  await pintarPopupPredioTab(popupPredioTabActiva || "datos-generales", p);
+  aplicarVisibilidadPestanasPopupPredio();
+  const tabInicial = (typeof popupPredioTabActiva !== "undefined" && popupPredioTabActiva
+    && typeof puedeVerPestanaPopupPredio === "function" && puedeVerPestanaPopupPredio(popupPredioTabActiva))
+    ? popupPredioTabActiva
+    : "datos-generales";
+  await pintarPopupPredioTab(tabInicial, p);
 
   if (typeof map !== "undefined" && map) {
     setTimeout(() => map.updateSize(), 200);
@@ -1596,6 +1643,7 @@ window.refrescarPopupPredioSiAbierto = refrescarPopupPredioSiAbierto;
 window.abrirPopupPredioWorkspace = abrirPopupPredioWorkspace;
 window.cerrarPopupPredioWorkspace = cerrarPopupPredioWorkspace;
 window.mostrarPopupPredioTab = mostrarPopupPredioTab;
+window.aplicarVisibilidadPestanasPopupPredio = aplicarVisibilidadPestanasPopupPredio;
 window.navegarPopupPredio = navegarPopupPredio;
 window.capturarPopupMiniMapParaPDF = capturarPopupMiniMapParaPDF;
 window.generarFichaCatastralGeneral = generarFichaCatastralGeneral;

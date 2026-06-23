@@ -28,7 +28,10 @@
     { campo: "condominio", titulo: "Condominio" },
     { campo: "descripcion_uso", titulo: "Uso predial" },
     { campo: "dibujado", titulo: "Dibujado en cartografía" }
-  ];
+  ].filter(function(col) {
+    if (col.campo !== "zona_homogenea") return true;
+    return typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea();
+  });
 
   const filas = datos.map(p => {
     const fila = {};

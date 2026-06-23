@@ -503,8 +503,11 @@ function buildFichaCartoLayoutScript(numCuadro, numConstr) {
     const esImpresion=!!opciones.impresion;
     let reservado=3.35;
     reservado+=${numCuadro}*0.135+${numConstr}*0.125;
+    if(document.querySelector(".contenedor.ficha-con-marca-agua"))reservado+=0.06;
     if(esImpresion)reservado=Math.max(3.1,reservado-0.08);
-    let mapIn=Math.max(3.35,Math.min(5.9,13.85-reservado));
+    let altoUtil=13.85;
+    if(esImpresion&&document.querySelector(".contenedor.ficha-con-marca-agua"))altoUtil=13.72;
+    let mapIn=Math.max(3.35,Math.min(5.9,altoUtil-reservado));
     if(esImpresion)mapIn=Math.max(3.2,mapIn-0.05);
     document.documentElement.style.setProperty("--ficha-carto-map",mapIn.toFixed(2)+"in");
     const mapEl=document.getElementById("cartoMap");
@@ -578,6 +581,10 @@ function construirHtmlFichaCartografiaVentana(datos) {
     ? buildFichaCartoMapScript(featureStr, constrGeoStr)
     : `document.getElementById("cartoMap").innerHTML="<div class='ficha-carto-vacio'>Sin geometría cartográfica para este predio.</div>";`;
   const layoutScript = buildFichaCartoLayoutScript(cuadro.filas.length, construcciones.length);
+  const mostrarZonah = !(typeof puedeVerDatosZonaHomogenea === "function") || puedeVerDatosZonaHomogenea();
+  const htmlCampoZonah = mostrarZonah
+    ? `<div class="campo"><div class="label">Zona homogénea</div><div class="valor">${fichaCartoEsc(datos.zonah)}</div></div>`
+    : "";
 
   return `<!DOCTYPE html>
 <html lang="es">
@@ -659,7 +666,10 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
   .toolbar,.aviso-impresion,.ficha-preview-layer-panel{display:none!important;}
   .contenedor{
     width:var(--ficha-ancho)!important;max-width:var(--ficha-ancho)!important;
-    min-height:calc(var(--ficha-alto) - 0.12in)!important;margin:0 auto!important;
+    min-height:calc(var(--ficha-alto) - 0.12in)!important;
+    max-height:calc(var(--ficha-alto) - 0.12in)!important;
+    overflow:hidden!important;
+    margin:0 auto!important;
     box-shadow:none!important;border:1px solid var(--guinda)!important;border-radius:0!important;
     page-break-inside:avoid;break-inside:avoid;
   }
@@ -703,7 +713,7 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
         <div class="campo"><div class="label">Superficie</div><div class="valor">${fichaCartoEsc(supTxt)}</div></div>
         <div class="campo"><div class="label">Manzana</div><div class="valor">${fichaCartoEsc(datos.seg?.manzana || "—")}</div></div>
         <div class="campo"><div class="label">Lote</div><div class="valor">${fichaCartoEsc(datos.seg?.lote || "—")}</div></div>
-        <div class="campo"><div class="label">Zona homogénea</div><div class="valor">${fichaCartoEsc(datos.zonah)}</div></div>
+        ${htmlCampoZonah}
         <div class="campo"><div class="label">Valor /m²</div><div class="valor">${fichaCartoEsc(datos.valorUnitTxt)}</div></div>
         <div class="campo full"><div class="label">Uso predial</div><div class="valor">${fichaCartoEsc(datos.uso)}</div></div>
       </div>
@@ -774,14 +784,21 @@ async function abrirVentanaFichaCartografia() {
     return null;
   }
 
+  const htmlFicha = construirHtmlFichaCartografiaVentana(datos);
+  if (typeof abrirVentanaHtmlFichaInstitucional === "function") {
+    return abrirVentanaHtmlFichaInstitucional(htmlFicha, "width=1200,height=900");
+  }
   const win = window.open("", "_blank", "width=1200,height=900");
   if (!win) {
     alert("El navegador bloqueó la ventana emergente. Permita ventanas emergentes para este sitio.");
     return null;
   }
-
   win.document.open();
-  win.document.write(construirHtmlFichaCartografiaVentana(datos));
+  win.document.write(
+    typeof escribirHtmlFichaVentanaConMarcaConsulta === "function"
+      ? escribirHtmlFichaVentanaConMarcaConsulta(htmlFicha)
+      : htmlFicha
+  );
   win.document.close();
   return win;
 }

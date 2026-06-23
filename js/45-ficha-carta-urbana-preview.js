@@ -770,6 +770,7 @@ function buildFichaCartaLayoutScript() {
     if(!cont)return 4.35;
     let px=0;
     Array.from(cont.children).forEach(function(el){
+      if(el.classList.contains("ficha-marca-agua-overlay")||el.classList.contains("aviso-marca-ficha-consulta"))return;
       if(el.classList.contains("seccion-mapa")){
         const head=el.querySelector(".media-head");
         if(head)px+=head.getBoundingClientRect().height;
@@ -951,7 +952,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
 @media print{
   html,body{width:8.5in;height:auto;margin:0!important;padding:0!important;background:#fff!important;}
   .toolbar,.carta-layer-panel,.aviso-impresion{display:none!important;}
-  .contenedor{width:var(--ficha-ancho)!important;max-width:var(--ficha-ancho)!important;height:var(--ficha-contenido-alto,auto)!important;min-height:0!important;margin:0 auto!important;box-shadow:none!important;border-radius:0!important;page-break-after:avoid;page-break-inside:avoid;}
+  .contenedor{width:var(--ficha-ancho)!important;max-width:var(--ficha-ancho)!important;height:var(--ficha-contenido-alto,auto)!important;min-height:calc(var(--ficha-alto) - 0.12in)!important;margin:0 auto!important;box-shadow:none!important;border-radius:0!important;page-break-after:avoid;page-break-inside:avoid;}
   .seccion-mapa{flex:0 0 auto!important;}
   .carta-map-wrap{height:var(--ficha-media-map)!important;min-height:var(--ficha-media-map)!important;max-height:var(--ficha-media-map)!important;overflow:hidden!important;}
   #previewCartaMap{position:absolute!important;inset:0!important;height:100%!important;}
@@ -1082,14 +1083,21 @@ async function abrirPreviewFichaCartaUrbana() {
   }
 
   const baseHref = window.location.href.replace(/[^/]*$/, "");
+  const htmlFicha = construirHtmlFichaCartaUrbanaVentana(datos, cartaData, { baseHref, mapaInicial });
+  if (typeof abrirVentanaHtmlFichaInstitucional === "function") {
+    return abrirVentanaHtmlFichaInstitucional(htmlFicha, "width=1200,height=920");
+  }
   const win = window.open("", "_blank", "width=1200,height=920");
   if (!win) {
     alert("El navegador bloqueó la ventana de vista previa. Permita ventanas emergentes.");
     return null;
   }
-
   win.document.open();
-  win.document.write(construirHtmlFichaCartaUrbanaVentana(datos, cartaData, { baseHref, mapaInicial }));
+  win.document.write(
+    typeof escribirHtmlFichaVentanaConMarcaConsulta === "function"
+      ? escribirHtmlFichaVentanaConMarcaConsulta(htmlFicha)
+      : htmlFicha
+  );
   win.document.close();
   return win;
 }

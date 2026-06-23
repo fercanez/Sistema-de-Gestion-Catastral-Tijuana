@@ -346,7 +346,7 @@ function pintarFichaFlotante(p) {
     </div>
 
     <div id="fichaTabValores" class="ficha-tab-panel">
-      <div class="ficha-mini-row"><div class="label">Zona homogénea</div><div class="value">${val(p.zona_homogenea || p.zonah)}</div></div>
+      ${(typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea()) ? `<div class="ficha-mini-row"><div class="label">Zona homogénea</div><div class="value">${val(p.zona_homogenea || p.zonah)}</div></div>` : ""}
       <div class="ficha-mini-row"><div class="label">Uso predial</div><div class="value">${val(p.descripcion_uso)}</div></div>
       <div class="ficha-mini-row"><div class="label">ID tasa</div><div class="value">${val(p.id_tasa)}</div></div>
       <div class="ficha-mini-row"><div class="label">Tasa</div><div class="value">${val(p.porcentaje_tasa)}%</div></div>
@@ -434,7 +434,7 @@ function pintarFicha(p) {
     <div class="ficha-section">
       <div class="ficha-subtitle" onclick="toggleSection('sec-catastral')" style="cursor:pointer;">Información catastral ▼</div>
       <div id="sec-catastral" style="display:none;">
-        <div class="ficha-row"><b>Zona homogénea:</b><span>${val(p.zona_homogenea || p.zonah)}</span></div>
+        ${(typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea()) ? `<div class="ficha-row"><b>Zona homogénea:</b><span>${val(p.zona_homogenea || p.zonah)}</span></div>` : ""}
         <div class="ficha-row"><b>Uso predial:</b><span>${val(p.descripcion_uso)}</span></div>
         <div class="ficha-row"><b>ID tasa:</b><span>${val(p.id_tasa)}</span></div>
         <div class="ficha-row"><b>Tasa:</b><span>${val(p.porcentaje_tasa)}%</span></div>
@@ -607,7 +607,7 @@ function pintarMensajeNoDibujado(p) {
     <div class="ficha-row"><b>Colonia:</b><span>${val(p.colonia)}</span></div>
     <div class="ficha-row"><b>Calle:</b><span>${val(p.calle)}</span></div>
     <div class="ficha-row"><b>Número:</b><span>${val(p.numof)}</span></div>
-    <div class="ficha-row"><b>Zona homogénea:</b><span>${val(p.zona_homogenea || p.zonah)}</span></div>
+    ${(typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea()) ? `<div class="ficha-row"><b>Zona homogénea:</b><span>${val(p.zona_homogenea || p.zonah)}</span></div>` : ""}
     <div class="ficha-row"><b>Uso:</b><span>${val(p.descripcion_uso)}</span></div>
     <div class="ficha-row"><b>Sup. documental:</b><span>${formatoNumero(p.sup_documental)} m²</span></div>
     <div class="ficha-row"><b>Valor 2026:</b><span>${formatoMoneda(p.valor2026)}</span></div>
@@ -966,6 +966,13 @@ const gridColumnasResultados = [
   { campo: "dibujado", titulo: "Cartografía", tipo: "booleano" }
 ];
 
+function columnasVisiblesGridResultados() {
+  return gridColumnasResultados.filter(function(col) {
+    if (col.campo !== "zona_homogenea") return true;
+    return typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea();
+  });
+}
+
 function cerrarTablaResultados() {
   const tabla = document.getElementById("tablaResultadosFlotante");
   if (tabla) {
@@ -1101,7 +1108,7 @@ function pintarDataGridResultados() {
           <tr>
   `;
 
-  gridColumnasResultados.forEach(col => {
+  columnasVisiblesGridResultados().forEach(col => {
     const sortClass =
       gridEstado.sortCampo === col.campo
         ? (gridEstado.sortDir === "asc" ? "sort-asc" : "sort-desc")
@@ -1120,7 +1127,7 @@ function pintarDataGridResultados() {
     const idxGlobal = ini + i;
     html += `<tr data-idx="${idxGlobal}" onclick="seleccionarResultadoTabla(${idxGlobal})">`;
 
-    gridColumnasResultados.forEach(col => {
+    columnasVisiblesGridResultados().forEach(col => {
       let valor = p[col.campo];
 
       if (col.tipo === "moneda") {

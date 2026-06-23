@@ -275,21 +275,13 @@ def _validar_porcentaje_propiedad(valor) -> float:
 
 def _nombre_persona_por_id(cur, id_persona: int) -> Optional[str]:
     cur.execute("""
-        SELECT
-            tipo_persona,
-            nombre,
-            apellido_paterno,
-            apellido_materno,
-            razon_social
+        SELECT COALESCE(NULLIF(TRIM(nombre), ''), NULLIF(TRIM(razon_social), '')) AS nombre
         FROM catalogos.personas
         WHERE id_persona = %s
         LIMIT 1;
     """, (id_persona,))
     row = cur.fetchone()
-    if not row:
-        return None
-    from routers.propietarios import construir_nombre_persona_v28
-    return construir_nombre_persona_v28(row) or None
+    return row.get("nombre") if row else None
 
 
 def aplicar_propietarios_desde_movimiento(cur, clave: str, propietarios_raw: list) -> dict:

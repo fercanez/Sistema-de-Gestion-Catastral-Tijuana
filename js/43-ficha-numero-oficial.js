@@ -586,6 +586,7 @@ function buildFichaNumofLayoutScript() {
     if(!cont)return 3.95;
     let px=0;
     Array.from(cont.children).forEach(function(el){
+      if(el.classList.contains("ficha-marca-agua-overlay")||el.classList.contains("aviso-marca-ficha-consulta"))return;
       if(el.classList.contains("seccion-mapa")){
         const head=el.querySelector(".media-head");
         if(head)px+=head.getBoundingClientRect().height;
@@ -724,7 +725,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
     width:var(--ficha-ancho)!important;
     max-width:var(--ficha-ancho)!important;
     height:var(--ficha-contenido-alto,auto)!important;
-    min-height:0!important;
+    min-height:calc(var(--ficha-alto) - 0.12in)!important;
     margin:0 auto!important;
     box-shadow:none!important;
     border-radius:0!important;
@@ -877,15 +878,21 @@ async function abrirPreviewFichaNumeroOficial() {
   }
 
   const baseHref = window.location.href.replace(/[^/]*$/, "");
-
+  const htmlFicha = construirHtmlFichaNumeroOficialVentana(datos, numofData, { baseHref, mapaInicial });
+  if (typeof abrirVentanaHtmlFichaInstitucional === "function") {
+    return abrirVentanaHtmlFichaInstitucional(htmlFicha, "width=1200,height=920");
+  }
   const win = window.open("", "_blank", "width=1200,height=920");
   if (!win) {
     alert("El navegador bloqueó la ventana de vista previa. Permita ventanas emergentes.");
     return null;
   }
-
   win.document.open();
-  win.document.write(construirHtmlFichaNumeroOficialVentana(datos, numofData, { baseHref, mapaInicial }));
+  win.document.write(
+    typeof escribirHtmlFichaVentanaConMarcaConsulta === "function"
+      ? escribirHtmlFichaVentanaConMarcaConsulta(htmlFicha)
+      : htmlFicha
+  );
   win.document.close();
   return win;
 }

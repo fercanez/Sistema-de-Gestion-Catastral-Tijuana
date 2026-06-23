@@ -4,31 +4,51 @@ ACL_BACKEND = {
         "editar_catastro", "editar_titularidad", "editar_nombre_contribuyente",
         "solicitar_movimientos", "aplicar_movimientos",
         "editar_fiscal", "ver_fiscal", "ver_expediente",
-        "ver_documentos", "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
+        "ver_documentos", "ver_dashboard", "exportar_pdf", "exportar_excel",
+        "gestionar_marca_agua",
+        "ver_pestana_archivo", "ver_pestana_control_urbano", "ver_pestana_rppc",
+        "ver_pestana_zona_homogenea",
+        "consulta"
     },
     "supervisor": {
         "ver_auditoria", "editar_cartografia", "editar_catastro",
         "editar_titularidad", "editar_nombre_contribuyente",
         "solicitar_movimientos", "aplicar_movimientos",
         "editar_fiscal", "ver_fiscal", "ver_expediente", "ver_documentos",
-        "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
+        "ver_dashboard", "exportar_pdf", "exportar_excel",
+        "gestionar_marca_agua",
+        "ver_pestana_archivo", "ver_pestana_control_urbano", "ver_pestana_rppc",
+        "ver_pestana_zona_homogenea",
+        "consulta"
     },
     "cartografia": {
         "editar_cartografia", "ver_expediente", "ver_documentos",
-        "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
+        "ver_dashboard", "exportar_pdf", "exportar_excel",
+        "gestionar_marca_agua",
+        "ver_pestana_archivo", "ver_pestana_control_urbano", "ver_pestana_rppc",
+        "ver_pestana_zona_homogenea",
+        "consulta"
     },
     "catastro": {
         "editar_catastro", "editar_titularidad", "editar_nombre_contribuyente",
         "solicitar_movimientos",
         "ver_expediente", "ver_documentos",
-        "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
+        "ver_dashboard", "exportar_pdf", "exportar_excel",
+        "gestionar_marca_agua",
+        "ver_pestana_archivo", "ver_pestana_control_urbano", "ver_pestana_rppc",
+        "ver_pestana_zona_homogenea",
+        "consulta"
     },
     "fiscalizacion": {
         "editar_fiscal", "ver_fiscal", "ver_expediente", "ver_documentos",
-        "ver_dashboard", "exportar_pdf", "exportar_excel", "consulta"
+        "ver_dashboard", "exportar_pdf", "exportar_excel",
+        "gestionar_marca_agua",
+        "ver_pestana_archivo", "ver_pestana_control_urbano", "ver_pestana_rppc",
+        "ver_pestana_zona_homogenea",
+        "consulta"
     },
     "consulta": {
-        "ver_expediente", "ver_documentos", "ver_dashboard",
+        "ver_expediente", "ver_dashboard",
         "exportar_pdf", "exportar_excel", "consulta"
     }
 }
@@ -40,7 +60,16 @@ def normalizar_rol(rol):
 
 def _permisos_fallback(rol):
     rol_norm = normalizar_rol(rol)
-    return sorted(list(ACL_BACKEND.get(rol_norm, ACL_BACKEND["consulta"])))
+    return _filtrar_permisos_exclusion_rol(rol_norm, ACL_BACKEND.get(rol_norm, ACL_BACKEND["consulta"]))
+
+
+def _filtrar_permisos_exclusion_rol(rol, permisos):
+    """Quita permisos que nunca deben aplicar a ciertos roles (p. ej. matriz BD desactualizada)."""
+    rol_norm = normalizar_rol(rol)
+    out = set(permisos or [])
+    if rol_norm == "consulta":
+        out.discard("ver_pestana_zona_homogenea")
+    return sorted(out)
 
 
 def permisos_por_rol(rol):
@@ -56,7 +85,7 @@ def permisos_por_rol(rol):
         cur.close()
         conn.close()
         fallback = set(_permisos_fallback(rol))
-        return sorted(fallback | set(perms))
+        return _filtrar_permisos_exclusion_rol(rol, fallback | set(perms))
     except Exception:
         return _permisos_fallback(rol)
 

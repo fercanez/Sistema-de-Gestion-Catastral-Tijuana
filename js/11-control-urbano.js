@@ -88,6 +88,19 @@ function docSeleccionadoControlUrbano(slot) {
   return st.docs.find(d => Number(d.id_documento) === Number(id)) || st.docs[0];
 }
 
+async function urlDocumentoControlUrbanoParaVisor(claveNorm, doc, cacheKey) {
+  const urlOriginal = urlDocumentoControlUrbano(claveNorm, doc.nombre_archivo);
+  if (!urlOriginal) return "";
+  if (typeof resolverUrlDocumentoConMarcaAgua !== "function") return urlOriginal;
+  try {
+    return await resolverUrlDocumentoConMarcaAgua(urlOriginal, doc.nombre_archivo, cacheKey, {
+      tipoVisor: "control_urbano"
+    });
+  } catch (e) {
+    return urlOriginal;
+  }
+}
+
 function htmlTarjetaControlUrbano(def, claveNorm) {
   const puedeEditar = puedeGestionarControlUrbano();
   const acciones = `
@@ -95,6 +108,7 @@ function htmlTarjetaControlUrbano(def, claveNorm) {
       ${puedeEditar ? `<button type="button" class="popup-cu-doc-btn" onclick="seleccionarDocControlUrbano('${def.slot}')">Subir</button>` : ""}
       <button type="button" class="popup-cu-doc-btn popup-cu-doc-btn-ver" id="popupCuBtnVer_${def.slot}" onclick="abrirDocControlUrbano('${def.slot}')" style="display:none" title="Abrir en ventana nueva">Abrir ventana</button>
       <button type="button" class="popup-cu-doc-btn popup-cu-doc-btn-ver-int" id="popupCuBtnVerInt_${def.slot}" onclick="verDocControlUrbanoIntegrado('${def.slot}')" style="display:none" title="Ver en visor integrado">Ver aquí</button>
+      <button type="button" class="popup-cu-doc-btn popup-cu-doc-btn-imprimir" id="popupCuBtnImprimir_${def.slot}" onclick="imprimirDocControlUrbano('${def.slot}')" style="display:none" title="Imprimir con marca de agua">Imprimir con marca</button>
       ${puedeEditar ? `<button type="button" class="popup-cu-doc-btn popup-cu-doc-btn-borrar" id="popupCuBtnBorrar_${def.slot}" onclick="eliminarDocControlUrbano('${def.slot}')" style="display:none">Borrar</button>` : ""}
     </div>
     ${puedeEditar ? `<input type="file" id="popupCuInput_${def.slot}" class="popup-cu-doc-input" accept=".pdf,image/jpeg,image/png,image/webp" hidden onchange="subirDocControlUrbano('${def.slot}', this)">` : ""}`;
@@ -123,14 +137,18 @@ function htmlTarjetaControlUrbano(def, claveNorm) {
     </article>`;
 }
 
-function htmlPreviewControlUrbano(claveNorm, doc, def) {
-  const url = urlDocumentoControlUrbano(claveNorm, doc.nombre_archivo);
+function htmlPreviewControlUrbano(url, doc, def) {
   if (esImagenControlUrbano(doc.nombre_archivo)) {
-    return `<img src="${cuEsc(url)}" alt="${cuEsc(def.label)}" class="popup-cu-doc-img">`;
+    return `
+      <div class="popup-cu-doc-preview-wrap con-marca-agua">
+        <img src="${cuEsc(url)}" alt="${cuEsc(def.label)}" class="popup-cu-doc-img">
+      </div>`;
   }
   if (esPdfControlUrbano(doc.nombre_archivo)) {
     return `
-      <iframe class="popup-cu-doc-iframe" src="${cuEsc(url)}" title="${cuEsc(def.label)}"></iframe>`;
+      <div class="popup-cu-doc-preview-wrap con-marca-agua">
+        <iframe class="popup-cu-doc-iframe" src="${cuEsc(url)}" title="${cuEsc(def.label)}"></iframe>
+      </div>`;
   }
   return `
     <div class="popup-cu-doc-pdf">
@@ -139,12 +157,13 @@ function htmlPreviewControlUrbano(claveNorm, doc, def) {
     </div>`;
 }
 
-function pintarPreviewControlUrbano(claveNorm, slot, doc) {
+async function pintarPreviewControlUrbano(claveNorm, slot, doc) {
   const preview = document.getElementById(`popupCuPreview_${slot}`);
   const meta = document.getElementById(`popupCuMeta_${slot}`);
   const card = document.getElementById(`popupCuCard_${slot}`);
   const btnVer = document.getElementById(`popupCuBtnVer_${slot}`);
   const btnVerInt = document.getElementById(`popupCuBtnVerInt_${slot}`);
+  const btnImprimir = document.getElementById(`popupCuBtnImprimir_${slot}`);
   const btnBorrar = document.getElementById(`popupCuBtnBorrar_${slot}`);
   const vigenteLbl = document.getElementById(`popupCuVigente_${slot}`);
   const def = POPUP_CONTROL_URBANO_SLOTS.find(s => s.slot === slot) || { label: slot };
@@ -154,6 +173,7 @@ function pintarPreviewControlUrbano(claveNorm, slot, doc) {
   if (!doc || !doc.nombre_archivo) {
     preview.innerHTML = `<span class="popup-cu-doc-placeholder">Sin documento cargado</span>`;
     preview.dataset.url = "";
+    preview.dataset.urlOriginal = "";
     preview.dataset.idDocumento = "";
     preview.onclick = null;
     preview.style.cursor = "";
@@ -161,15 +181,26 @@ function pintarPreviewControlUrbano(claveNorm, slot, doc) {
     if (card) card.classList.remove("con-documento");
     if (btnVer) btnVer.style.display = "none";
     if (btnVerInt) btnVerInt.style.display = "none";
+    if (btnImprimir) btnImprimir.style.display = "none";
     if (btnBorrar) btnBorrar.style.display = "none";
     if (vigenteLbl) vigenteLbl.style.display = "none";
     return;
   }
 
-  const url = urlDocumentoControlUrbano(claveNorm, doc.nombre_archivo);
-  preview.dataset.url = url;
+  const urlOriginal = urlDocumentoControlUrbano(claveNorm, doc.nombre_archivo);
+  preview.innerHTML = `<span class="popup-cu-doc-placeholder">Aplicando marca de agua…</span>`;
+  preview.dataset.urlOriginal = urlOriginal;
   preview.dataset.idDocumento = String(doc.id_documento || "");
-  preview.innerHTML = htmlPreviewControlUrbano(claveNorm, doc, def);
+
+  let urlVisor = urlOriginal;
+  try {
+    urlVisor = await urlDocumentoControlUrbanoParaVisor(claveNorm, doc, `cu_preview_${slot}_${doc.id_documento}`);
+  } catch (e) {
+    urlVisor = urlOriginal;
+  }
+
+  preview.dataset.url = urlVisor;
+  preview.innerHTML = htmlPreviewControlUrbano(urlVisor, doc, def);
   preview.style.cursor = "pointer";
   preview.title = "Clic para abrir en ventana nueva";
   preview.onclick = function() { abrirDocControlUrbano(slot); };
@@ -181,14 +212,19 @@ function pintarPreviewControlUrbano(claveNorm, slot, doc) {
   }
 
   if (meta) {
+    const leyendaMarca = typeof debeAplicarMarcaAguaDocumento === "function" && debeAplicarMarcaAguaDocumento("control_urbano")
+      ? `<div><b>Marca de agua:</b> Activa</div>`
+      : "";
     meta.innerHTML = `
       <div><b>Archivo:</b> ${cuEsc(nombreCortoControlUrbano(doc.nombre_archivo))}</div>
       <div><b>Cargado:</b> ${cuEsc(formatearFechaControlUrbano(doc.fecha_carga))}</div>
-      <div><b>Usuario:</b> ${cuEsc(doc.usuario_carga || "—")}</div>`;
+      <div><b>Usuario:</b> ${cuEsc(doc.usuario_carga || "—")}</div>
+      ${leyendaMarca}`;
   }
   if (card) card.classList.add("con-documento");
   if (btnVer) btnVer.style.display = "";
   if (btnVerInt) btnVerInt.style.display = "";
+  if (btnImprimir) btnImprimir.style.display = "";
   if (btnBorrar && puedeGestionarControlUrbano()) btnBorrar.style.display = "";
 }
 
@@ -217,21 +253,26 @@ function pintarListaControlUrbano(slot) {
   }).join("");
 }
 
-function seleccionarDocControlUrbanoHistorial(slot, idDocumento) {
+async function seleccionarDocControlUrbanoHistorial(slot, idDocumento) {
   const st = estadoSlotControlUrbano(slot);
   st.seleccionadoId = Number(idDocumento);
   pintarListaControlUrbano(slot);
-  pintarPreviewControlUrbano(popupControlUrbanoClaveActual, slot, docSeleccionadoControlUrbano(slot));
+  await pintarPreviewControlUrbano(popupControlUrbanoClaveActual, slot, docSeleccionadoControlUrbano(slot));
 }
 window.seleccionarDocControlUrbanoHistorial = seleccionarDocControlUrbanoHistorial;
 
-function abrirDocControlUrbanoPorId(slot, idDocumento) {
+async function abrirDocControlUrbanoPorId(slot, idDocumento) {
   const st = estadoSlotControlUrbano(slot);
   const doc = (st.docs || []).find(d => Number(d.id_documento) === Number(idDocumento));
   if (!doc) return;
-  const url = urlDocumentoControlUrbano(popupControlUrbanoClaveActual, doc.nombre_archivo);
-  if (!url) return;
-  window.open(url, "_blank", "noopener,noreferrer");
+  const claveNorm = popupControlUrbanoClaveActual;
+  try {
+    const url = await urlDocumentoControlUrbanoParaVisor(claveNorm, doc, `cu_abrir_${slot}_${idDocumento}`);
+    window.open(url, "_blank", "noopener,noreferrer");
+  } catch (e) {
+    const url = urlDocumentoControlUrbano(claveNorm, doc.nombre_archivo);
+    if (url) window.open(url, "_blank", "noopener,noreferrer");
+  }
 }
 window.abrirDocControlUrbanoPorId = abrirDocControlUrbanoPorId;
 
@@ -249,7 +290,14 @@ function actualizarNotaControlUrbano(historialPorSlot, avisoExtra) {
   nota.textContent = `Licencia: ${lic} documento(s) · Uso de suelo: ${uso} documento(s) · Total: ${lic + uso}`;
 }
 
-async function cargarDocumentosControlUrbano(claveNorm) {
+async function refrescarDocumentosControlUrbanoConMarca() {
+  if (!popupControlUrbanoClaveActual) return;
+  await cargarDocumentosControlUrbano(popupControlUrbanoClaveActual, { conservarSeleccion: true });
+}
+window.refrescarDocumentosControlUrbanoConMarca = refrescarDocumentosControlUrbanoConMarca;
+
+async function cargarDocumentosControlUrbano(claveNorm, opciones) {
+  opciones = opciones || {};
   popupControlUrbanoClaveActual = claveNorm;
   window.popupControlUrbanoClaveActual = claveNorm;
   try {
@@ -273,16 +321,22 @@ async function cargarDocumentosControlUrbano(claveNorm) {
       });
     }
 
-    POPUP_CONTROL_URBANO_SLOTS.forEach(function(def) {
+    for (const def of POPUP_CONTROL_URBANO_SLOTS) {
       const docs = historial[def.slot] || [];
       const st = estadoSlotControlUrbano(def.slot);
       st.docs = docs;
-      const previo = st.seleccionadoId;
-      const sigueExistiendo = docs.some(d => Number(d.id_documento) === Number(previo));
-      st.seleccionadoId = sigueExistiendo ? previo : (docs[0]?.id_documento || null);
+      if (!opciones.conservarSeleccion) {
+        const previo = st.seleccionadoId;
+        const sigueExistiendo = docs.some(d => Number(d.id_documento) === Number(previo));
+        st.seleccionadoId = sigueExistiendo ? previo : (docs[0]?.id_documento || null);
+      } else {
+        const previo = st.seleccionadoId;
+        const sigueExistiendo = docs.some(d => Number(d.id_documento) === Number(previo));
+        if (!sigueExistiendo) st.seleccionadoId = docs[0]?.id_documento || null;
+      }
       pintarListaControlUrbano(def.slot);
-      pintarPreviewControlUrbano(claveNorm, def.slot, docSeleccionadoControlUrbano(def.slot));
-    });
+      await pintarPreviewControlUrbano(claveNorm, def.slot, docSeleccionadoControlUrbano(def.slot));
+    }
     actualizarNotaControlUrbano(historial);
   } catch (e) {
     actualizarNotaControlUrbano({}, e.message || String(e));
@@ -298,10 +352,28 @@ function seleccionarDocControlUrbano(slot) {
 }
 
 function abrirDocControlUrbano(slot) {
+  const preview = document.getElementById(`popupCuPreview_${slot}`);
+  const url = preview?.dataset?.url;
+  if (url) {
+    window.open(url, "_blank", "noopener,noreferrer");
+    return;
+  }
+  const doc = docSeleccionadoControlUrbano(slot);
+  if (doc) abrirDocControlUrbanoPorId(slot, doc.id_documento);
+}
+
+async function imprimirDocControlUrbano(slot) {
   const doc = docSeleccionadoControlUrbano(slot);
   if (!doc) return;
-  abrirDocControlUrbanoPorId(slot, doc.id_documento);
+  const urlOriginal = urlDocumentoControlUrbano(popupControlUrbanoClaveActual, doc.nombre_archivo);
+  if (!urlOriginal) return;
+  if (typeof imprimirUrlDocumentoConMarca === "function") {
+    await imprimirUrlDocumentoConMarca(urlOriginal, doc.nombre_archivo, `cu_print_${slot}_${doc.id_documento}`);
+    return;
+  }
+  window.open(urlOriginal, "_blank", "noopener,noreferrer");
 }
+window.imprimirDocControlUrbano = imprimirDocControlUrbano;
 
 function asegurarVisorControlUrbano() {
   let overlay = document.getElementById("popupControlUrbanoLightbox");
@@ -315,6 +387,7 @@ function asegurarVisorControlUrbano() {
       <div class="popup-cu-lightbox-head">
         <span id="popupControlUrbanoLightboxTitulo">Documento</span>
         <div class="popup-cu-lightbox-acciones">
+          <button type="button" class="popup-cu-doc-btn popup-cu-doc-btn-imprimir" id="popupControlUrbanoLightboxImprimir">Imprimir con marca</button>
           <button type="button" class="popup-cu-doc-btn popup-cu-doc-btn-ver" id="popupControlUrbanoLightboxExterno">Abrir ventana</button>
           <button type="button" class="popup-cu-lightbox-cerrar" onclick="cerrarVisorControlUrbano()" title="Cerrar">×</button>
         </div>
@@ -331,23 +404,38 @@ function asegurarVisorControlUrbano() {
   return overlay;
 }
 
-function verDocControlUrbanoIntegrado(slot) {
+async function verDocControlUrbanoIntegrado(slot) {
   const doc = docSeleccionadoControlUrbano(slot);
   if (!doc) return;
-  const url = urlDocumentoControlUrbano(popupControlUrbanoClaveActual, doc.nombre_archivo);
-  if (!url) return;
+  const claveNorm = popupControlUrbanoClaveActual;
+  const urlOriginal = urlDocumentoControlUrbano(claveNorm, doc.nombre_archivo);
+  if (!urlOriginal) return;
   const def = POPUP_CONTROL_URBANO_SLOTS.find(s => s.slot === slot) || { label: "Documento" };
   const overlay = asegurarVisorControlUrbano();
   const body = document.getElementById("popupControlUrbanoLightboxBody");
   const titulo = document.getElementById("popupControlUrbanoLightboxTitulo");
   const btnExt = document.getElementById("popupControlUrbanoLightboxExterno");
+  const btnImp = document.getElementById("popupControlUrbanoLightboxImprimir");
+
   if (titulo) titulo.textContent = def.label;
-  if (btnExt) btnExt.onclick = function() { window.open(url, "_blank", "noopener,noreferrer"); };
+  if (body) body.innerHTML = `<p class="popup-cu-lightbox-sinvisor">Cargando documento con marca de agua…</p>`;
+
+  let urlVisor = urlOriginal;
+  try {
+    urlVisor = await urlDocumentoControlUrbanoParaVisor(claveNorm, doc, `cu_lightbox_${slot}_${doc.id_documento}`);
+  } catch (e) {}
+
+  if (btnExt) btnExt.onclick = function() { window.open(urlVisor, "_blank", "noopener,noreferrer"); };
+  if (btnImp) {
+    btnImp.onclick = function() {
+      imprimirDocControlUrbano(slot);
+    };
+  }
   if (body) {
     if (esImagenControlUrbano(doc.nombre_archivo)) {
-      body.innerHTML = `<img src="${cuEsc(url)}" alt="${cuEsc(def.label)}" class="popup-cu-lightbox-img">`;
+      body.innerHTML = `<img src="${cuEsc(urlVisor)}" alt="${cuEsc(def.label)}" class="popup-cu-lightbox-img">`;
     } else if (esPdfControlUrbano(doc.nombre_archivo)) {
-      body.innerHTML = `<iframe class="popup-cu-lightbox-iframe" src="${cuEsc(url)}" title="${cuEsc(def.label)}"></iframe>`;
+      body.innerHTML = `<iframe class="popup-cu-lightbox-iframe" src="${cuEsc(urlVisor)}" title="${cuEsc(def.label)}"></iframe>`;
     } else {
       body.innerHTML = `<p class="popup-cu-lightbox-sinvisor">Use «Abrir ventana» para consultar este archivo.</p>`;
     }
@@ -380,7 +468,7 @@ async function subirDocControlUrbano(slot, input) {
   form.append("slot", slot);
   form.append("archivo", archivo);
 
-  const btn = document.querySelector(`#popupCuCard_${slot} .popup-cu-doc-btn:not(.popup-cu-doc-btn-ver):not(.popup-cu-doc-btn-ver-int):not(.popup-cu-doc-btn-borrar)`);
+  const btn = document.querySelector(`#popupCuCard_${slot} .popup-cu-doc-btn:not(.popup-cu-doc-btn-ver):not(.popup-cu-doc-btn-ver-int):not(.popup-cu-doc-btn-borrar):not(.popup-cu-doc-btn-imprimir)`);
   if (btn) {
     btn.disabled = true;
     btn.textContent = "Subiendo…";
@@ -396,6 +484,7 @@ async function subirDocControlUrbano(slot, input) {
     if (!r.ok) {
       throw new Error(mensajeErrorControlUrbano(r, data, "No se pudo subir el documento"));
     }
+    if (typeof revocarCacheDocumentosMarcados === "function") revocarCacheDocumentosMarcados();
     estadoSlotControlUrbano(slot).seleccionadoId = data.id_documento || null;
     await cargarDocumentosControlUrbano(claveNorm);
   } catch (e) {
@@ -432,6 +521,7 @@ async function eliminarDocControlUrbano(slot) {
     if (!r.ok) {
       throw new Error(mensajeErrorControlUrbano(r, data, "No se pudo eliminar el documento"));
     }
+    if (typeof revocarCacheDocumentosMarcados === "function") revocarCacheDocumentosMarcados();
     estadoSlotControlUrbano(slot).seleccionadoId = null;
     await cargarDocumentosControlUrbano(claveNorm);
   } catch (e) {
@@ -442,6 +532,8 @@ async function eliminarDocControlUrbano(slot) {
 async function pintarPopupTabControlUrbano(clave, p) {
   const panel = document.getElementById("popupTabControlUrbano");
   if (!panel) return;
+
+  if (typeof revocarCacheDocumentosMarcados === "function") revocarCacheDocumentosMarcados();
 
   const claveNorm = String(clave || p?.clave_catastral || "").trim().toUpperCase();
   if (!claveNorm) {
@@ -458,21 +550,39 @@ async function pintarPopupTabControlUrbano(clave, p) {
   });
 
   const puedeEditar = puedeGestionarControlUrbano();
+  const botonesMarca = typeof htmlBotonesMarcaAguaDocumento === "function"
+    ? htmlBotonesMarcaAguaDocumento(
+      "popupCuBtnMarcaAgua",
+      "toggleMarcaAguaControlUrbano()",
+      "imprimirDocControlUrbano('licencia_construccion')",
+      { variante: "claro", ocultarImprimir: true }
+    )
+    : "";
+  const avisoConsulta = typeof htmlAvisoMarcaAguaConsulta === "function" ? htmlAvisoMarcaAguaConsulta() : "";
+
   panel.innerHTML = `
     <div class="popup-cu-layout">
       <header class="popup-cu-intro">
         <div>
           <h3>Control Urbano</h3>
-          <p>Adjunte la licencia de construcción y el uso de suelo autorizado del predio <b>${cuEsc(claveNorm)}</b>. Se conserva el historial de versiones.</p>
+          <p>Adjunte la licencia de construcción y el uso de suelo autorizado del predio <b>${cuEsc(claveNorm)}</b>. Los documentos se consultan con la leyenda «Documento sin validez oficial».</p>
         </div>
         ${puedeEditar ? "" : `<span class="popup-cu-solo-lectura">Solo consulta</span>`}
       </header>
+      <div class="popup-cu-marca-toolbar">
+        ${botonesMarca}
+      </div>
+      ${avisoConsulta}
       <div class="popup-cu-grid" id="popupControlUrbanoGrid">
         ${POPUP_CONTROL_URBANO_SLOTS.map(def => htmlTarjetaControlUrbano(def, claveNorm)).join("")}
       </div>
       <p class="popup-cu-nota" id="popupControlUrbanoNota">Cargando documentos…</p>
-      <p class="popup-cu-ayuda">Formatos: PDF, JPG, PNG o WEBP · Máximo 15 MB · Elija un documento del listado o abra en ventana nueva (↗).</p>
+      <p class="popup-cu-ayuda">Formatos: PDF, JPG, PNG o WEBP · Máximo 15 MB · Cada tarjeta incluye «Imprimir con marca».</p>
     </div>`;
+
+  if (typeof inicializarMarcaAguaControlUrbano === "function") {
+    await inicializarMarcaAguaControlUrbano();
+  }
 
   await cargarDocumentosControlUrbano(claveNorm);
 }

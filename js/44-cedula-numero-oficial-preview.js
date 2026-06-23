@@ -149,6 +149,7 @@ function buildCedulaNumofLayoutScript() {
     if(!cont)return 4.35;
     let px=0;
     Array.from(cont.children).forEach(function(el){
+      if(el.classList.contains("ficha-marca-agua-overlay")||el.classList.contains("aviso-marca-ficha-consulta"))return;
       if(el.classList.contains("seccion-mapa")){
         const head=el.querySelector(".media-head");
         if(head)px+=head.getBoundingClientRect().height;
@@ -230,6 +231,7 @@ function construirHtmlCedulaNumeroOficialVentana(datos, numofData, opciones) {
   const numAnterior = String(datos.numAnterior || "").trim();
   const numNuevo = String(datos.numNuevo || datos.numof || "").trim();
   const mostrarAnterior = numAnterior && numAnterior !== numNuevo;
+  const mostrarZona = !(typeof puedeVerDatosZonaHomogenea === "function") || puedeVerDatosZonaHomogenea();
   const buildMap = typeof buildFichaNumofMapScript === "function" ? buildFichaNumofMapScript : null;
   const layerPanel = typeof fichaNumofLayerPanelHtml === "function" ? fichaNumofLayerPanelHtml() : "";
   const mapScript = buildMap
@@ -361,7 +363,7 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
         <div class="gc"><span class="k">Sup. doc.</span><span class="v">${datos.supDoc ? cedulaNumofEsc(datos.supDoc + " m²") : "—"}</span></div>
         <div class="gc"><span class="k">Uso</span><span class="v">${cedulaNumofEsc(datos.uso)}</span></div>
         <div class="gc"><span class="k">Tasa</span><span class="v">${cedulaNumofEsc(datos.tasa)}</span></div>
-        <div class="gc"><span class="k">Zona H.</span><span class="v">${cedulaNumofEsc(datos.zonahTxt)} · ${cedulaNumofEsc(datos.anioZona)}</span></div>
+        ${mostrarZona ? `<div class="gc"><span class="k">Zona H.</span><span class="v">${cedulaNumofEsc(datos.zonahTxt)} · ${cedulaNumofEsc(datos.anioZona)}</span></div>` : ""}
         <div class="gc"><span class="k">V. unit.</span><span class="v">${cedulaNumofEsc(datos.valorUnitTxt)}</span></div>
         <div class="gc"><span class="k">V. fiscal</span><span class="v">${cedulaNumofEsc(datos.valorFiscalTxt)}</span></div>
         ${mostrarAnterior ? `<div class="gc"><span class="k">No. ant.</span><span class="v">${cedulaNumofEsc(numAnterior)}</span></div>` : ""}
@@ -453,14 +455,21 @@ async function abrirPreviewCedulaNumeroOficial(movOpt) {
   }
 
   const baseHref = window.location.href.replace(/[^/]*$/, "");
+  const htmlFicha = construirHtmlCedulaNumeroOficialVentana(datos, numofData, { baseHref, mapaInicial });
+  if (typeof abrirVentanaHtmlFichaInstitucional === "function") {
+    return abrirVentanaHtmlFichaInstitucional(htmlFicha, "width=1200,height=920");
+  }
   const win = window.open("", "_blank", "width=1200,height=920");
   if (!win) {
     alert("El navegador bloqueó la ventana de vista previa. Permita ventanas emergentes.");
     return null;
   }
-
   win.document.open();
-  win.document.write(construirHtmlCedulaNumeroOficialVentana(datos, numofData, { baseHref, mapaInicial }));
+  win.document.write(
+    typeof escribirHtmlFichaVentanaConMarcaConsulta === "function"
+      ? escribirHtmlFichaVentanaConMarcaConsulta(htmlFicha)
+      : htmlFicha
+  );
   win.document.close();
   return win;
 }
@@ -493,6 +502,7 @@ async function exportarCedulaNumeroOficialPdf(datos, mapaImg) {
   const tasa = datos.tasa;
   const fechaEmision = datos.fechaEmision || new Date().toLocaleString("es-MX");
   const anioZona = datos.anioZona || 2026;
+  const mostrarZona = !(typeof puedeVerDatosZonaHomogenea === "function") || puedeVerDatosZonaHomogenea();
 
   const logoImg = typeof obtenerLogoInstitucionalDataUrl === "function"
     ? await obtenerLogoInstitucionalDataUrl()
@@ -595,7 +605,7 @@ async function exportarCedulaNumeroOficialPdf(datos, mapaImg) {
   celdaInline("Sup. doc.", supDoc ? (supDoc + " m²") : "—", c4, y + 11);
   rowCedula("Uso", uso, 18, midX - 2, y + 15);
   rowCedula("Tasa", tasa, midX + 2, pageW - 18, y + 15);
-  rowCedula("Zona H.", zonahTxt + " · " + anioZona, 18, midX - 2, y + 19);
+  if (mostrarZona) rowCedula("Zona H.", zonahTxt + " · " + anioZona, 18, midX - 2, y + 19);
   rowCedula("V. unit.", valorUnitTxt, midX + 2, pageW - 18, y + 19);
   rowCedula("V. fiscal", valorFiscalTxt, 18, midX - 2, y + 23);
   if (numAnterior && numAnterior !== numNuevo) {

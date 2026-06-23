@@ -7,6 +7,11 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from fastapi.responses import FileResponse
 
 from auth.dependencies import obtener_usuario_actual, requerir_permiso, registrar_auditoria
+from auth.permisos_operativos import (
+    exigir_permiso_documento_ruta,
+    requerir_pestana_archivo,
+    requerir_pestana_control_urbano,
+)
 from database import get_conn, filas_a_lista, asegurar_columna_folio_real_padron
 
 router = APIRouter(tags=["expediente"])
@@ -382,7 +387,7 @@ def historial_expediente(clave: str, usuario_actual: dict = Depends(obtener_usua
 
 
 @router.get("/expediente/{clave}/documentos")
-def documentos_expediente(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def documentos_expediente(clave: str, usuario_actual: dict = Depends(requerir_pestana_archivo)):
     try:
         conn = get_conn()
         cur = conn.cursor()
@@ -418,12 +423,8 @@ def documentos_expediente(clave: str, usuario_actual: dict = Depends(obtener_usu
         raise HTTPException(status_code=500, detail=str(e))
 
 
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
-
 @router.get("/expediente/{clave}/fotografias")
-def listar_fotografias_expediente(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def listar_fotografias_expediente(clave: str, usuario_actual: dict = Depends(requerir_pestana_archivo)):
     clave_norm = _normalizar_clave_expediente(clave)
     if not clave_norm:
         raise HTTPException(status_code=400, detail="Clave catastral no válida")
@@ -680,7 +681,7 @@ def eliminar_fotografia_expediente(
 
 
 @router.get("/expediente/{clave}/control-urbano")
-def listar_documentos_control_urbano(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+def listar_documentos_control_urbano(clave: str, usuario_actual: dict = Depends(requerir_pestana_control_urbano)):
     clave_norm = _normalizar_clave_expediente(clave)
     if not clave_norm:
         raise HTTPException(status_code=400, detail="Clave catastral no válida")
@@ -922,7 +923,13 @@ def eliminar_documento_control_urbano(
 
 
 @router.get("/documentos/{clave}/{archivo:path}")
-def abrir_documento(clave: str, archivo: str):
+def abrir_documento(
+    clave: str,
+    archivo: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    exigir_permiso_documento_ruta(usuario_actual, archivo)
+
     # Protección contra path traversal: la ruta final, ya resuelta (sin '..',
     # symlinks, etc.), debe quedar estrictamente dentro de la carpeta base.
     base_dir = os.path.realpath(DOCUMENTOS_BASE_DIR)

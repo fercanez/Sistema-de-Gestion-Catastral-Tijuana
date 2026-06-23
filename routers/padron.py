@@ -14,6 +14,7 @@ from pydantic import BaseModel, Field
 from psycopg2.extras import execute_values
 
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
+from auth.permisos_operativos import requerir_pestana_zona_homogenea
 from database import get_conn, asegurar_tabla_predio_condominio, asegurar_columna_folio_real_padron
 try:
     from routers.pducp_consulta import consultar_pducp_predio
@@ -1821,7 +1822,7 @@ def _zona_homogenea_payload(clave: str) -> dict:
 @router.get("/padron/{clave}/zona-homogenea")
 def zona_homogenea_padron(
     clave: str,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_zona_homogenea),
 ):
     """Consulta zona homogénea intersectando el predio (GeoNode + catálogo evolución)."""
     return _zona_homogenea_payload(clave)
@@ -1830,7 +1831,7 @@ def zona_homogenea_padron(
 @router.get("/predios/{clave}/zona-homogenea")
 def zona_homogenea_predio(
     clave: str,
-    usuario_actual: dict = Depends(obtener_usuario_actual),
+    usuario_actual: dict = Depends(requerir_pestana_zona_homogenea),
 ):
     """Alias de consulta zona homogénea."""
     return _zona_homogenea_payload(clave)

@@ -1,6 +1,7 @@
 /* Pestaña Documento RPPC — resolver con JWT, DOC_TRAMITE_ID o Hoja de Inscripción por partida */
 
 let popupRppcBlobUrl = null;
+let popupRppcUrlPdfOriginal = "";
 
 function popupRppcEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
@@ -51,6 +52,7 @@ function destruirPopupRppc() {
     URL.revokeObjectURL(popupRppcBlobUrl);
     popupRppcBlobUrl = null;
   }
+  popupRppcUrlPdfOriginal = "";
 }
 
 async function extraerErrorFetchRppc(response) {
@@ -89,6 +91,84 @@ async function resolverDocumentoRppc(claveNorm, folioNum) {
   return data;
 }
 
+async function mostrarPdfRppcEnVisor(urlPdf) {
+  const frame = document.getElementById("popupRppcVisorFrame");
+  const estado = document.getElementById("popupRppcEstado");
+  const btnExterno = document.getElementById("popupRppcBtnExterno");
+  const overlay = document.getElementById("popupRppcMarcaAguaOverlay");
+  if (!frame || !urlPdf) return;
+
+  popupRppcUrlPdfOriginal = urlPdf;
+
+  if (popupRppcBlobUrl) {
+    URL.revokeObjectURL(popupRppcBlobUrl);
+    popupRppcBlobUrl = null;
+  }
+
+  const conMarca = typeof marcaAguaActivaEnVisor === "function"
+    ? marcaAguaActivaEnVisor("rppc")
+    : true;
+  const puedeEmbebida = conMarca
+    && typeof aplicarMarcaAguaEnPdfBytes === "function"
+    && window.PDFLib;
+
+  if (overlay) {
+    overlay.classList.toggle("activa", conMarca && !puedeEmbebida);
+  }
+
+  try {
+    if (puedeEmbebida) {
+      if (estado) estado.textContent = "Aplicando marca de agua al documento RPPC…";
+      const headers = typeof authHeaders === "function" ? authHeaders() : {};
+      const respPdf = await fetch(urlPdf, { cache: "no-store", headers: headers });
+      if (!respPdf.ok) {
+        throw new Error(await extraerErrorFetchRppc(respPdf));
+      }
+      const pdfBytes = new Uint8Array(await respPdf.arrayBuffer());
+      const marcado = await aplicarMarcaAguaEnPdfBytes(pdfBytes);
+      popupRppcBlobUrl = URL.createObjectURL(new Blob([marcado], { type: "application/pdf" }));
+      frame.src = popupRppcBlobUrl;
+      if (btnExterno) {
+        btnExterno.href = popupRppcBlobUrl;
+        btnExterno.classList.remove("oculto");
+      }
+      if (estado) estado.textContent = "Documento RPPC listo con marca de agua institucional.";
+      return;
+    }
+
+    frame.src = urlPdf;
+    if (conMarca && overlay && typeof prepararOverlayMarcaAguaElemento === "function") {
+      overlay.classList.add("activa");
+      await prepararOverlayMarcaAguaElemento(overlay);
+    }
+    if (btnExterno) {
+      btnExterno.href = urlPdf;
+      btnExterno.classList.remove("oculto");
+    }
+  } catch (error) {
+    frame.src = urlPdf;
+    if (conMarca && overlay && typeof prepararOverlayMarcaAguaElemento === "function") {
+      overlay.classList.add("activa");
+      await prepararOverlayMarcaAguaElemento(overlay);
+    }
+    if (btnExterno) {
+      btnExterno.href = urlPdf;
+      btnExterno.classList.remove("oculto");
+    }
+    if (estado) {
+      estado.textContent = `${error.message || error} · Mostrando PDF con superposición visual.`;
+      estado.classList.add("popup-rppc-estado-error");
+    }
+  }
+}
+
+async function refrescarVisorPdfRppcConMarca() {
+  if (!popupRppcUrlPdfOriginal) return;
+  const estado = document.getElementById("popupRppcEstado");
+  if (estado) estado.classList.remove("popup-rppc-estado-error");
+  await mostrarPdfRppcEnVisor(popupRppcUrlPdfOriginal);
+}
+
 async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
   const frame = document.getElementById("popupRppcVisorFrame");
   const estado = document.getElementById("popupRppcEstado");
@@ -106,29 +186,25 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
   }
 
   try {
-	const data = await resolverDocumentoRppc(claveNorm, folioNum);
-	
+    const data = await resolverDocumentoRppc(claveNorm, folioNum);
     const folioDetectado = data.folio_real || data.FOLIO_REAL;
 
-if (folioDetectado) {
-  const meta = document.querySelector(".popup-rppc-meta");
-  if (meta) {
-    const spans = meta.querySelectorAll("span");
-    spans.forEach(sp => {
-      if (sp.textContent.includes("Folio real:")) {
-        sp.innerHTML = `<b>Folio real:</b> ${popupRppcEsc(folioDetectado)}`;
+    if (folioDetectado) {
+      const meta = document.querySelector(".popup-rppc-meta");
+      if (meta) {
+        meta.querySelectorAll("span").forEach(function(sp) {
+          if (sp.textContent.includes("Folio real:")) {
+            sp.innerHTML = `<b>Folio real:</b> ${popupRppcEsc(folioDetectado)}`;
+          }
+        });
       }
-    });
-  }
-
-  if (window.predioSeleccionado) {
-    window.predioSeleccionado.folio_real = folioDetectado;
-  }
-}
+      if (window.predioSeleccionado) {
+        window.predioSeleccionado.folio_real = folioDetectado;
+      }
+    }
 
     const docId = data.doc_tramite_id || data.DOC_TRAMITE_ID;
     const pdfUrl = data.pdf_url || data.PDF_URL;
-
     const urlPdf = docId
       ? buildUrlVisorPdfRppcDoc(docId)
       : buildAbsoluteRppcUrl(pdfUrl);
@@ -139,14 +215,10 @@ if (folioDetectado) {
         : `Hoja de inscripción localizada. Partida ${data.partida ?? "—"}. Cargando PDF…`;
     }
 
-    frame.src = urlPdf;
-
-    if (btnExterno) {
-      btnExterno.href = urlPdf;
-      btnExterno.classList.remove("oculto");
-    }
+    await mostrarPdfRppcEnVisor(urlPdf);
   } catch (error) {
     frame.src = "about:blank";
+    popupRppcUrlPdfOriginal = "";
     if (estado) {
       estado.textContent = error.message || "Error al consultar el RPPC.";
       estado.classList.add("popup-rppc-estado-error");
@@ -175,12 +247,22 @@ async function pintarPopupTabRppc(clave, p) {
     return;
   }
 
+  const botonesMarca = typeof htmlBotonesMarcaAguaDocumento === "function"
+    ? htmlBotonesMarcaAguaDocumento("popupRppcBtnMarcaAgua", "toggleMarcaAguaRppc()", "imprimirRppcConMarcaAgua()")
+    : "";
+  const overlayMarca = typeof htmlOverlayMarcaAguaDocumento === "function"
+    ? htmlOverlayMarcaAguaDocumento("popupRppcMarcaAguaOverlay")
+    : "";
+
   panel.innerHTML = `
     <div class="popup-rppc-layout">
       <section class="popup-rppc-panel">
         <header class="popup-rppc-head">
           <span>Documento RPPC</span>
-          <a id="popupRppcBtnExterno" class="popup-rppc-link-externo oculto" href="#" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
+          <div class="popup-rppc-head-acciones">
+            ${botonesMarca}
+            <a id="popupRppcBtnExterno" class="popup-rppc-link-externo oculto" href="#" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
+          </div>
         </header>
         <div class="popup-rppc-meta">
           <span><b>Clave:</b> ${popupRppcEsc(claveNorm)}</span>
@@ -188,12 +270,18 @@ async function pintarPopupTabRppc(clave, p) {
           <span><b>Contribuyente:</b> ${popupRppcEsc(nombre)}</span>
         </div>
         <p id="popupRppcEstado" class="popup-rppc-estado">Preparando consulta RPPC…</p>
-        <div class="popup-rppc-iframe-wrap">
+        <div class="popup-rppc-iframe-wrap" id="popupRppcVisorWrap">
           <iframe id="popupRppcVisorFrame" class="popup-rppc-iframe" title="Documento RPPC ${popupRppcEsc(claveNorm)}" src="about:blank"></iframe>
+          ${overlayMarca}
         </div>
+        <p class="popup-marca-agua-aviso">Los documentos se muestran con la leyenda «Documento sin validez oficial». Use «Imprimir con marca» para imprimir el PDF con la leyenda incluida.</p>
         ${!folioNum ? `<p class="popup-rppc-aviso">Sin folio real en padrón; se intentará resolver por clave catastral.</p>` : ""}
       </section>
     </div>`;
+
+  if (typeof inicializarMarcaAguaRppc === "function") {
+    await inicializarMarcaAguaRppc();
+  }
 
   await cargarPdfRppcEnIframe(claveNorm, folioNum);
 }
@@ -201,3 +289,4 @@ async function pintarPopupTabRppc(clave, p) {
 window.buildUrlResolverRppc = buildUrlResolverRppc;
 window.pintarPopupTabRppc = pintarPopupTabRppc;
 window.destruirPopupRppc = destruirPopupRppc;
+window.refrescarVisorPdfRppcConMarca = refrescarVisorPdfRppcConMarca;
