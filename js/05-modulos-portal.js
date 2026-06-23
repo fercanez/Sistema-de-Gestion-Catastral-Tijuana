@@ -1089,6 +1089,12 @@ function urlArchivoDigitalExterno(clave) {
   return URL_ARCHIVO_DIGITAL_EXTERNO + encodeURIComponent(claveNorm);
 }
 
+function urlArchivoExternoApi(clave) {
+  const claveNorm = String(clave || "").trim().toUpperCase();
+  if (!claveNorm || typeof API === "undefined" || !API) return "";
+  return `${API}/expediente/${encodeURIComponent(claveNorm)}/archivo-externo`;
+}
+
 function popupEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
 }
@@ -1363,6 +1369,9 @@ async function pintarPopupTabArchivo(clave, p) {
   const urlExt = typeof urlExpedienteExterno === "function"
     ? urlExpedienteExterno(claveNorm)
     : urlArchivoDigitalExterno(claveNorm);
+  const urlVisor = typeof urlArchivoExternoApi === "function"
+    ? urlArchivoExternoApi(claveNorm)
+    : urlExt;
   popupArchivoClaveActual = claveNorm;
 
   const botonesMarca = typeof htmlBotonesMarcaAguaDocumento === "function"
@@ -1379,14 +1388,16 @@ async function pintarPopupTabArchivo(clave, p) {
           <span>Archivo digital externo</span>
           <div class="popup-archivo-head-acciones">
             ${botonesMarca}
+            <a id="popupArchivoBtnExterno" class="popup-archivo-link-externo oculto" href="#" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
             <a class="popup-archivo-link-externo" href="${popupEsc(urlExt)}" target="_blank" rel="noopener noreferrer">Abrir en nueva pestaña</a>
           </div>
         </header>
+        <p id="popupArchivoEstado" class="popup-archivo-estado">Preparando archivo digital externo…</p>
         <div class="popup-archivo-iframe-wrap" id="popupArchivoVisorWrap">
-          <iframe id="popupArchivoDigitalExternoFrame" class="popup-archivo-iframe" title="Archivo digital ${popupEsc(claveNorm)}" src="${popupEsc(urlExt)}" loading="lazy" referrerpolicy="no-referrer-when-downgrade"></iframe>
+          <iframe id="popupArchivoDigitalExternoFrame" class="popup-archivo-iframe" title="Archivo digital ${popupEsc(claveNorm)}" src="about:blank"></iframe>
           ${overlayMarca}
         </div>
-        <p class="popup-marca-agua-aviso">Los documentos se muestran con la leyenda «Documento sin validez oficial». Use «Imprimir con marca» para conservar la leyenda al imprimir desde este visor.</p>
+        <p class="popup-marca-agua-aviso">Los documentos se muestran con la leyenda «Documento sin validez oficial». Use «Imprimir con marca» para imprimir el PDF con la leyenda incluida.</p>
         <div class="popup-archivo-clave-ref">Clave catastral: <b>${popupEsc(claveNorm)}</b></div>
       </section>
       <section class="popup-archivo-panel popup-archivo-fotos">
@@ -1399,7 +1410,13 @@ async function pintarPopupTabArchivo(clave, p) {
     </div>`;
 
   if (typeof inicializarMarcaAguaArchivoExterno === "function") {
-    inicializarMarcaAguaArchivoExterno();
+    await inicializarMarcaAguaArchivoExterno();
+  }
+  if (typeof cargarArchivoExternoEnVisor === "function") {
+    await cargarArchivoExternoEnVisor(claveNorm);
+  } else if (urlVisor) {
+    const frame = document.getElementById("popupArchivoDigitalExternoFrame");
+    if (frame) frame.src = urlVisor;
   }
 
   await cargarFotografiasArchivo(claveNorm, p);
@@ -1629,6 +1646,7 @@ function engancharPortalModulos() {
 }
 
 window.urlArchivoDigitalExterno = urlArchivoDigitalExterno;
+window.urlArchivoExternoApi = urlArchivoExternoApi;
 window.seleccionarFotoArchivo = seleccionarFotoArchivo;
 window.subirFotoArchivo = subirFotoArchivo;
 window.eliminarFotoArchivo = eliminarFotoArchivo;

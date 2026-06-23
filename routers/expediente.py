@@ -1,10 +1,13 @@
 """Router de expediente integral, documentos, control cartografico y dashboards."""
 import os
 import re
+import urllib.error
+import urllib.parse
+import urllib.request
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, Response
 
 from auth.dependencies import obtener_usuario_actual, requerir_permiso, registrar_auditoria
 from auth.permisos_operativos import (
@@ -38,6 +41,11 @@ CONTROL_URBANO_LABELS = {
 CONTROL_URBANO_TIPOS = set(CONTROL_URBANO_SLOTS.values())
 DOC_URBANO_EXTENSIONES = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_DOC_URBANO_BYTES = 15 * 1024 * 1024
+ARCHIVO_DIGITAL_EXTERNO_BASE = os.getenv(
+    "ARCHIVO_DIGITAL_EXTERNO_URL",
+    "https://www.mexicali.gob.mx/webpub/consultacatastro/documentacion.aspx?",
+)
+ARCHIVO_EXTERNO_TIMEOUT = int(os.getenv("ARCHIVO_EXTERNO_TIMEOUT", "120"))
 
 
 def _normalizar_clave_expediente(clave: str) -> str:
@@ -384,6 +392,48 @@ def historial_expediente(clave: str, usuario_actual: dict = Depends(obtener_usua
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.get("/expediente/{clave}/archivo-externo")
+def proxy_archivo_externo(clave: str, usuario_actual: dict = Depends(requerir_pestana_archivo)):
+    """Proxy same-origin del PDF del archivo digital municipal (evita CORS en el visor)."""
+    clave_norm = _normalizar_clave_expediente(clave)
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+
+    url = f"{ARCHIVO_DIGITAL_EXTERNO_BASE}{urllib.parse.quote(clave_norm, safe='')}"
+    req = urllib.request.Request(
+        url,
+        headers={"User-Agent": "SGC-Catastro-Mexicali/1.0 (+archivo-externo-interno)"},
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=ARCHIVO_EXTERNO_TIMEOUT) as resp:
+            content_type = resp.headers.get("Content-Type", "application/pdf")
+            body = resp.read()
+    except urllib.error.HTTPError as e:
+        raise HTTPException(
+            status_code=e.code,
+            detail="No se pudo obtener el archivo digital externo",
+        ) from e
+    except urllib.error.URLError as e:
+        raise HTTPException(
+            status_code=502,
+            detail="Servicio de archivo digital externo no disponible",
+        ) from e
+
+    if not body:
+        raise HTTPException(status_code=404, detail="El predio no tiene archivo digital externo")
+
+    media_type = content_type.split(";")[0].strip() if content_type else "application/pdf"
+    return Response(
+        content=body,
+        media_type=media_type,
+        headers={
+            "Content-Disposition": f'inline; filename="{clave_norm}.pdf"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
 
 
 @router.get("/expediente/{clave}/documentos")

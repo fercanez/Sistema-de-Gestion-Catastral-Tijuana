@@ -12,7 +12,7 @@ const MARCA_AGUA_VISORES = {
     wrapId: "popupArchivoVisorWrap",
     btnId: "popupArchivoBtnMarcaAgua",
     printClass: "popup-archivo-imprimiendo",
-    embebidaEnPdf: false
+    embebidaEnPdf: true
   },
   rppc: {
     overlayId: "popupRppcMarcaAguaOverlay",
@@ -346,6 +346,9 @@ async function aplicarEstadoMarcaAguaVisor(tipo, activa) {
   if (tipo === "rppc" && typeof refrescarVisorPdfRppcConMarca === "function") {
     await refrescarVisorPdfRppcConMarca();
   }
+  if (tipo === "archivo" && typeof refrescarVisorArchivoExternoConMarca === "function") {
+    await refrescarVisorArchivoExternoConMarca();
+  }
   if (tipo === "control_urbano" && typeof refrescarDocumentosControlUrbanoConMarca === "function") {
     await refrescarDocumentosControlUrbanoConMarca();
   }
@@ -365,6 +368,10 @@ async function inicializarMarcaAguaVisor(tipo) {
 async function imprimirDocumentoConMarcaAgua(tipo) {
   if (tipo === "rppc") {
     await imprimirRppcConMarcaAgua();
+    return;
+  }
+  if (tipo === "archivo") {
+    await imprimirArchivoExternoConMarcaAgua();
     return;
   }
 
@@ -403,12 +410,11 @@ async function imprimirUrlDocumentoConMarca(url, nombreArchivo, cacheKey) {
   window.setTimeout(imprimir, 1400);
 }
 
-async function imprimirRppcConMarcaAgua() {
-  await aplicarEstadoMarcaAguaVisor("rppc", true);
-  const frame = document.getElementById("popupRppcVisorFrame");
+async function abrirPdfVisorEnVentanaImpresion(frameId, mensajeSinDocumento) {
+  const frame = document.getElementById(frameId);
   const src = frame?.src;
   if (!src || src === "about:blank") {
-    alert("El documento RPPC aún no está listo para imprimir.");
+    alert(mensajeSinDocumento);
     return;
   }
 
@@ -428,6 +434,139 @@ async function imprimirRppcConMarcaAgua() {
     window.setTimeout(imprimir, 700);
   });
   window.setTimeout(imprimir, 1400);
+}
+
+async function imprimirRppcConMarcaAgua() {
+  await aplicarEstadoMarcaAguaVisor("rppc", true);
+  await abrirPdfVisorEnVentanaImpresion(
+    "popupRppcVisorFrame",
+    "El documento RPPC aún no está listo para imprimir."
+  );
+}
+
+let popupArchivoUrlOriginal = "";
+let popupArchivoBlobUrl = null;
+
+async function mostrarArchivoExternoEnVisor(urlPdf) {
+  const frame = document.getElementById("popupArchivoDigitalExternoFrame");
+  const estado = document.getElementById("popupArchivoEstado");
+  const btnExterno = document.getElementById("popupArchivoBtnExterno");
+  const overlay = document.getElementById("popupArchivoMarcaAguaOverlay");
+  if (!frame || !urlPdf) return;
+
+  popupArchivoUrlOriginal = urlPdf;
+
+  if (popupArchivoBlobUrl) {
+    URL.revokeObjectURL(popupArchivoBlobUrl);
+    popupArchivoBlobUrl = null;
+  }
+
+  const conMarca = marcaAguaActivaEnVisor("archivo");
+  const puedeEmbebida = conMarca && pdfLibDisponible();
+
+  if (overlay) {
+    overlay.classList.toggle("activa", conMarca && !puedeEmbebida);
+  }
+
+  try {
+    if (puedeEmbebida) {
+      if (estado) estado.textContent = "Aplicando marca de agua al archivo digital…";
+      const headers = typeof authHeaders === "function" ? authHeaders() : {};
+      const respPdf = await fetch(urlPdf, { cache: "no-store", headers: headers });
+      if (!respPdf.ok) {
+        throw new Error(`No se pudo descargar el archivo (HTTP ${respPdf.status})`);
+      }
+      const pdfBytes = new Uint8Array(await respPdf.arrayBuffer());
+      const marcado = await aplicarMarcaAguaEnPdfBytes(pdfBytes);
+      popupArchivoBlobUrl = URL.createObjectURL(new Blob([marcado], { type: "application/pdf" }));
+      frame.src = popupArchivoBlobUrl;
+      if (btnExterno) {
+        btnExterno.href = popupArchivoBlobUrl;
+        btnExterno.classList.remove("oculto");
+      }
+      if (overlay) {
+        overlay.classList.remove("activa");
+        overlay.setAttribute("aria-hidden", "true");
+      }
+      if (estado) {
+        estado.textContent = "Archivo digital listo con marca de agua institucional.";
+        estado.classList.remove("popup-archivo-estado-error");
+      }
+      return;
+    }
+
+    frame.src = urlPdf;
+    if (conMarca && overlay) {
+      overlay.classList.add("activa");
+      overlay.setAttribute("aria-hidden", "false");
+      await prepararOverlayMarcaAguaElemento(overlay);
+    }
+    if (btnExterno) {
+      btnExterno.href = urlPdf;
+      btnExterno.classList.remove("oculto");
+    }
+    if (estado) {
+      estado.textContent = "Archivo digital cargado.";
+      estado.classList.remove("popup-archivo-estado-error");
+    }
+  } catch (error) {
+    frame.src = urlPdf;
+    if (conMarca && overlay) {
+      overlay.classList.add("activa");
+      overlay.setAttribute("aria-hidden", "false");
+      await prepararOverlayMarcaAguaElemento(overlay);
+    }
+    if (btnExterno) {
+      btnExterno.href = urlPdf;
+      btnExterno.classList.remove("oculto");
+    }
+    if (estado) {
+      estado.textContent = `${error.message || error} · Mostrando PDF con superposición visual.`;
+      estado.classList.add("popup-archivo-estado-error");
+    }
+  }
+}
+
+async function refrescarVisorArchivoExternoConMarca() {
+  if (!popupArchivoUrlOriginal) return;
+  const estado = document.getElementById("popupArchivoEstado");
+  if (estado) estado.classList.remove("popup-archivo-estado-error");
+  await mostrarArchivoExternoEnVisor(popupArchivoUrlOriginal);
+}
+
+async function cargarArchivoExternoEnVisor(claveNorm) {
+  const clave = String(claveNorm || "").trim().toUpperCase();
+  if (!clave) return;
+
+  const frame = document.getElementById("popupArchivoDigitalExternoFrame");
+  const estado = document.getElementById("popupArchivoEstado");
+  const btnExterno = document.getElementById("popupArchivoBtnExterno");
+
+  if (frame) frame.src = "about:blank";
+  if (btnExterno) {
+    btnExterno.classList.add("oculto");
+    btnExterno.removeAttribute("href");
+  }
+  if (estado) {
+    estado.classList.remove("popup-archivo-estado-error");
+    estado.textContent = "Descargando archivo digital externo…";
+  }
+
+  const urlApi = typeof urlArchivoExternoApi === "function"
+    ? urlArchivoExternoApi(clave)
+    : "";
+  const urlPdf = urlApi || (typeof urlArchivoDigitalExterno === "function"
+    ? urlArchivoDigitalExterno(clave)
+    : "");
+  await mostrarArchivoExternoEnVisor(urlPdf);
+}
+
+async function imprimirArchivoExternoConMarcaAgua() {
+  await aplicarEstadoMarcaAguaVisor("archivo", true);
+  await abrirPdfVisorEnVentanaImpresion(
+    "popupArchivoDigitalExternoFrame",
+    "El archivo digital aún no está listo para imprimir."
+  );
 }
 
 function htmlOverlayMarcaAguaDocumento(overlayId) {
@@ -745,6 +884,8 @@ window.imprimirUrlDocumentoConMarca = imprimirUrlDocumentoConMarca;
 window.toggleMarcaAguaArchivoExterno = toggleMarcaAguaArchivoExterno;
 window.inicializarMarcaAguaArchivoExterno = inicializarMarcaAguaArchivoExterno;
 window.imprimirArchivoConMarcaAgua = imprimirArchivoConMarcaAgua;
+window.cargarArchivoExternoEnVisor = cargarArchivoExternoEnVisor;
+window.refrescarVisorArchivoExternoConMarca = refrescarVisorArchivoExternoConMarca;
 window.toggleMarcaAguaRppc = toggleMarcaAguaRppc;
 window.inicializarMarcaAguaRppc = inicializarMarcaAguaRppc;
 window.imprimirRppcConMarcaAgua = imprimirRppcConMarcaAgua;
