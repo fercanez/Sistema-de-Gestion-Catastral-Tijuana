@@ -12,6 +12,11 @@ let _analisisZonasState = {
   anios: ANALISIS_ZONAS_ANIOS_BASE.slice()
 };
 
+let _analisisZonasMap = null;
+let _analisisZonasMapCapas = null;
+let _analisisZonasMapCodigo = "";
+let _analisisZonasMapReqId = 0;
+
 function obtenerAniosAnalisisZonas() {
   const arr = _analisisZonasState.anios;
   if (arr && arr.length) return arr.slice();
@@ -70,10 +75,17 @@ function abrirModuloAnalisisZonas() {
   } else {
     renderAnalisisZonasCompleto();
   }
+  setTimeout(function() {
+    if (_analisisZonasMap) {
+      _analisisZonasMap.updateSize();
+      analisisZonasCentrarMapa();
+    }
+  }, 150);
 }
 window.abrirModuloAnalisisZonas = abrirModuloAnalisisZonas;
 
 function cerrarModuloAnalisisZonas() {
+  destruirMapaAnalisisZonas();
   document.getElementById("overlayAnalisisZonas")?.classList.add("oculto");
   document.body.classList.remove("analisis-zonas-activo");
 }
@@ -246,6 +258,7 @@ function renderAnalisisZonasDetalle(reg) {
     if (meta) meta.innerHTML = "";
     if (variacion) variacion.textContent = "";
     dibujarGraficaEvolucionZona(null);
+    actualizarMapaAnalisisZonas(null);
     return;
   }
 
@@ -288,6 +301,7 @@ function renderAnalisisZonasDetalle(reg) {
   }
 
   dibujarGraficaEvolucionZona(reg);
+  actualizarMapaAnalisisZonas(reg);
 }
 
 function renderAnalisisZonasLeyenda() {
@@ -789,6 +803,252 @@ function exportarAnalisisZonasExcel() {
   XLSX.writeFile(wb, "zonas_homogeneas_" + fecha + ".xlsx");
 }
 window.exportarAnalisisZonasExcel = exportarAnalisisZonasExcel;
+
+function analisisZonasWmsUrl() {
+  return typeof POPUP_ZONA_GEONODE_WMS !== "undefined"
+    ? POPUP_ZONA_GEONODE_WMS
+    : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
+}
+
+function analisisZonasWmsLayer() {
+  return typeof POPUP_ZONA_WMS_LAYER !== "undefined"
+    ? POPUP_ZONA_WMS_LAYER
+    : "zonas_homogeneas";
+}
+
+function analisisZonasEstiloZona() {
+  return [
+    new ol.style.Style({
+      zIndex: 49,
+      stroke: new ol.style.Stroke({
+        color: "rgba(255,255,255,0.92)",
+        width: 7,
+        lineDash: [10, 6]
+      })
+    }),
+    new ol.style.Style({
+      zIndex: 50,
+      stroke: new ol.style.Stroke({
+        color: "#111827",
+        width: 5,
+        lineDash: [10, 6]
+      })
+    })
+  ];
+}
+
+function analisisZonasAsegurarCanvasMapa() {
+  const target = document.getElementById("analisisZonasMap");
+  if (!target) return null;
+  target.querySelector(".analisis-zonas-mapa-vacio")?.remove();
+  let canvas = document.getElementById("analisisZonasMapCanvas");
+  if (!canvas) {
+    canvas = document.createElement("div");
+    canvas.id = "analisisZonasMapCanvas";
+    canvas.className = "analisis-zonas-mapa-canvas";
+    target.appendChild(canvas);
+  }
+  return canvas;
+}
+
+function analisisZonasCrearCapasMapa() {
+  return {
+    base: new ol.layer.Tile({
+      source: new ol.source.XYZ({
+        url: "https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}",
+        crossOrigin: "anonymous"
+      })
+    }),
+    zonasWms: new ol.layer.Tile({
+      visible: true,
+      opacity: 0.55,
+      zIndex: 6,
+      source: new ol.source.TileWMS({
+        url: analisisZonasWmsUrl(),
+        params: {
+          LAYERS: analisisZonasWmsLayer(),
+          TILED: true,
+          VERSION: "1.1.1",
+          FORMAT: "image/png",
+          TRANSPARENT: true
+        },
+        serverType: "geoserver",
+        crossOrigin: "anonymous"
+      })
+    }),
+    zonaVector: new ol.layer.Vector({
+      visible: true,
+      zIndex: 50,
+      source: new ol.source.Vector(),
+      style: analisisZonasEstiloZona()
+    })
+  };
+}
+
+function destruirMapaAnalisisZonas() {
+  _analisisZonasMapReqId += 1;
+  if (_analisisZonasMap) {
+    _analisisZonasMap.setTarget(null);
+    _analisisZonasMap = null;
+  }
+  _analisisZonasMapCapas = null;
+  _analisisZonasMapCodigo = "";
+  const target = document.getElementById("analisisZonasMap");
+  if (target) {
+    target.querySelector("#analisisZonasMapCanvas")?.remove();
+    if (!target.querySelector(".analisis-zonas-mapa-vacio")) {
+      const vacio = document.createElement("div");
+      vacio.className = "analisis-zonas-mapa-vacio";
+      vacio.textContent = "Seleccione una zona para ver su dibujo cartográfico.";
+      target.appendChild(vacio);
+    }
+  }
+  const estado = document.getElementById("analisisZonasMapEstado");
+  if (estado) {
+    estado.textContent = "";
+    estado.className = "analisis-zonas-mapa-estado";
+  }
+}
+
+function analisisZonasCentrarMapa(centroide) {
+  if (!_analisisZonasMap || !_analisisZonasMapCapas) return;
+  _analisisZonasMap.updateSize();
+  const ext = _analisisZonasMapCapas.zonaVector.getSource().getExtent();
+  if (ext && Number.isFinite(ext[0])) {
+    let buffExt = ext;
+    if (typeof ol.extent.buffer === "function") buffExt = ol.extent.buffer(ext, 80);
+    _analisisZonasMap.getView().fit(buffExt, {
+      padding: [24, 24, 24, 24],
+      maxZoom: 17,
+      duration: 200
+    });
+    return;
+  }
+  if (centroide?.lon != null && centroide?.lat != null) {
+    _analisisZonasMap.getView().setCenter(ol.proj.fromLonLat([centroide.lon, centroide.lat]));
+    _analisisZonasMap.getView().setZoom(15);
+  }
+}
+
+function analisisZonasMostrarMapaVacio(mensaje) {
+  destruirMapaAnalisisZonas();
+  const target = document.getElementById("analisisZonasMap");
+  if (target && mensaje) {
+    const vacio = target.querySelector(".analisis-zonas-mapa-vacio");
+    if (vacio) vacio.textContent = mensaje;
+  }
+}
+
+async function actualizarMapaAnalisisZonas(reg) {
+  const estado = document.getElementById("analisisZonasMapEstado");
+  if (!reg) {
+    analisisZonasMostrarMapaVacio("Seleccione una zona para ver su dibujo cartográfico.");
+    return;
+  }
+
+  const codigo = String(reg.clave_zonah || reg.codigo_zona_homogenea || "").trim().toUpperCase();
+  if (!codigo) {
+    analisisZonasMostrarMapaVacio("La zona seleccionada no tiene código cartográfico.");
+    return;
+  }
+
+  if (codigo === _analisisZonasMapCodigo && _analisisZonasMap) {
+    analisisZonasCentrarMapa();
+    return;
+  }
+
+  _analisisZonasMapCodigo = codigo;
+  const reqId = ++_analisisZonasMapReqId;
+
+  if (estado) {
+    estado.textContent = "Cargando geometría de " + codigo + "…";
+    estado.className = "analisis-zonas-mapa-estado";
+  }
+
+  analisisZonasAsegurarCanvasMapa();
+
+  if (!_analisisZonasMap) {
+    _analisisZonasMapCapas = analisisZonasCrearCapasMapa();
+    _analisisZonasMap = new ol.Map({
+      target: "analisisZonasMapCanvas",
+      layers: [
+        _analisisZonasMapCapas.base,
+        _analisisZonasMapCapas.zonasWms,
+        _analisisZonasMapCapas.zonaVector
+      ],
+      view: new ol.View({ center: ol.proj.fromLonLat([-115.468, 32.624]), zoom: 12 }),
+      controls: []
+    });
+  }
+
+  try {
+    const r = await fetch(
+      `${API}/padron/analisis/zonas-homogeneas/${encodeURIComponent(codigo)}/geometria?_=${Date.now()}`,
+      { cache: "no-store", headers: typeof authHeaders === "function" ? authHeaders() : {} }
+    );
+    const data = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(data.detail || r.statusText || "Error al consultar geometría");
+    if (reqId !== _analisisZonasMapReqId || !_analisisZonasMap || !_analisisZonasMapCapas) return;
+
+    const format = new ol.format.GeoJSON({
+      dataProjection: "EPSG:4326",
+      featureProjection: "EPSG:3857"
+    });
+
+    _analisisZonasMapCapas.zonaVector.getSource().clear();
+    if (!data.geometry) throw new Error("Sin geometría cartográfica");
+
+    const feats = format.readFeatures({
+      type: "Feature",
+      geometry: data.geometry,
+      properties: { codigo: data.codigo || codigo }
+    });
+    _analisisZonasMapCapas.zonaVector.getSource().addFeatures(feats);
+
+    analisisZonasCentrarMapa(data.centroide);
+    _analisisZonasMap.render();
+
+    if (estado) {
+      const origen = data.origen ? " · " + data.origen : "";
+      estado.textContent = "Zona " + codigo + origen;
+      estado.className = "analisis-zonas-mapa-estado";
+    }
+  } catch (e) {
+    if (reqId !== _analisisZonasMapReqId) return;
+    _analisisZonasMapCodigo = "";
+    if (_analisisZonasMapCapas) _analisisZonasMapCapas.zonaVector.getSource().clear();
+    if (estado) {
+      estado.textContent = e.message || "No se pudo cargar la geometría.";
+      estado.className = "analisis-zonas-mapa-estado error";
+    }
+  }
+}
+
+async function capturarMapaAnalisisZonas() {
+  if (!_analisisZonasMap) return null;
+  _analisisZonasMap.updateSize();
+  try {
+    _analisisZonasMap.renderSync();
+  } catch (e) {
+    _analisisZonasMap.render();
+  }
+  await new Promise(function(resolve) { setTimeout(resolve, 450); });
+  if (typeof capturarMapaOlParaPDF === "function") {
+    return capturarMapaOlParaPDF(_analisisZonasMap, 10000);
+  }
+  if (typeof popupNumofCapturarMapaInstancia === "function") {
+    return popupNumofCapturarMapaInstancia(_analisisZonasMap, 10000);
+  }
+  return null;
+}
+
+async function imprimirFichaAnalisisZonaHomogenea() {
+  if (typeof abrirPreviewFichaAnalisisZonaHomogenea === "function") {
+    return abrirPreviewFichaAnalisisZonaHomogenea();
+  }
+  alert("Vista previa de ficha no disponible.");
+}
+window.imprimirFichaAnalisisZonaHomogenea = imprimirFichaAnalisisZonaHomogenea;
 
 /* --- Análisis tipo de tenencia (campo padron.condominio) --- */
 

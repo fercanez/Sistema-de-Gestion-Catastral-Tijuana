@@ -1643,6 +1643,214 @@ def _consultar_zona_homogenea_geonode(cur, ewkt_predio: str, tablas: List[str]) 
     return None
 
 
+ZONA_HOMOGENEA_WFS_URL = ZONA_HOMOGENEA_WMS_URL.replace("/wms", "/wfs")
+ZONA_HOMOGENEA_CODIGO_COLS = [
+    "zonah",
+    "codigo",
+    "codigo_zona",
+    "clave",
+    "homogenea",
+    "secsub",
+    "codigo_zona_homogenea",
+    "zona_homogenea",
+]
+
+
+def _normalizar_codigo_zona_homogenea(codigo: str) -> str:
+    return re.sub(r"[^A-Z0-9]", "", str(codigo or "").strip().upper())
+
+
+def _columnas_codigo_zona_homogenea(cur, tabla: str) -> List[str]:
+    if not re.fullmatch(r"[a-z0-9_]+", tabla or "", re.I):
+        return []
+    try:
+        cur.execute(
+            """
+            SELECT column_name
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = %s
+              AND data_type IN (
+                'character varying', 'text', 'character', 'citext'
+              )
+            ORDER BY ordinal_position;
+            """,
+            (tabla,),
+        )
+        existentes = {
+            str(r.get("column_name") if isinstance(r, dict) else r[0]).lower()
+            for r in (cur.fetchall() or [])
+        }
+    except Exception:
+        existentes = set()
+    cols = [c for c in ZONA_HOMOGENEA_CODIGO_COLS if c in existentes]
+    for c in sorted(existentes):
+        if c not in cols and any(
+            token in c for token in ("zonah", "codigo", "clave", "homogenea", "secsub")
+        ):
+            cols.append(c)
+    return cols
+
+
+def _fila_zona_homogenea_a_carto(row: dict, tabla: str, origen: str) -> dict:
+    props = dict(row)
+    geometry = props.pop("geometry", None)
+    props.pop("geom", None)
+    return {
+        "origen": origen,
+        "tabla": tabla,
+        "properties": props,
+        "geometry": geometry,
+        "atributos": _normalizar_atributos_zona_homogenea(props),
+    }
+
+
+def _consultar_zona_homogenea_por_codigo_geonode(cur, codigo: str) -> Optional[dict]:
+    cod_norm = _normalizar_codigo_zona_homogenea(codigo)
+    if not cod_norm:
+        return None
+    for tabla in ZONA_HOMOGENEA_TABLAS:
+        if not re.fullmatch(r"[a-z0-9_]+", tabla or "", re.I):
+            continue
+        columnas = _columnas_codigo_zona_homogenea(cur, tabla)
+        if not columnas:
+            columnas = ZONA_HOMOGENEA_CODIGO_COLS
+        for col in columnas:
+            if not re.fullmatch(r"[a-z0-9_]+", col or "", re.I):
+                continue
+            try:
+                cur.execute(
+                    f"""
+                    SELECT
+                        t.*,
+                        ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry
+                    FROM public.{tabla} t
+                    WHERE t.geom IS NOT NULL
+                      AND (
+                        UPPER(REGEXP_REPLACE(COALESCE(t.{col}::text, ''), '[^A-Z0-9]', '', 'g')) = %s
+                        OR UPPER(REGEXP_REPLACE(COALESCE(t.{col}::text, ''), '[^A-Z0-9]', '', 'g')) LIKE %s
+                      )
+                    ORDER BY
+                        CASE
+                            WHEN UPPER(REGEXP_REPLACE(COALESCE(t.{col}::text, ''), '[^A-Z0-9]', '', 'g')) = %s THEN 0
+                            ELSE 1
+                        END,
+                        ST_Area(t.geom) DESC NULLS LAST
+                    LIMIT 1;
+                    """,
+                    (cod_norm, f"%{cod_norm}", cod_norm),
+                )
+                row = cur.fetchone()
+                if row:
+                    return _fila_zona_homogenea_a_carto(dict(row), tabla, "geonode")
+            except Exception:
+                continue
+    return None
+
+
+def _consultar_zona_homogenea_wfs_por_codigo(codigo: str) -> Optional[dict]:
+    cod_norm = _normalizar_codigo_zona_homogenea(codigo)
+    if not cod_norm:
+        return None
+    type_names = ["geonode:zonas_homogeneas", "zonas_homogeneas"]
+    for type_name in type_names:
+        for col in ZONA_HOMOGENEA_CODIGO_COLS:
+            cql = f"{col}='{cod_norm}'"
+            params = {
+                "service": "WFS",
+                "version": "1.1.0",
+                "request": "GetFeature",
+                "typeName": type_name,
+                "outputFormat": "application/json",
+                "srsName": "EPSG:4326",
+                "CQL_FILTER": cql,
+                "maxFeatures": "1",
+            }
+            url = ZONA_HOMOGENEA_WFS_URL + "?" + urllib.parse.urlencode(params)
+            try:
+                with urllib.request.urlopen(url, timeout=18) as resp:
+                    data = json.loads(resp.read().decode("utf-8", errors="replace"))
+                features = data.get("features") or []
+                if not features:
+                    continue
+                feat = features[0]
+                props = feat.get("properties") or {}
+                return {
+                    "origen": "wfs",
+                    "tabla": type_name,
+                    "properties": props,
+                    "geometry": feat.get("geometry"),
+                    "atributos": _normalizar_atributos_zona_homogenea(props),
+                }
+            except Exception:
+                continue
+    return None
+
+
+def _geometria_zona_homogenea_por_codigo(codigo: str) -> dict:
+    cod_norm = _normalizar_codigo_zona_homogenea(codigo)
+    if not cod_norm:
+        raise HTTPException(status_code=400, detail="Código de zona homogénea requerido")
+
+    zona_carto = None
+    if get_geonode_conn is not None:
+        try:
+            gconn = get_geonode_conn()
+            gcur = gconn.cursor()
+            zona_carto = _consultar_zona_homogenea_por_codigo_geonode(gcur, cod_norm)
+            gcur.close()
+            gconn.close()
+        except Exception:
+            zona_carto = None
+
+    if zona_carto is None:
+        zona_carto = _consultar_zona_homogenea_wfs_por_codigo(cod_norm)
+
+    if not zona_carto or not zona_carto.get("geometry"):
+        raise HTTPException(
+            status_code=404,
+            detail="No se encontró geometría cartográfica para la zona homogénea indicada.",
+        )
+
+    geometry = zona_carto.get("geometry")
+    lon = lat = None
+    try:
+        conn = get_conn()
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT
+                ST_X(ST_PointOnSurface(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326)))::float AS lon,
+                ST_Y(ST_PointOnSurface(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326)))::float AS lat;
+            """,
+            (json.dumps(geometry), json.dumps(geometry)),
+        )
+        centro = cur.fetchone() or {}
+        lon = centro.get("lon")
+        lat = centro.get("lat")
+        cur.close()
+        conn.close()
+    except Exception:
+        lon = lat = None
+
+    return {
+        "codigo": cod_norm,
+        "geometry": geometry,
+        "centroide": {"lon": lon, "lat": lat},
+        "zona_carto": zona_carto,
+        "origen": zona_carto.get("origen"),
+    }
+
+
+@router.get("/padron/analisis/zonas-homogeneas/{codigo}/geometria")
+def geometria_zona_homogenea_analisis(
+    codigo: str,
+    usuario_actual: dict = Depends(obtener_usuario_actual),
+):
+    """Geometría cartográfica de una zona homogénea por SECSUB / codigo."""
+    return _geometria_zona_homogenea_por_codigo(codigo)
+
+
 def _evolucion_zona_por_codigo(cur, codigo: str) -> Optional[dict]:
     cod_norm = re.sub(r"[^A-Z0-9]", "", str(codigo or "").strip().upper())
     if not cod_norm:

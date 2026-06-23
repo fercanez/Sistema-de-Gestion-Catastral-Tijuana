@@ -22,7 +22,7 @@ body.analisis-zonas-activo {
   background: #fff;
   border-radius: 12px;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.25);
-  width: min(1400px, 100%);
+  width: min(1680px, 100%);
   max-height: calc(100vh - 24px);
   display: flex;
   flex-direction: column;
@@ -102,7 +102,7 @@ body.analisis-zonas-activo {
 
 .overlay-analisis-zonas-body {
   display: grid;
-  grid-template-columns: 280px 1fr 420px;
+  grid-template-columns: 280px minmax(360px, 1fr) 500px;
   gap: 0;
   min-height: 0;
   flex: 1;
@@ -121,7 +121,95 @@ body.analisis-zonas-activo {
   border-right: none;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  gap: 10px;
+}
+
+.analisis-zonas-visual-head {
+  display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.analisis-zonas-visual-head .section-label {
+  margin: 0;
+}
+
+.analisis-zonas-btn-ficha {
+  white-space: nowrap;
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+#analisisZonasCanvas {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  align-self: center;
+}
+
+.analisis-zonas-mapa-wrap {
+  width: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.analisis-zonas-grafica-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  flex: 0 0 auto;
+  padding-top: 4px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.analisis-zonas-mapa {
+  position: relative;
+  width: 100%;
+  min-height: 260px;
+  height: 300px;
+  border: 2px solid #703341;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #e8edf2;
+}
+
+.analisis-zonas-mapa-canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.analisis-zonas-mapa-vacio {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+  background: #f8fafc;
+}
+
+.analisis-zonas-mapa-estado {
+  margin: 0;
+  font-size: 11px;
+  color: #64748b;
+  line-height: 1.35;
+}
+
+.analisis-zonas-mapa-estado.error {
+  color: #b91c1c;
 }
 
 .overlay-analisis-zonas-filtros input,
@@ -281,11 +369,6 @@ body.analisis-zonas-activo {
   width: 12px;
   height: 12px;
   border-radius: 2px;
-}
-
-#analisisZonasCanvas {
-  max-width: 100%;
-  height: auto;
 }
 
 .analisis-zonas-variacion {

@@ -10,7 +10,7 @@
   <link rel="stylesheet" href="css/20-ficha.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
   <link rel="stylesheet" href="css/40-modales.css?v=20260611_v158_catalogos_listbox">
-  <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v150_panel_ocultar">
+  <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v152_analisis_zonas_ficha">
   <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260623_archivo_marca_pdf">
   <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
   <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
@@ -1104,6 +1104,7 @@
 <script src="js/52-popup-rppc.js?v=20260619_marca_agua_fix"></script>
 <script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
 <script src="js/46-ficha-mapa-capas.js?v=20260617_v168_uso_dist"></script>
+<script src="js/49-ficha-analisis-zona-homogenea-preview.js?v=20260611_print_chart_fix"></script>
 <script src="js/07-numeros-oficiales.js?v=20260613_v121_capas_unif"></script>
 <script src="js/08-carta-urbana.js?v=20260617_v170_matriz_compact"></script>
 <script src="js/09-colonias-fraccionamiento.js?v=20260613_v124_predio_fill"></script>
@@ -1117,7 +1118,7 @@
 <script src="js/60-propietarios.js?v=20260611_v178_popup_titularidad"></script>
 <script src="js/72-movimientos-modulo.js?v=20260611_v159_capas_min"></script>
 <script src="js/70-movimientos.js?v=20260611_v182_catalogos_listbox"></script>
-<script src="js/80-zonas.js?v=20260623_zonas_color_2023"></script>
+<script src="js/80-zonas.js?v=20260611_zona_limite_negro"></script>
 <script src="js/85-condominios.js?v=20260610_v125_portal"></script>
 <script src="js/90-mantenimiento.js?v=20260614_v158_folios"></script>
 <script src="js/99-init.js?v=20260610_v125_portal"></script>
@@ -1236,10 +1237,23 @@
       </section>
 
       <section class="overlay-analisis-zonas-grafica">
-        <div class="section-label">Zona homogénea · valor × año</div>
-        <div id="analisisZonasLeyenda" class="analisis-zonas-leyenda"></div>
-        <canvas id="analisisZonasCanvas" width="520" height="360"></canvas>
-        <div id="analisisZonasVariacion" class="analisis-zonas-variacion"></div>
+        <div class="analisis-zonas-visual-head">
+          <div class="section-label">Visualización cartográfica y evolución</div>
+          <button type="button" class="btn-busqueda-unica analisis-zonas-btn-ficha" onclick="imprimirFichaAnalisisZonaHomogenea()">🖨️ Vista previa / Imprimir</button>
+        </div>
+        <div class="analisis-zonas-mapa-wrap">
+          <div class="section-label">Ubicación cartográfica</div>
+          <div id="analisisZonasMap" class="analisis-zonas-mapa">
+            <div class="analisis-zonas-mapa-vacio">Seleccione una zona para ver su dibujo cartográfico.</div>
+          </div>
+          <p id="analisisZonasMapEstado" class="analisis-zonas-mapa-estado"></p>
+        </div>
+        <div class="analisis-zonas-grafica-wrap">
+          <div class="section-label">Zona homogénea · valor × año</div>
+          <div id="analisisZonasLeyenda" class="analisis-zonas-leyenda"></div>
+          <canvas id="analisisZonasCanvas" width="480" height="280"></canvas>
+          <div id="analisisZonasVariacion" class="analisis-zonas-variacion"></div>
+        </div>
       </section>
     </div>
   </div>
