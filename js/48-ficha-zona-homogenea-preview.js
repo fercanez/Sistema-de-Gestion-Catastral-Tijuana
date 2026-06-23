@@ -100,8 +100,12 @@ function buildFichaZonaChartScript(catalogoJson) {
   const cat = JSON.stringify(catalogoJson || null);
   return `
   const catalogoZonaFicha=${cat};
-  const ZONA_CHART_COLORES={2024:"#dc2626",2025:"#ea580c",2026:"#2563eb",2027:"#16a34a"};
-  function colorAnioZonaFicha(an,idx){return ZONA_CHART_COLORES[an]||["#dc2626","#ea580c","#2563eb","#16a34a"][idx%4];}
+  const ZONA_CHART_COLORES={2023:"#059669",2024:"#dc2626",2025:"#ea580c",2026:"#2563eb",2027:"#16a34a"};
+  function colorAnioZonaFicha(an,idx){
+    const y=parseInt(an,10);
+    if(!Number.isNaN(y)&&ZONA_CHART_COLORES[y])return ZONA_CHART_COLORES[y];
+    return ZONA_CHART_COLORES[an]||["#059669","#dc2626","#ea580c","#2563eb"][idx%4];
+  }
   function dibujarChartFichaZona(canvasOpt){
     const canvas=canvasOpt||document.getElementById("previewZonaChart");
     if(!canvas)return null;
