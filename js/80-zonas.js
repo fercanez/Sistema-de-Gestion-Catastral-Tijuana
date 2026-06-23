@@ -1,6 +1,6 @@
 ﻿/* --- v58/v61: Análisis evolución zonas homogéneas (años dinámicos) --- */
-const ANALISIS_ZONAS_ANIOS_BASE = [2024, 2025, 2026];
-const ANALISIS_ZONAS_COLORES = { 2024: "#dc2626", 2025: "#ea580c", 2026: "#2563eb", 2027: "#16a34a" };
+const ANALISIS_ZONAS_ANIOS_BASE = [2023, 2024, 2025, 2026];
+const ANALISIS_ZONAS_COLORES = { 2023: "#7c3aed", 2024: "#dc2626", 2025: "#ea580c", 2026: "#2563eb", 2027: "#16a34a" };
 const ANALISIS_ZONAS_PALETA = ["#dc2626", "#ea580c", "#2563eb", "#16a34a", "#7c3aed", "#0891b2"];
 
 let _analisisZonasState = {
