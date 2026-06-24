@@ -1124,6 +1124,24 @@ function urlFotoArchivoServidor(clave, nombreArchivo) {
   return `${API}/documentos/${encodeURIComponent(claveNorm)}/${archivo.split("/").map(encodeURIComponent).join("/")}`;
 }
 
+const popupArchivoFotoCargaPorSlot = {};
+
+async function urlFotoArchivoParaVisor(claveNorm, foto, cacheKey) {
+  const urlOriginal = urlFotoArchivoServidor(claveNorm, foto.nombre_archivo);
+  if (!urlOriginal) return "";
+
+  if (typeof resolverUrlDocumentoConMarcaAgua === "function") {
+    return await resolverUrlDocumentoConMarcaAgua(urlOriginal, foto.nombre_archivo, cacheKey, {
+      tipoVisor: "archivo"
+    });
+  }
+
+  const headers = typeof authHeaders === "function" ? authHeaders() : {};
+  const r = await fetch(urlOriginal, { cache: "no-store", headers: headers });
+  if (!r.ok) throw new Error(`No se pudo cargar la fotografía (HTTP ${r.status})`);
+  return URL.createObjectURL(await r.blob());
+}
+
 function htmlPopupArchivoFotosGrid(claveNorm) {
   const puedeEditar = puedeGestionarFotosArchivo();
   return POPUP_FOTOS_SLOTS.map(function(def) {
@@ -1160,34 +1178,58 @@ function actualizarPopupArchivoFotosNota(fotos, p, avisoExtra) {
   nota.textContent = `Fotografías cargadas: ${total}/4 · Inspección: ${inspeccion ? "Registrada" : "Sin registro"} · Fotografía: ${fotografia ? "Registrada" : "Sin registro"}`;
 }
 
-function pintarCeldaFotoArchivo(claveNorm, slot, foto) {
+async function pintarCeldaFotoArchivo(claveNorm, slot, foto) {
   const media = document.getElementById(`popupFotoMedia_${slot}`);
   const btnBorrar = document.getElementById(`popupFotoBtnBorrar_${slot}`);
   const celda = document.getElementById(`popupFotoCelda_${slot}`);
   if (!media) return;
 
+  const label = (POPUP_FOTOS_SLOTS.find(s => s.slot === slot) || {}).label || slot;
+  const cargaToken = (popupArchivoFotoCargaPorSlot[slot] = (popupArchivoFotoCargaPorSlot[slot] || 0) + 1);
+
   if (!foto || !foto.nombre_archivo) {
-    media.innerHTML = `<span class="popup-archivo-foto-placeholder">${popupEsc((POPUP_FOTOS_SLOTS.find(s => s.slot === slot) || {}).label || slot)}</span>`;
+    media.innerHTML = `<span class="popup-archivo-foto-placeholder">${popupEsc(label)}</span>`;
     media.style.cursor = "";
     media.title = "";
     media.onclick = null;
     if (celda) celda.classList.remove("con-foto");
     if (btnBorrar) btnBorrar.style.display = "none";
     media.dataset.idDocumento = "";
+    media.dataset.urlVisor = "";
     return;
   }
 
-  const url = urlFotoArchivoServidor(claveNorm, foto.nombre_archivo);
-  const label = (POPUP_FOTOS_SLOTS.find(s => s.slot === slot) || {}).label || slot;
-  media.innerHTML = `<img src="${popupEsc(url)}" alt="${popupEsc(label)}" class="popup-archivo-foto-img" title="Clic para ver en tamaño completo">`;
-  media.style.cursor = "pointer";
-  media.title = "Clic para ver en tamaño completo";
-  media.onclick = function() {
-    abrirVisorFotoArchivo(url, label);
-  };
-  if (celda) celda.classList.add("con-foto");
-  if (btnBorrar && puedeGestionarFotosArchivo()) btnBorrar.style.display = "";
+  media.innerHTML = `<span class="popup-archivo-foto-placeholder">Cargando…</span>`;
+  media.style.cursor = "";
+  media.title = "";
+  media.onclick = null;
+  if (celda) celda.classList.remove("con-foto");
+  if (btnBorrar) btnBorrar.style.display = "none";
   media.dataset.idDocumento = String(foto.id_documento || "");
+  media.dataset.urlVisor = "";
+
+  try {
+    const urlVisor = await urlFotoArchivoParaVisor(
+      claveNorm,
+      foto,
+      `archivo_foto_${claveNorm}_${slot}_${foto.id_documento || foto.nombre_archivo}`
+    );
+    if (popupArchivoFotoCargaPorSlot[slot] !== cargaToken) return;
+
+    media.innerHTML = `<img src="${popupEsc(urlVisor)}" alt="${popupEsc(label)}" class="popup-archivo-foto-img" title="Clic para ver en tamaño completo">`;
+    media.style.cursor = "pointer";
+    media.title = "Clic para ver en tamaño completo";
+    media.dataset.urlVisor = urlVisor;
+    media.onclick = function() {
+      abrirVisorFotoArchivo(urlVisor, label);
+    };
+    if (celda) celda.classList.add("con-foto");
+    if (btnBorrar && puedeGestionarFotosArchivo()) btnBorrar.style.display = "";
+  } catch (e) {
+    if (popupArchivoFotoCargaPorSlot[slot] !== cargaToken) return;
+    media.innerHTML = `<span class="popup-archivo-foto-placeholder popup-archivo-fotos-nota-alerta">No se pudo cargar la imagen</span>`;
+    media.dataset.urlVisor = "";
+  }
 }
 
 function asegurarVisorFotoArchivoOverlay() {
@@ -1268,9 +1310,9 @@ async function cargarFotografiasArchivo(claveNorm, p) {
     (data.fotografias || []).forEach(function(foto) {
       if (foto?.slot) mapa[foto.slot] = foto;
     });
-    POPUP_FOTOS_SLOTS.forEach(function(def) {
-      pintarCeldaFotoArchivo(claveNorm, def.slot, mapa[def.slot] || null);
-    });
+    await Promise.all(POPUP_FOTOS_SLOTS.map(function(def) {
+      return pintarCeldaFotoArchivo(claveNorm, def.slot, mapa[def.slot] || null);
+    }));
     actualizarPopupArchivoFotosNota(data.fotografias || [], p);
   } catch (e) {
     actualizarPopupArchivoFotosNota([], p);
@@ -1314,6 +1356,7 @@ async function subirFotoArchivo(slot, input) {
     if (!r.ok) {
       throw new Error(mensajeErrorFotoArchivo(r, data, "No se pudo subir la fotografía"));
     }
+    if (typeof revocarCacheDocumentosMarcados === "function") revocarCacheDocumentosMarcados();
     await cargarFotografiasArchivo(claveNorm, window.predioSeleccionado || {});
   } catch (e) {
     alert(e.message || "No se pudo subir la fotografía.");
@@ -1346,6 +1389,7 @@ async function eliminarFotoArchivo(slot) {
     if (!r.ok) {
       throw new Error(mensajeErrorFotoArchivo(r, data, "No se pudo eliminar la fotografía"));
     }
+    if (typeof revocarCacheDocumentosMarcados === "function") revocarCacheDocumentosMarcados();
     await cargarFotografiasArchivo(claveNorm, window.predioSeleccionado || {});
   } catch (e) {
     alert(e.message || "No se pudo eliminar la fotografía.");
@@ -1445,6 +1489,7 @@ async function pintarPopupPredioTab(tabId, p) {
   }
   if (tabAnterior === "documento-rppc" && tabId !== "documento-rppc") {
     if (typeof destruirPopupRppc === "function") destruirPopupRppc();
+    else if (typeof limpiarComparacionTitularRppc === "function") limpiarComparacionTitularRppc();
   }
   if (tabAnterior === "control-urbano" && tabId !== "control-urbano") {
     if (typeof window.popupControlUrbanoClaveActual !== "undefined") {

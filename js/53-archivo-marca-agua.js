@@ -282,10 +282,21 @@ async function resolverUrlDocumentoConMarcaAgua(urlOriginal, nombreArchivo, cach
   const conMarca = forzarMarca || debeAplicarMarcaAguaDocumento(tipoVisor);
   const key = `${cacheKey || urlOriginal}|${conMarca ? "1" : "0"}`;
 
-  if (!conMarca) return urlOriginal;
   if (documentoMarcadoCache.has(key)) return documentoMarcadoCache.get(key);
 
   const headers = typeof authHeaders === "function" ? authHeaders() : {};
+
+  if (!conMarca) {
+    if (!headers.Authorization) return urlOriginal;
+    const respSinMarca = await fetch(urlOriginal, { cache: "no-store", headers: headers });
+    if (!respSinMarca.ok) {
+      throw new Error(`No se pudo descargar el documento (HTTP ${respSinMarca.status})`);
+    }
+    const blobUrl = URL.createObjectURL(await respSinMarca.blob());
+    documentoMarcadoCache.set(key, blobUrl);
+    return blobUrl;
+  }
+
   const resp = await fetch(urlOriginal, { cache: "no-store", headers: headers });
   if (!resp.ok) {
     throw new Error(`No se pudo descargar el documento (HTTP ${resp.status})`);

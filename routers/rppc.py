@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 import shutil
 import tempfile
+import unicodedata
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -67,6 +68,7 @@ _rppc_working_documento_url: str | None = None
 _rppc_working_documento_method: str = "GET"
 _rppc_apis_cache: list[dict[str, Any]] = []
 _rppc_auth_token: str | None = None
+_rppc_comparacion_por_clave: dict[str, dict[str, Any]] = {}
 _rppc_usuario_id: int | None = None
 _rppc_cookie_jar: CookieJar | None = None
 _rppc_last_help_error: str | None = None
@@ -1640,7 +1642,14 @@ def _asegurar_columnas_rppc_cache(cur, conn) -> None:
             ADD COLUMN IF NOT EXISTS rppc_fecha_actualizacion timestamp,
             ADD COLUMN IF NOT EXISTS rppc_pdf_local text,
             ADD COLUMN IF NOT EXISTS rppc_pdf_fecha_descarga timestamp,
-            ADD COLUMN IF NOT EXISTS rppc_pdf_doc_tramite_id text;
+            ADD COLUMN IF NOT EXISTS rppc_pdf_doc_tramite_id text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_estado text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_mensaje text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_nombre_folio text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_rol_folio text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_nombre_padron_ref text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_doc_ref text,
+            ADD COLUMN IF NOT EXISTS rppc_titular_comparacion_fecha timestamp;
             """
         )
         conn.commit()
@@ -1957,6 +1966,1242 @@ def _guardar_pdf_local(doc_id: int | str, content: bytes, clave_catastral: str |
 
 
 
+_CLAVES_NOMBRE_RPPC = (
+    "VENDEDOR",
+    "VENDEDORES",
+    "COMPRADOR",
+    "COMPRADORES",
+    "COMPRADOR_ES",
+    "A_FAVOR",
+    "AFAVOR",
+    "DEUDOR",
+    "DEUDORES",
+    "DONATARIO",
+    "DONATARIOS",
+    "HEREDERO",
+    "HEREDEROS",
+    "ADJUDICADO",
+    "ADJUDICADOS",
+    "CESIONARIO",
+    "CESIONARIOS",
+    "BENEFICIARIO",
+    "BENEFICIARIOS",
+    "ASIGNATARIO",
+    "ASIGNATARIOS",
+    "ADQUIRIENTE",
+    "ADQUIRIENTES",
+    "NOMBRE_ADQUIRIENTE",
+    "NOMBRE_PROPIETARIO",
+    "PROPIETARIO",
+    "PROPIETARIOS",
+    "TITULAR",
+    "TITULARES",
+    "NOMBRE_TITULAR",
+    "NOM_PROPIETARIO",
+    "PROPIETARIO_ACTUAL",
+    "TITULAR_ACTUAL",
+    "DUENO",
+    "RAZON_SOCIAL",
+)
+
+# Sufijo flexible: COMPRADOR, COMPRADORES, COMPRADOR(ES), COMPRADOR ( ES ), etc.
+_RE_SUFIJO_ES = r"(?:ES)?(?:\s*\(\s*ES\s*\))?"
+_RE_SUFIJO_S = r"(?:ES)?(?:\s*\(\s*S\s*\))?"
+
+
+def _patron_etiqueta_rol_pdf(raiz: str, *, sufijo: str = "es", cortes: str = "") -> str:
+    etiqueta = rf"{raiz}{_RE_SUFIJO_ES if sufijo == 'es' else _RE_SUFIJO_S}"
+    cortes = cortes or r"RFC\b|CURP\b|DOMICILIO\b|FOLIO\s+REAL"
+    return rf"{etiqueta}\s*[:\.\-]?\s*(.+?)(?=\s+(?:{cortes})|$)"
+
+
+# Roles en Hoja de Inscripción RPPC. Se extraen todos y se elige el que mejor coincide con padrón.
+_ROLES_TITULAR_PDF_RPPC: list[tuple[str, str]] = [
+    (
+        "comprador",
+        _patron_etiqueta_rol_pdf(
+            "COMPRADOR",
+            cortes=r"QUIEN(?:ES)?|RFC\b|CURP\b|VENDEDOR|COMPRADOR|FOLIO\s+REAL|DOMICILIO\b",
+        ),
+    ),
+    (
+        "vendedor",
+        _patron_etiqueta_rol_pdf(
+            "VENDEDOR",
+            cortes=r"RFC\b|CURP\b|REPRESENTAD|COMPRADOR|FOLIO\s+REAL|DOMICILIO\b",
+        ),
+    ),
+    ("a_favor", r"A\s+FAVOR\s+(?:DE\s+)?(.+?)(?=\s+(?:RFC\b|CURP\b|DOMICILIO\b|FOLIO\s+REAL|COMPRADOR|VENDEDOR|DEUDOR|$))"),
+    (
+        "deudor",
+        _patron_etiqueta_rol_pdf("DEUDOR", cortes=r"RFC\b|CURP\b|DOMICILIO\b|ACREEDOR|FOLIO\s+REAL"),
+    ),
+    (
+        "donatario",
+        _patron_etiqueta_rol_pdf("DONATARIO", cortes=r"RFC\b|CURP\b|DOMICILIO\b|DONANTE|FOLIO\s+REAL"),
+    ),
+    (
+        "heredero",
+        _patron_etiqueta_rol_pdf("HEREDERO", sufijo="s", cortes=r"RFC\b|CURP\b|DOMICILIO\b|TESTADOR|FOLIO\s+REAL"),
+    ),
+    (
+        "legatario",
+        _patron_etiqueta_rol_pdf("LEGATARIO", sufijo="s", cortes=r"RFC\b|CURP\b|DOMICILIO\b|TESTADOR|FOLIO\s+REAL"),
+    ),
+    (
+        "adjudicado",
+        _patron_etiqueta_rol_pdf("ADJUDICADO", sufijo="s", cortes=r"RFC\b|CURP\b|DOMICILIO\b|ADJUDICANTE|FOLIO\s+REAL"),
+    ),
+    (
+        "cesionario",
+        _patron_etiqueta_rol_pdf("CESIONARIO", sufijo="s", cortes=r"RFC\b|CURP\b|DOMICILIO\b|CEDENTE|FOLIO\s+REAL"),
+    ),
+    (
+        "beneficiario",
+        _patron_etiqueta_rol_pdf("BENEFICIARIO", sufijo="s", cortes=r"RFC\b|CURP\b|DOMICILIO\b|FIDEICOMISO|FOLIO\s+REAL"),
+    ),
+    (
+        "asignatario",
+        _patron_etiqueta_rol_pdf("ASIGNATARIO", sufijo="s", cortes=r"RFC\b|CURP\b|DOMICILIO\b|FOLIO\s+REAL"),
+    ),
+    (
+        "adquiriente",
+        _patron_etiqueta_rol_pdf("ADQUIRIENTE", cortes=r"RFC\b|CURP\b|DOMICILIO\b|FOLIO\s+REAL"),
+    ),
+    (
+        "titular",
+        _patron_etiqueta_rol_pdf("TITULAR", cortes=r"RFC\b|CURP\b|DOMICILIO\b|FOLIO\s+REAL"),
+    ),
+    (
+        "propietario",
+        r"PROPIETARIO(?:\(S\))?(?:\s+ACTUAL(?:\(ES\))?)?\s*[:\.\-]?\s*(.+?)(?=\s+(?:RFC\b|CURP\b|DOMICILIO\b|FOLIO\s+REAL|$))",
+    ),
+]
+
+# Etiquetas de rol para extracción línea por línea (respaldo si el PDF fragmenta el texto).
+_ROLES_LINEA_PDF_RPPC: list[tuple[str, str]] = [
+    ("comprador", "COMPRADOR"),
+    ("vendedor", "VENDEDOR"),
+    ("deudor", "DEUDOR"),
+    ("donatario", "DONATARIO"),
+    ("heredero", "HEREDERO"),
+    ("legatario", "LEGATARIO"),
+    ("adjudicado", "ADJUDICADO"),
+    ("cesionario", "CESIONARIO"),
+    ("beneficiario", "BENEFICIARIO"),
+    ("asignatario", "ASIGNATARIO"),
+    ("adquiriente", "ADQUIRIENTE"),
+    ("titular", "TITULAR"),
+    ("propietario", "PROPIETARIO"),
+]
+
+_ROLES_TITULAR_ETIQUETAS = {
+    "comprador": "Comprador(es)",
+    "vendedor": "Vendedor(es)",
+    "a_favor": "A favor",
+    "deudor": "Deudor(es)",
+    "donatario": "Donatario(es)",
+    "heredero": "Heredero(s)",
+    "legatario": "Legatario(s)",
+    "adjudicado": "Adjudicado(s)",
+    "cesionario": "Cesionario(s)",
+    "beneficiario": "Beneficiario(s)",
+    "asignatario": "Asignatario(s)",
+    "adquiriente": "Adquiriente(s)",
+    "titular": "Titular",
+    "propietario": "Propietario",
+    "movimiento": "Movimiento RPPC",
+    "inscripcion": "Inscripción RPPC",
+    "pdf": "Documento RPPC",
+    "texto_folio": "Texto del folio",
+}
+
+_TOKENS_IGNORAR_COMPARACION = frozenset({
+    "DE", "DEL", "LA", "LAS", "LOS", "EL", "Y", "E", "EN", "CON", "POR", "AL", "A",
+    "VIUDA", "VIUDO", "VIUVO", "CONYUGE", "CONYUGES", "SR", "SRA", "SRTA",
+    "LIC", "ING", "C", "SA", "CV", "SC", "AC", "AP", "MZ", "LT",
+})
+
+_STOP_DESPUES_NOMBRE_RPPC = re.compile(
+    r"\s+(?:QUIEN(?:ES)?(?:\s+ADQUIERE(?:N)?)?|RFC|CURP|CON\s+DOMICILIO|DOMICILIO|EN\s+SU|Y\s+SU|"
+    r"REPRESENTAD[OA]|PORCENTAJE|ADQUIERE(?:N)?|ACREEDOR|VENDEDOR|COMPRADOR|DONANTE|CEDENTE|TESTADOR|"
+    r"ADJUDICANTE|FIDEICOMISO|EL\s+\d{1,3}\s*%|\d{1,3}\s*%)",
+    re.IGNORECASE,
+)
+
+
+def _normalizar_texto_pdf_rppc(texto: str) -> str:
+    texto = unicodedata.normalize("NFKD", str(texto or ""))
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = texto.replace("\u00a0", " ").replace("\u2013", "-").replace("\u2014", "-")
+    texto = re.sub(r"[^\S\n]+", " ", texto)
+    texto = re.sub(r"\s+", " ", texto).strip().upper()
+    return texto
+
+
+def _preparar_nombre_para_comparacion(nombre: str) -> str:
+    texto = str(nombre or "").strip()
+    texto = re.split(r"\s+REPRESENTAD[OA]\s+POR\s+", texto, maxsplit=1, flags=re.IGNORECASE)[0]
+    texto = re.split(r"\s+RFC\b", texto, maxsplit=1, flags=re.IGNORECASE)[0]
+    texto = re.split(r"\s+CURP\b", texto, maxsplit=1, flags=re.IGNORECASE)[0]
+    limpio = _limpiar_nombre_extraido(texto)
+    return limpio or texto.strip()
+
+
+def _normalizar_moral_comparacion(nombre: str) -> str:
+    n = _normalizar_nombre_comparacion(_preparar_nombre_para_comparacion(nombre))
+    n = re.sub(r"\bS\s*A\s*(?:DE\s*)?C\s*V\b", " SADE CV ", n)
+    n = re.sub(r"\bS\s*DE\s*R\s*L\b", " SRL ", n)
+    n = re.sub(r"\s+", " ", n).strip()
+    return n
+
+
+def _limpiar_nombre_extraido(valor: str) -> str:
+    nombre = re.sub(r"\s+", " ", str(valor or "").strip(" .,:;-"))
+    nombre = re.sub(r"^(SR|SRA|SRTA|LIC|ING|C|POR)\.?\s+", "", nombre, flags=re.IGNORECASE)
+    if len(nombre) < 4:
+        return ""
+    if nombre.upper() in {"SIN DATOS", "NO APLICA", "N/A", "NULL"}:
+        return ""
+    return nombre
+
+
+def _truncar_nombre_rppc_desde_pdf(fragmento: str) -> str:
+    texto = re.sub(r"\s+", " ", str(fragmento or "").strip(" .,:;-"))
+    texto = _STOP_DESPUES_NOMBRE_RPPC.split(texto, maxsplit=1)[0]
+    texto = re.sub(r"\s+", " ", texto).strip(" .,:;-")
+    return _limpiar_nombre_extraido(texto)
+
+
+def _etiqueta_rol_titular_rppc(rol: str | None) -> str | None:
+    if not rol:
+        return None
+    return _ROLES_TITULAR_ETIQUETAS.get(str(rol).lower(), str(rol).replace("_", " ").title())
+
+
+def _normalizar_nombre_comparacion(nombre: str) -> str:
+    texto = unicodedata.normalize("NFKD", str(nombre or ""))
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = texto.upper()
+    texto = re.sub(r"[^A-Z0-9\s]", " ", texto)
+    return re.sub(r"\s+", " ", texto).strip()
+
+
+def _normalizar_token_comparacion(token: str) -> str:
+    """Unifica variantes frecuentes en apellidos (VASQUEZ/VAZQUEZ)."""
+    return str(token or "").replace("Z", "S")
+
+
+def _tokens_nombre_comparacion(nombre: str) -> set[str]:
+    tokens = []
+    for token in _normalizar_nombre_comparacion(nombre).split():
+        if len(token) <= 1 or token in _TOKENS_IGNORAR_COMPARACION:
+            continue
+        tokens.append(_normalizar_token_comparacion(token))
+    return set(tokens)
+
+
+def _puntaje_coincidencia_nombres(nombre_padron: str, nombre_rppc: str) -> float:
+    if not nombre_padron or not nombre_rppc:
+        return 0.0
+
+    padron_prep = _preparar_nombre_para_comparacion(nombre_padron)
+    rppc_prep = _preparar_nombre_para_comparacion(nombre_rppc)
+
+    if _normalizar_nombre_comparacion(padron_prep) == _normalizar_nombre_comparacion(rppc_prep):
+        return 1.0
+
+    moral_padron = _normalizar_moral_comparacion(padron_prep)
+    moral_rppc = _normalizar_moral_comparacion(rppc_prep)
+    if moral_padron and moral_rppc:
+        if moral_padron == moral_rppc:
+            return 1.0
+        if moral_padron in moral_rppc or moral_rppc in moral_padron:
+            return 0.95
+
+    tokens_padron = _tokens_nombre_comparacion(padron_prep)
+    tokens_rppc = _tokens_nombre_comparacion(rppc_prep)
+    if not tokens_padron or not tokens_rppc:
+        return 0.0
+    if tokens_padron == tokens_rppc:
+        return 1.0
+
+    inter = tokens_padron & tokens_rppc
+    menor = min(len(tokens_padron), len(tokens_rppc))
+    if not menor:
+        return 0.0
+    puntaje = len(inter) / menor
+
+    # Apellidos compuestos con partícula DE en distinto orden (p. ej. DE MARTINEZ ORTIZ SABINA).
+    if len(inter) >= 2 and puntaje >= 0.66:
+        return max(puntaje, 0.85)
+    return puntaje
+
+
+def _nombres_propietario_coinciden(nombre_padron: str, nombre_rppc: str) -> bool:
+    return _puntaje_coincidencia_nombres(nombre_padron, nombre_rppc) >= 0.8
+
+
+def _extraer_nombre_desde_registro_rppc(registro: dict[str, Any] | None) -> str | None:
+    if not isinstance(registro, dict):
+        return None
+
+    for clave_canonica in _CLAVES_NOMBRE_RPPC:
+        for clave, valor in registro.items():
+            if str(clave).upper() != clave_canonica or valor in (None, ""):
+                continue
+            nombre = _limpiar_nombre_extraido(str(valor))
+            if nombre:
+                return nombre
+
+    for clave, valor in registro.items():
+        clave_u = str(clave).upper()
+        if not isinstance(valor, str) or not valor.strip():
+            continue
+        if any(bloqueo in clave_u for bloqueo in ("FECHA", "ID_", "NUM", "CVE", "TIPO", "OFICINA", "USUARIO")):
+            continue
+        if any(
+            token in clave_u
+            for token in (
+                "VENDED", "COMPRAD", "DEUDOR", "DONAT", "HERED", "ADJUDIC", "CESION", "BENEFIC", "ASIGNAT",
+                "PROPIET", "TITULAR", "ADQUIRIENT", "DUENO", "RAZON", "AFAVOR", "A_FAVOR",
+            )
+        ):
+            nombre = _limpiar_nombre_extraido(valor)
+            if nombre:
+                return nombre
+    return None
+
+
+def _obtener_nombre_propietario_padron(
+    clave_catastral: str | None = None,
+    folio_real: int | None = None,
+) -> str | None:
+    clave = _normalizar_clave(clave_catastral or "")
+    folio = str(folio_real) if folio_real else ""
+
+    if not clave and not folio:
+        return None
+
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                if clave:
+                    cur.execute(
+                        """
+                        SELECT COALESCE(
+                            NULLIF(TRIM(tit.nombre_visible), ''),
+                            NULLIF(TRIM(tit.titular_principal), ''),
+                            NULLIF(TRIM(p.nombre_completo), '')
+                        ) AS nombre
+                        FROM catalogos.padron_2026 p
+                        LEFT JOIN (
+                            SELECT DISTINCT ON (UPPER(TRIM(v.clave_catastral)))
+                                v.clave_catastral,
+                                v.nombre_visible,
+                                v.titular_principal
+                            FROM catastro.v_titularidad_predio v
+                            ORDER BY
+                                UPPER(TRIM(v.clave_catastral)),
+                                CASE WHEN UPPER(COALESCE(v.tipo_titularidad, '')) = 'PROPIETARIO' THEN 0 ELSE 1 END,
+                                v.porcentaje_propiedad DESC NULLS LAST
+                        ) tit ON UPPER(TRIM(tit.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
+                        WHERE UPPER(TRIM(p.clave_catastral)) = %s
+                        LIMIT 1;
+                        """,
+                        (clave,),
+                    )
+                else:
+                    cur.execute(
+                        """
+                        SELECT COALESCE(
+                            NULLIF(TRIM(tit.nombre_visible), ''),
+                            NULLIF(TRIM(tit.titular_principal), ''),
+                            NULLIF(TRIM(p.nombre_completo), '')
+                        ) AS nombre
+                        FROM catalogos.padron_2026 p
+                        LEFT JOIN (
+                            SELECT DISTINCT ON (UPPER(TRIM(v.clave_catastral)))
+                                v.clave_catastral,
+                                v.nombre_visible,
+                                v.titular_principal
+                            FROM catastro.v_titularidad_predio v
+                            ORDER BY
+                                UPPER(TRIM(v.clave_catastral)),
+                                CASE WHEN UPPER(COALESCE(v.tipo_titularidad, '')) = 'PROPIETARIO' THEN 0 ELSE 1 END,
+                                v.porcentaje_propiedad DESC NULLS LAST
+                        ) tit ON UPPER(TRIM(tit.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
+                        WHERE NULLIF(NULLIF(TRIM(p.folio_real::text), ''), '0') = %s
+                        LIMIT 1;
+                        """,
+                        (folio,),
+                    )
+                row = cur.fetchone()
+        if row and row.get("nombre"):
+            return _limpiar_nombre_extraido(str(row["nombre"]))
+    except Exception:
+        return None
+    return None
+
+
+def _extraer_texto_literal_pdf_bytes(content: bytes) -> str:
+    """Extrae cadenas legibles embebidas en el PDF (operadores Tj/TJ) sin pdftotext."""
+    if not content or not content.startswith(b"%PDF"):
+        return ""
+
+    partes: list[str] = []
+    for coincidencia in re.finditer(rb"\(([^()\\]*(?:\\.[^()\\]*)*)\)", content):
+        literal = bytes(coincidencia.group(1))
+        if len(literal) < 2:
+            continue
+        texto = literal.decode("latin-1", errors="ignore")
+        texto = texto.replace("\\(", "(").replace("\\)", ")").replace("\\n", " ")
+        texto = re.sub(r"\s+", " ", texto).strip()
+        if len(texto) >= 2 and re.search(r"[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]{2}", texto):
+            partes.append(texto)
+
+    if not partes:
+        return ""
+
+    return " ".join(partes)
+
+
+def _combinar_textos_pdf(*textos: str) -> str:
+    limpios = [re.sub(r"[ \t]+", " ", str(t or "").strip()) for t in textos if str(t or "").strip()]
+    if not limpios:
+        return ""
+    return max(limpios, key=lambda t: len(re.sub(r"\s+", "", t)))
+
+
+def _extraer_textos_desde_pdf(content: bytes) -> tuple[str, str]:
+    """Retorna (texto_continuo, texto_con_saltos_de_linea para lectura por renglón)."""
+    if not content or not content.startswith(b"%PDF"):
+        return "", ""
+
+    textos_planos: list[str] = []
+    texto_layout = ""
+
+    for layout in (True, False):
+        texto_pt = _pdftotext_extraer(content, layout=layout)
+        if len(re.sub(r"\s+", "", texto_pt)) > 40:
+            if layout:
+                texto_layout = texto_pt
+            textos_planos.append(re.sub(r"\s+", " ", texto_pt).strip())
+
+    texto_literal = _extraer_texto_literal_pdf_bytes(content)
+    if len(re.sub(r"\s+", "", texto_literal)) > 40:
+        textos_planos.append(re.sub(r"\s+", " ", texto_literal).strip())
+
+    try:
+        texto = content.decode("latin-1", errors="ignore")
+        if len(re.sub(r"\s+", "", texto)) > 80:
+            textos_planos.append(re.sub(r"\s+", " ", texto).strip())
+    except Exception:
+        pass
+
+    texto_plano = _combinar_textos_pdf(*textos_planos)
+    texto_lineas = texto_layout.strip() if texto_layout.strip() else texto_plano
+    return texto_plano, texto_lineas
+
+
+def _pdftotext_extraer(content: bytes, *, layout: bool = True) -> str:
+    if not shutil.which("pdftotext"):
+        return ""
+    tmp_pdf = None
+    tmp_txt = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f_pdf:
+            f_pdf.write(content)
+            tmp_pdf = f_pdf.name
+        tmp_txt = f"{tmp_pdf}.txt"
+        args = ["pdftotext", "-enc", "UTF-8"]
+        if layout:
+            args.append("-layout")
+        args.extend([tmp_pdf, tmp_txt])
+        subprocess.run(
+            args,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            timeout=20,
+        )
+        return Path(tmp_txt).read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return ""
+    finally:
+        for tmp in (tmp_pdf, tmp_txt):
+            if tmp:
+                try:
+                    Path(tmp).unlink(missing_ok=True)
+                except Exception:
+                    pass
+
+
+def _extraer_texto_desde_pdf(content: bytes) -> str:
+    texto_plano, _ = _extraer_textos_desde_pdf(content)
+    return texto_plano
+
+
+def _limpiar_prefijo_nombre_titular_rppc(nombre: str) -> str:
+    texto = re.sub(r"\s+", " ", str(nombre or "").strip())
+    texto = re.sub(
+        r"^.*?(?:PROPIETARIO(?:\(S\))?(?:\s+Y\s+PROPIEDAD(?:\(ES\))?)?)\s*[:\.\-]?\s*",
+        "",
+        texto,
+        flags=re.IGNORECASE,
+    )
+    texto = re.sub(
+        r"^(?:COMPRADOR|VENDEDOR|PROPIETARIO|DEUDOR|DONATARIO|HEREDERO|ADJUDICADO|"
+        r"CESIONARIO|BENEFICIARIO|ADQUIRIENTE|TITULAR|ASIGNATARIO)(?:ES)?"
+        r"(?:\s*\(\s*(?:ES|S)\s*\))?\s*[:\.\-]?\s*",
+        "",
+        texto,
+        flags=re.IGNORECASE,
+    )
+    texto = re.sub(r"^Y\s+PROPIEDAD(?:\(ES\))?\s*", "", texto, flags=re.IGNORECASE)
+    texto = re.sub(r"^PROPIEDAD(?:\(ES\))?\s*", "", texto, flags=re.IGNORECASE)
+    return texto.strip()
+
+
+def _es_nombre_titular_valido(limpio: str) -> bool:
+    n = _normalizar_nombre_comparacion(limpio)
+    if len(n) < 4:
+        return False
+    if n in {"SIN DATOS", "NO APLICA", "NA"}:
+        return False
+    prefijos_invalidos = (
+        "Y PROPIEDAD",
+        "PROPIEDAD ES",
+        "PROPIETARIO S",
+        "PROPIETARIO Y",
+        "PROPIETARIOS Y",
+    )
+    for prefijo in prefijos_invalidos:
+        if n.startswith(prefijo):
+            return False
+    primeros = n.split()[:4]
+    if any(tok in {"PROPIEDAD", "PROPIETARIO", "PROPIETARIOS"} for tok in primeros):
+        return False
+    if len(_tokens_nombre_comparacion(limpio)) < 2:
+        return False
+    return True
+
+
+_RE_LINEA_NO_NOMBRE_RPPC = re.compile(
+    r"^(?:RFC|CURP|DOMICILIO|FOLIO|CONTRATO|INSCRIP|LIBRO|PARTIDA|OFICINA|ACTO|OPER|FECHA|"
+    r"COMPRADOR|VENDEDOR|PROPIETARIO|DEUDOR|DONATARIO|HEREDERO|ADJUDICADO|CESIONARIO|"
+    r"BENEFICIARIO|ADQUIRIENTE|TITULAR|TIPO|NUMERO|NOMBRE\s+DEL|POR\s+CIENTO|DERECHOS|"
+    r"REPORTE|HOJA|ESTADO|BAJA|CALIFORNIA|MUNICIPIO|SECCION|ARTICULO|FRACCION|"
+    r"REPRESENTAD|NOTARIA|ESCRITURA|C\.?P\.?P\.?|C\.?C\.?)",
+    re.IGNORECASE,
+)
+
+_REINICIOS_NOMBRE_RPPC = (
+    "MARIA", "JOSE", "JUAN", "ANA", "LUIS", "CARLOS", "ANGELICA", "FRANCISCO", "PEDRO", "ROSA",
+    "MIGUEL", "ANTONIO", "JESUS", "GUADALUPE", "REFUGIO", "AMELIA", "JORGE", "RAFAEL", "MANUEL",
+    "FERNANDO", "ALEJANDRO", "RICARDO", "SERGIO", "ARTURO", "MARTIN", "VICTOR", "ALBERTO",
+    "VICTORIANO", "EDGAR", "HUMBERTO", "MARTIN", "ANGELICA",
+)
+
+
+def _partir_nombres_en_linea(nombre_linea: str) -> list[str]:
+    """Separa varios nombres en una misma línea (p. ej. dos compradores)."""
+    texto = _limpiar_prefijo_nombre_titular_rppc(nombre_linea)
+    limpio = _truncar_nombre_rppc_desde_pdf(texto)
+    if not limpio:
+        return []
+    tokens = limpio.split()
+    if len(tokens) <= 5:
+        return [limpio]
+
+    cortes: list[int] = []
+    for i in range(2, len(tokens) - 1):
+        if tokens[i] in _REINICIOS_NOMBRE_RPPC and i >= 3:
+            cortes.append(i)
+    if not cortes:
+        return [limpio]
+
+    partes: list[str] = []
+    inicio = 0
+    for corte in cortes:
+        parte = " ".join(tokens[inicio:corte]).strip()
+        if parte:
+            partes.append(parte)
+        inicio = corte
+    parte = " ".join(tokens[inicio:]).strip()
+    if parte:
+        partes.append(parte)
+    return partes or [limpio]
+
+
+def _agregar_candidatos_desde_fragmento(
+    encontrados: list[tuple[str, str]],
+    vistos: set[str],
+    rol: str,
+    fragmento: str,
+    *,
+    partir: bool = True,
+) -> None:
+    fragmentos = _partir_nombres_en_linea(fragmento) if partir else [fragmento]
+    for frag in fragmentos:
+        _agregar_candidato_titular_rppc(encontrados, vistos, rol, frag)
+
+
+def _agregar_candidato_titular_rppc(
+    encontrados: list[tuple[str, str]],
+    vistos: set[str],
+    rol: str,
+    nombre: str,
+) -> None:
+    nombre_limpio = _limpiar_prefijo_nombre_titular_rppc(nombre)
+    limpio = _truncar_nombre_rppc_desde_pdf(nombre_limpio)
+    if not limpio or not _es_nombre_titular_valido(limpio):
+        return
+    clave = _normalizar_nombre_comparacion(limpio)
+    if not clave or clave in vistos:
+        return
+    vistos.add(clave)
+    encontrados.append((rol, limpio))
+
+
+def _leer_pdf_local_any(doc_id: int | str, clave_catastral: str | None = None) -> bytes | None:
+    clave = _normalizar_clave(clave_catastral or "")
+    for candidata in (clave, "SIN_CLAVE", None):
+        content = _leer_pdf_local(doc_id, candidata or None)
+        if content:
+            return content
+    return None
+
+
+def _rol_para_quien_adquiere(texto_norm: str, posicion: int) -> str:
+    ventana = texto_norm[max(0, posicion - 100):posicion]
+    if re.search(r"COMPRADOR", ventana, re.IGNORECASE):
+        return "comprador"
+    if re.search(r"DEUDOR", ventana, re.IGNORECASE):
+        return "deudor"
+    if re.search(r"VENDEDOR", ventana, re.IGNORECASE):
+        return "vendedor"
+    return "propietario"
+
+
+def _extraer_copropietarios_quien_adquiere(
+    texto_norm: str,
+    encontrados: list[tuple[str, str]],
+    vistos: set[str],
+) -> None:
+    for coincidencia in re.finditer(
+        r"([A-Z][A-Z0-9\s\.'\-]{3,120}?)\s+QUIEN(?:ES)?\s+ADQUIERE(?:N)?",
+        texto_norm,
+        re.IGNORECASE,
+    ):
+        rol = _rol_para_quien_adquiere(texto_norm, coincidencia.start())
+        _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, coincidencia.group(1))
+
+
+def _extraer_nombres_antes_de_rfc(
+    texto_norm: str,
+    encontrados: list[tuple[str, str]],
+    vistos: set[str],
+) -> None:
+    pos_comprador = texto_norm.find("COMPRADOR")
+    pos_vendedor = texto_norm.find("VENDEDOR")
+    for coincidencia in re.finditer(
+        r"([A-Z][A-Z0-9\s\.'\-]{4,80}?)\s+RFC\s*[:\.]?\s*[A-Z0-9&]{10,13}",
+        texto_norm,
+        re.IGNORECASE,
+    ):
+        nombre = coincidencia.group(1).strip()
+        pos = coincidencia.start()
+        if pos_comprador >= 0 and pos > pos_comprador and (pos_vendedor < 0 or pos > pos_vendedor):
+            rol = "comprador"
+        elif pos_vendedor >= 0 and pos > pos_vendedor and (pos_comprador < 0 or pos < pos_comprador):
+            rol = "vendedor"
+        else:
+            rol = "comprador" if pos_comprador >= 0 else "vendedor"
+        _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, nombre)
+
+
+def _etiqueta_rol_linea_pdf(raiz: str) -> str:
+    return rf"^{raiz}(?:ES)?(?:\s*\(\s*(?:ES|S)\s*\))?"
+
+
+def _extraer_nombres_multilinea_despues_rol(
+    texto: str,
+    encontrados: list[tuple[str, str]],
+    vistos: set[str],
+) -> None:
+    """Extrae nombres en líneas posteriores a COMPRADOR(ES), VENDEDOR(ES), etc."""
+    rol_actual: str | None = None
+
+    for linea in re.split(r"[\r\n]+", str(texto or "")):
+        linea_norm = _normalizar_texto_pdf_rppc(linea)
+        if not linea_norm:
+            continue
+
+        etiqueta_en_linea = False
+        for rol, raiz in _ROLES_LINEA_PDF_RPPC:
+            etiqueta = _etiqueta_rol_linea_pdf(raiz)
+            if re.match(rf"{etiqueta}\s*$", linea_norm, re.IGNORECASE):
+                rol_actual = rol
+                etiqueta_en_linea = True
+                break
+            coincidencia = re.match(rf"{etiqueta}\s*[:\.\-]\s*(.+)$", linea_norm, re.IGNORECASE)
+            if coincidencia:
+                rol_actual = rol
+                _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, coincidencia.group(1))
+                etiqueta_en_linea = True
+                break
+            coincidencia = re.match(rf"{etiqueta}\s+(.+)$", linea_norm, re.IGNORECASE)
+            if coincidencia:
+                rol_actual = rol
+                _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, coincidencia.group(1))
+                etiqueta_en_linea = True
+                break
+
+        if etiqueta_en_linea:
+            continue
+
+        if rol_actual and not _RE_LINEA_NO_NOMBRE_RPPC.match(linea_norm):
+            _agregar_candidatos_desde_fragmento(encontrados, vistos, rol_actual, linea_norm)
+        elif _RE_LINEA_NO_NOMBRE_RPPC.match(linea_norm):
+            rol_actual = None
+
+
+def _extraer_nombres_titulares_linea_por_linea(texto: str) -> list[tuple[str, str]]:
+    encontrados: list[tuple[str, str]] = []
+    vistos: set[str] = set()
+    texto_uni = unicodedata.normalize("NFKD", str(texto or ""))
+    for linea in re.split(r"[\r\n]+", texto_uni):
+        linea_norm = _normalizar_texto_pdf_rppc(linea)
+        if not linea_norm:
+            continue
+        for rol, raiz in _ROLES_LINEA_PDF_RPPC:
+            patrones = (
+                rf"{raiz}(?:ES)?(?:\s*\(\s*(?:ES|S)\s*\))?\s*[:\.\-]\s*(.+)",
+                rf"{raiz}(?:ES)?(?:\s*\(\s*(?:ES|S)\s*\))?\s+(.+)",
+            )
+            for patron in patrones:
+                coincidencia = re.search(patron, linea_norm, re.IGNORECASE)
+                if coincidencia:
+                    _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, coincidencia.group(1))
+                    break
+    return encontrados
+
+
+def _extraer_nombres_titulares_por_ancla(texto_norm: str) -> list[tuple[str, str]]:
+    encontrados: list[tuple[str, str]] = []
+    vistos: set[str] = set()
+    for rol, raiz in _ROLES_LINEA_PDF_RPPC:
+        etiqueta_re = rf"{raiz}(?:ES)?(?:\s*\(\s*(?:ES|S)\s*\))?"
+        for coincidencia in re.finditer(etiqueta_re, texto_norm, re.IGNORECASE):
+            chunk = texto_norm[coincidencia.end() : coincidencia.end() + 220].lstrip(" :.-()")
+            _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, chunk)
+    return encontrados
+
+
+def _mejor_fragmento_nombre_en_ventana(ventana: str, nombre_padron: str) -> str | None:
+    palabras = ventana.split()
+    if len(palabras) < 2:
+        return None
+    mejor: str | None = None
+    mejor_puntaje = 0.0
+    for inicio in range(len(palabras)):
+        for fin in range(inicio + 2, min(inicio + 14, len(palabras)) + 1):
+            fragmento = " ".join(palabras[inicio:fin])
+            puntaje = _puntaje_coincidencia_nombres(nombre_padron, fragmento)
+            if puntaje > mejor_puntaje:
+                mejor_puntaje = puntaje
+                mejor = fragmento
+    if mejor_puntaje >= 0.85 and mejor:
+        limpio = _truncar_nombre_rppc_desde_pdf(mejor)
+        return limpio or mejor
+    return None
+
+
+def _buscar_nombre_padron_en_texto_pdf(texto_norm: str, nombre_padron: str) -> str | None:
+    if not texto_norm or not nombre_padron:
+        return None
+
+    tokens = _tokens_nombre_comparacion(nombre_padron)
+    if len(tokens) < 2:
+        return None
+
+    anclas = (
+        "COMPRADOR",
+        "DEUDOR",
+        "PROPIETARIO",
+        "ADJUDICADO",
+        "HEREDERO",
+        "LEGATARIO",
+        "ADQUIRIENTE",
+        "TITULAR",
+        "A FAVOR",
+        "CESIONARIO",
+        "BENEFICIARIO",
+    )
+    for ancla in anclas:
+        inicio = 0
+        while True:
+            pos = texto_norm.find(ancla, inicio)
+            if pos < 0:
+                break
+            ventana = texto_norm[pos : pos + 380]
+            hallado = _mejor_fragmento_nombre_en_ventana(ventana, nombre_padron)
+            if hallado:
+                return hallado
+            inicio = pos + len(ancla)
+
+    return _mejor_fragmento_nombre_en_ventana(texto_norm, nombre_padron)
+
+
+def _extraer_nombres_titulares_desde_pdf(content: bytes, nombre_padron: str | None = None) -> list[tuple[str, str]]:
+    texto_plano, texto_lineas = _extraer_textos_desde_pdf(content)
+    if not texto_plano and not texto_lineas:
+        return []
+
+    texto_norm = _normalizar_texto_pdf_rppc(texto_plano or texto_lineas)
+    encontrados: list[tuple[str, str]] = []
+    vistos: set[str] = set()
+
+    for rol, patron in _ROLES_TITULAR_PDF_RPPC:
+        for coincidencia in re.finditer(patron, texto_norm, re.IGNORECASE):
+            _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, coincidencia.group(1))
+
+    _extraer_copropietarios_quien_adquiere(texto_norm, encontrados, vistos)
+    _extraer_nombres_antes_de_rfc(texto_norm, encontrados, vistos)
+
+    _extraer_nombres_multilinea_despues_rol(texto_lineas or texto_plano, encontrados, vistos)
+
+    for rol, nombre in _extraer_nombres_titulares_linea_por_linea(texto_lineas or texto_plano):
+        _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, nombre, partir=False)
+
+    for rol, nombre in _extraer_nombres_titulares_por_ancla(texto_norm):
+        _agregar_candidatos_desde_fragmento(encontrados, vistos, rol, nombre, partir=False)
+
+    if nombre_padron:
+        coincidencia_directa = _buscar_nombre_padron_en_texto_pdf(texto_norm, nombre_padron)
+        if coincidencia_directa:
+            _agregar_candidato_titular_rppc(encontrados, vistos, "texto_folio", coincidencia_directa)
+
+    return encontrados
+
+
+_ROLES_ADQUISICION_RPPC = frozenset({
+    "comprador", "propietario", "adquiriente", "titular", "adjudicado",
+    "heredero", "donatario", "a_favor", "cesionario", "beneficiario", "asignatario", "texto_folio",
+})
+
+_ROLES_EXCLUIR_COMPARACION_PADRON = frozenset({
+    "vendedor", "movimiento", "inscripcion",
+})
+
+_ORDEN_PRIORIDAD_COMPARACION_PADRON = (
+    "comprador",
+    "propietario",
+    "adquiriente",
+    "titular",
+    "deudor",
+    "adjudicado",
+    "heredero",
+    "legatario",
+    "donatario",
+    "a_favor",
+    "cesionario",
+    "beneficiario",
+    "asignatario",
+    "texto_folio",
+)
+
+
+def _prioridad_rol_comparacion(rol: str) -> int:
+    try:
+        return _ORDEN_PRIORIDAD_COMPARACION_PADRON.index(str(rol or "").lower())
+    except ValueError:
+        return len(_ORDEN_PRIORIDAD_COMPARACION_PADRON)
+
+
+def _pool_candidatos_comparacion_padron(
+    candidatos: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    pool = [(rol, nombre) for rol, nombre in candidatos if rol not in _ROLES_EXCLUIR_COMPARACION_PADRON]
+    if not pool:
+        return []
+    sin_moral = [(rol, nombre) for rol, nombre in pool if not _es_probable_persona_moral(nombre)]
+    return sin_moral or pool
+
+
+def _doc_ref_comparacion_titular(
+    *,
+    partida: int | None,
+    doc_tramite_id: int | None,
+) -> str:
+    if doc_tramite_id:
+        return f"doc:{doc_tramite_id}"
+    if partida:
+        return f"partida:{partida}"
+    return ""
+
+
+def _leer_comparacion_titular_desde_padron(
+    clave_catastral: str,
+    nombre_padron: str | None,
+    *,
+    doc_ref: str | None = None,
+) -> dict[str, Any] | None:
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        return None
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                _asegurar_columnas_rppc_cache(cur, conn)
+                cur.execute(
+                    """
+                    SELECT
+                        rppc_titular_estado,
+                        rppc_titular_mensaje,
+                        rppc_titular_nombre_folio,
+                        rppc_titular_rol_folio,
+                        rppc_titular_nombre_padron_ref,
+                        rppc_titular_doc_ref,
+                        rppc_titular_comparacion_fecha
+                    FROM catalogos.padron_2026
+                    WHERE UPPER(TRIM(clave_catastral)) = %s
+                    LIMIT 1;
+                    """,
+                    (clave,),
+                )
+                row = cur.fetchone()
+    except Exception:
+        return None
+
+    if not row or not row.get("rppc_titular_estado"):
+        return None
+
+    estado = str(row["rppc_titular_estado"]).strip().lower()
+    if estado not in {"coincide", "difiere"}:
+        return None
+
+    ref_padron = str(row.get("rppc_titular_nombre_padron_ref") or "").strip()
+    if nombre_padron and ref_padron:
+        if _normalizar_nombre_comparacion(ref_padron) != _normalizar_nombre_comparacion(nombre_padron):
+            return None
+
+    ref_doc = str(row.get("rppc_titular_doc_ref") or "").strip()
+    if doc_ref and ref_doc and ref_doc != doc_ref:
+        return None
+
+    rol = str(row.get("rppc_titular_rol_folio") or "").strip() or None
+    return {
+        "estado": estado,
+        "coincide": estado == "coincide",
+        "mensaje": row.get("rppc_titular_mensaje") or (
+            "COINCIDEN AMBOS REGISTROS" if estado == "coincide" else "NO COINCIDEN LOS REGISTROS"
+        ),
+        "nombre_padron": nombre_padron,
+        "nombre_rppc": row.get("rppc_titular_nombre_folio"),
+        "fuente_rppc": rol,
+        "rol_rppc": rol,
+        "rol_rppc_etiqueta": _etiqueta_rol_titular_rppc(rol),
+        "desde_cache_db": True,
+        "comparacion_fecha": row.get("rppc_titular_comparacion_fecha"),
+    }
+
+
+def _guardar_comparacion_titular_en_padron(
+    *,
+    clave_catastral: str,
+    nombre_padron: str | None,
+    comparacion: dict[str, Any],
+    partida: int | None = None,
+    doc_tramite_id: int | None = None,
+) -> None:
+    clave = _normalizar_clave(clave_catastral)
+    estado = str(comparacion.get("estado") or "").strip().lower()
+    if not clave or estado not in {"coincide", "difiere"}:
+        return
+
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                _asegurar_columnas_rppc_cache(cur, conn)
+                cur.execute(
+                    """
+                    UPDATE catalogos.padron_2026
+                    SET rppc_titular_estado = %s,
+                        rppc_titular_mensaje = %s,
+                        rppc_titular_nombre_folio = %s,
+                        rppc_titular_rol_folio = %s,
+                        rppc_titular_nombre_padron_ref = %s,
+                        rppc_titular_doc_ref = %s,
+                        rppc_titular_comparacion_fecha = now()
+                    WHERE UPPER(TRIM(clave_catastral)) = %s;
+                    """,
+                    (
+                        estado,
+                        comparacion.get("mensaje"),
+                        comparacion.get("nombre_rppc"),
+                        comparacion.get("rol_rppc"),
+                        nombre_padron,
+                        _doc_ref_comparacion_titular(partida=partida, doc_tramite_id=doc_tramite_id),
+                        clave,
+                    ),
+                )
+                conn.commit()
+    except Exception:
+        pass
+
+
+def _es_probable_persona_moral(nombre: str) -> bool:
+    n = _normalizar_nombre_comparacion(nombre)
+    if not n:
+        return False
+    marcadores = (
+        "BANCO", "INSTITUCION", "FIDEICOMISO", "SOCIEDAD", "ASOCIACION", "FONDO",
+        "S A DE C V", "SADE CV", "S DE R L", "GRUPO FINANCIERO", "HIPOTECARIA",
+        "FINANCIERA", "ARRENDADORA", "TRUST", "FIDEICOM",
+    )
+    return any(m in n for m in marcadores)
+
+
+def _seleccionar_nombre_titular_rppc(
+    candidatos: list[tuple[str, str]],
+    nombre_padron: str | None,
+) -> tuple[str | None, str | None, float]:
+    pool = _pool_candidatos_comparacion_padron(candidatos)
+    if not pool:
+        return None, None, 0.0
+
+    if nombre_padron:
+        mejor_rol = None
+        mejor_nombre = None
+        mejor_puntaje = -1.0
+        mejor_prioridad = len(_ORDEN_PRIORIDAD_COMPARACION_PADRON)
+        for rol, nombre in pool:
+            puntaje = _puntaje_coincidencia_nombres(nombre_padron, nombre)
+            prioridad = _prioridad_rol_comparacion(rol)
+            if puntaje > mejor_puntaje or (puntaje == mejor_puntaje and prioridad < mejor_prioridad):
+                mejor_puntaje = puntaje
+                mejor_rol = rol
+                mejor_nombre = nombre
+                mejor_prioridad = prioridad
+        if mejor_nombre:
+            return mejor_rol, mejor_nombre, max(mejor_puntaje, 0.0)
+
+    mejor_prioridad = len(_ORDEN_PRIORIDAD_COMPARACION_PADRON)
+    elegido: tuple[str, str] | None = None
+    for rol, nombre in pool:
+        prioridad = _prioridad_rol_comparacion(rol)
+        if prioridad < mejor_prioridad:
+            mejor_prioridad = prioridad
+            elegido = (rol, nombre)
+    if elegido:
+        return elegido[0], elegido[1], 0.0
+    return None, None, 0.0
+
+
+def _extraer_nombre_propietario_desde_pdf(
+    content: bytes,
+    nombre_padron: str | None = None,
+) -> tuple[str | None, str | None, float]:
+    candidatos = _extraer_nombres_titulares_desde_pdf(content, nombre_padron=nombre_padron)
+    rol, nombre, puntaje = _seleccionar_nombre_titular_rppc(candidatos, nombre_padron)
+    return rol, nombre, puntaje
+
+
+def _obtener_bytes_pdf_rppc_para_lectura(
+    *,
+    doc_tramite_id: int | None,
+    partida: int | None,
+    clave_catastral: str | None,
+) -> bytes | None:
+    clave = _normalizar_clave(clave_catastral or "") or None
+    if doc_tramite_id:
+        local = _leer_pdf_local_any(doc_tramite_id, clave)
+        if local:
+            return local
+        try:
+            return _descargar_pdf(int(doc_tramite_id), partida=partida)
+        except HTTPException:
+            return None
+    if partida:
+        doc_ref = f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}"
+        local = _leer_pdf_local_any(doc_ref, clave)
+        if local:
+            return local
+        try:
+            return _descargar_pdf_hoja_inscripcion_por_partida(partida)
+        except HTTPException:
+            return None
+    return None
+
+
+def _cachear_comparacion_titular(clave_catastral: str | None, comparacion: dict[str, Any]) -> None:
+    clave = _normalizar_clave(clave_catastral or "")
+    if clave and comparacion:
+        _rppc_comparacion_por_clave[clave] = comparacion
+
+
+def _comparar_titular_clave_recalcular(clave_catastral: str, *, forzar: bool = False) -> dict[str, Any]:
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+
+    cache_padron = _cache_rppc_por_clave_o_folio(clave_catastral=clave)
+    folio_real = _normalizar_numero((cache_padron or {}).get("folio_real"))
+    partida = _normalizar_numero((cache_padron or {}).get("rppc_partida"))
+    doc_tramite_id = _normalizar_numero((cache_padron or {}).get("rppc_doc_tramite_id"))
+
+    if not folio_real:
+        folio_real = _obtener_folio_por_clave(clave)
+
+    doc_ref = _doc_ref_comparacion_titular(partida=partida, doc_tramite_id=doc_tramite_id)
+    nombre_padron = _obtener_nombre_propietario_padron(clave_catastral=clave, folio_real=folio_real)
+
+    if not forzar:
+        db_cache = _leer_comparacion_titular_desde_padron(clave, nombre_padron, doc_ref=doc_ref or None)
+        if db_cache:
+            _cachear_comparacion_titular(clave, db_cache)
+            return db_cache
+
+        cached = _rppc_comparacion_por_clave.get(clave)
+        if cached and cached.get("nombre_rppc") and cached.get("estado") in {"coincide", "difiere"}:
+            return cached
+
+    pdf_bytes: bytes | None = None
+    if partida:
+        doc_ref = f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}"
+        pdf_bytes = _leer_pdf_local_any(doc_ref, clave)
+    if not pdf_bytes and doc_tramite_id:
+        pdf_bytes = _leer_pdf_local_any(doc_tramite_id, clave)
+    if not pdf_bytes and (partida or doc_tramite_id):
+        pdf_bytes = _obtener_bytes_pdf_rppc_para_lectura(
+            doc_tramite_id=doc_tramite_id,
+            partida=partida,
+            clave_catastral=clave,
+        )
+
+    comparacion = _construir_comparacion_titular(
+        clave_catastral=clave,
+        folio_real=folio_real,
+        movimiento=None,
+        inscripcion=None,
+        partida=partida,
+        doc_tramite_id=doc_tramite_id,
+        pdf_bytes_override=pdf_bytes,
+        usar_cache_db=not forzar,
+    )
+    _cachear_comparacion_titular(clave, comparacion)
+    return comparacion
+
+
+def _construir_comparacion_titular(
+    *,
+    clave_catastral: str | None,
+    folio_real: int | None,
+    movimiento: dict[str, Any] | None,
+    inscripcion: dict[str, Any] | None,
+    partida: int | None,
+    doc_tramite_id: int | None,
+    pdf_bytes_override: bytes | None = None,
+    usar_cache_db: bool = True,
+) -> dict[str, Any]:
+    clave = _normalizar_clave(clave_catastral or "")
+    nombre_padron = _obtener_nombre_propietario_padron(
+        clave_catastral=clave_catastral,
+        folio_real=folio_real,
+    )
+    doc_ref = _doc_ref_comparacion_titular(partida=partida, doc_tramite_id=doc_tramite_id)
+
+    if usar_cache_db and clave:
+        db_cache = _leer_comparacion_titular_desde_padron(clave, nombre_padron, doc_ref=doc_ref or None)
+        if db_cache:
+            return db_cache
+
+    candidatos: list[tuple[str, str]] = []
+
+    if movimiento:
+        nombre_mov = _extraer_nombre_desde_registro_rppc(movimiento)
+        if nombre_mov:
+            candidatos.append(("movimiento", nombre_mov))
+    if inscripcion:
+        nombre_ins = _extraer_nombre_desde_registro_rppc(inscripcion)
+        if nombre_ins:
+            candidatos.append(("inscripcion", nombre_ins))
+    if pdf_bytes_override:
+        candidatos.extend(_extraer_nombres_titulares_desde_pdf(pdf_bytes_override, nombre_padron=nombre_padron))
+    elif doc_tramite_id or partida:
+        pdf_bytes = _obtener_bytes_pdf_rppc_para_lectura(
+            doc_tramite_id=doc_tramite_id,
+            partida=partida,
+            clave_catastral=clave_catastral,
+        )
+        if pdf_bytes:
+            candidatos.extend(_extraer_nombres_titulares_desde_pdf(pdf_bytes, nombre_padron=nombre_padron))
+
+    rol_rppc, nombre_rppc, puntaje_match = _seleccionar_nombre_titular_rppc(candidatos, nombre_padron)
+    fuente_rppc = rol_rppc
+
+    etiqueta_rol = _etiqueta_rol_titular_rppc(rol_rppc)
+
+    if not nombre_padron and not nombre_rppc:
+        estado = "sin_datos"
+        mensaje = "No hay nombre en padrón ni titular legible en el documento RPPC."
+    elif not nombre_padron:
+        estado = "sin_padron"
+        mensaje = "El padrón no tiene contribuyente registrado; no se puede validar coincidencia."
+    elif not nombre_rppc:
+        estado = "sin_rppc"
+        mensaje = (
+            "No se pudo leer el titular en el folio "
+            "(Comprador, Deudor, Heredero, Legatario, Propietario, etc.)."
+        )
+    elif _nombres_propietario_coinciden(nombre_padron, nombre_rppc):
+        estado = "coincide"
+        mensaje = "COINCIDEN AMBOS REGISTROS"
+    else:
+        estado = "difiere"
+        mensaje = "NO COINCIDEN LOS REGISTROS"
+
+    comparacion = {
+        "estado": estado,
+        "coincide": estado == "coincide",
+        "mensaje": mensaje,
+        "nombre_padron": nombre_padron,
+        "nombre_rppc": nombre_rppc,
+        "fuente_rppc": fuente_rppc,
+        "rol_rppc": rol_rppc,
+        "rol_rppc_etiqueta": etiqueta_rol,
+    }
+
+    if clave and estado in {"coincide", "difiere"}:
+        _guardar_comparacion_titular_en_padron(
+            clave_catastral=clave,
+            nombre_padron=nombre_padron,
+            comparacion=comparacion,
+            partida=partida,
+            doc_tramite_id=doc_tramite_id,
+        )
+
+    return comparacion
+
+
+def _adjuntar_comparacion_titular(
+    resultado: dict[str, Any],
+    clave_catastral: str | None,
+    folio_real: int | None,
+) -> dict[str, Any]:
+    resultado["comparacion_titular"] = _construir_comparacion_titular(
+        clave_catastral=clave_catastral,
+        folio_real=folio_real,
+        movimiento=resultado.get("movimiento"),
+        inscripcion=resultado.get("inscripcion"),
+        partida=_normalizar_numero(resultado.get("partida")),
+        doc_tramite_id=_normalizar_numero(resultado.get("doc_tramite_id")),
+    )
+    return resultado
+
+
 def _extraer_folio_real_desde_pdf(content: bytes) -> int | None:
     """Intenta extraer FOLIO REAL desde un PDF RPPC sin usar OCR.
 
@@ -1971,51 +3216,11 @@ def _extraer_folio_real_desde_pdf(content: bytes) -> int | None:
         r"FOLIOREAL\s*[:\-]?\s*([0-9]{3,12})",
     ]
 
-    # 1) Intento rápido sobre bytes decodificados.
-    try:
-        texto = content.decode("latin-1", errors="ignore")
-        texto_norm = re.sub(r"\s+", " ", texto.upper())
-        for patron in patrones:
-            m = re.search(patron, texto_norm, re.IGNORECASE)
-            if m:
-                return _normalizar_numero(m.group(1))
-    except Exception:
-        pass
-
-    # 2) Intento con pdftotext si existe en el sistema.
-    if not shutil.which("pdftotext"):
-        return None
-
-    tmp_pdf = None
-    tmp_txt = None
-    try:
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as f_pdf:
-            f_pdf.write(content)
-            tmp_pdf = f_pdf.name
-        tmp_txt = f"{tmp_pdf}.txt"
-        subprocess.run(
-            ["pdftotext", "-layout", tmp_pdf, tmp_txt],
-            check=False,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            timeout=15,
-        )
-        texto = Path(tmp_txt).read_text(encoding="utf-8", errors="ignore")
-        texto_norm = re.sub(r"\s+", " ", texto.upper())
-        for patron in patrones:
-            m = re.search(patron, texto_norm, re.IGNORECASE)
-            if m:
-                return _normalizar_numero(m.group(1))
-    except Exception:
-        return None
-    finally:
-        for tmp in (tmp_pdf, tmp_txt):
-            if tmp:
-                try:
-                    Path(tmp).unlink(missing_ok=True)
-                except Exception:
-                    pass
-
+    texto_norm = re.sub(r"\s+", " ", _extraer_texto_desde_pdf(content).upper())
+    for patron in patrones:
+        coincidencia = re.search(patron, texto_norm, re.IGNORECASE)
+        if coincidencia:
+            return _normalizar_numero(coincidencia.group(1))
     return None
 
 
@@ -2273,6 +3478,21 @@ def _stream_pdf(
         fuente="RPPC_PDF",
     ) or folio_real
 
+    doc_tramite_num = None
+    if not isinstance(doc_id, str) or not str(doc_id).startswith(RPPC_HOJA_INSCRIPCION_DOC_PREFIX):
+        doc_tramite_num = _normalizar_numero(doc_id)
+
+    comparacion = _construir_comparacion_titular(
+        clave_catastral=clave_catastral,
+        folio_real=folio_real,
+        movimiento=None,
+        inscripcion=None,
+        partida=partida,
+        doc_tramite_id=doc_tramite_num,
+        pdf_bytes_override=content,
+    )
+    _cachear_comparacion_titular(clave_catastral, comparacion)
+
     return StreamingResponse(
         BytesIO(content),
         media_type="application/pdf",
@@ -2294,7 +3514,8 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
         partida_cache = _normalizar_numero(cache.get("rppc_partida"))
         folio_cache = _normalizar_numero(cache.get("folio_real")) or folio_real
         if doc_cache:
-            return {
+            return _adjuntar_comparacion_titular(
+                {
                 "folio_real": folio_cache,
                 "partida": partida_cache,
                 "doc_tramite_id": doc_cache,
@@ -2304,9 +3525,13 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
                 "movimientos_total": None,
                 "pdf_url": f"/rppc/pdf/doc/{doc_cache}",
                 "cache_hit": True,
-            }
+                },
+                clave_catastral,
+                folio_cache,
+            )
         if partida_cache:
-            return {
+            return _adjuntar_comparacion_titular(
+                {
                 "folio_real": folio_cache,
                 "partida": partida_cache,
                 "doc_tramite_id": None,
@@ -2316,7 +3541,10 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
                 "movimientos_total": None,
                 "pdf_url": f"/rppc/pdf/partida/{partida_cache}",
                 "cache_hit": True,
-            }
+                },
+                clave_catastral,
+                folio_cache,
+            )
 
     partida, movimiento, movimientos = _obtener_partida_por_folio(folio_real)
     try:
@@ -2346,7 +3574,8 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
         fuente="RPPC",
     )
 
-    return {
+    return _adjuntar_comparacion_titular(
+        {
         "folio_real": folio_real,
         "partida": partida,
         "doc_tramite_id": doc_id,
@@ -2356,7 +3585,10 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
         "movimientos_total": len(movimientos),
         "pdf_url": pdf_url,
         "cache_hit": False,
-    }
+        },
+        clave_catastral,
+        folio_real,
+    )
 
 
 def _probar_conexion_rppc(folio_prueba: int = 3454) -> dict[str, Any]:
@@ -2609,6 +3841,19 @@ def resolver_por_clave(
     return data
 
 
+@router.get("/comparar-titular/clave/{clave_catastral}")
+def comparar_titular_por_clave(
+    clave_catastral: str,
+    recalcular: bool = False,
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
+):
+    """Comparación padrón vs titular RPPC. Usa cache en BD salvo ?recalcular=true."""
+    return _comparar_titular_clave_recalcular(
+        _normalizar_clave(clave_catastral),
+        forzar=recalcular,
+    )
+
+
 @router.get("/pdf/doc/{doc_tramite_id}")
 def pdf_por_doc(doc_tramite_id: int, usuario_actual: dict = Depends(requerir_pestana_rppc)):
     return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")
@@ -2667,5 +3912,14 @@ def pdf_por_clave(
 
 
 @router.get("/visor/pdf/doc/{doc_tramite_id}")
-def visor_pdf_por_doc(doc_tramite_id: int, usuario_actual: dict = Depends(requerir_pestana_rppc)):
-    return _stream_pdf(doc_tramite_id, f"rppc_doc_{doc_tramite_id}.pdf")
+def visor_pdf_por_doc(
+    doc_tramite_id: int,
+    clave_catastral: str | None = None,
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
+):
+    clave = _normalizar_clave(clave_catastral or "") or None
+    return _stream_pdf(
+        doc_tramite_id,
+        f"rppc_doc_{doc_tramite_id}.pdf",
+        clave_catastral=clave,
+    )

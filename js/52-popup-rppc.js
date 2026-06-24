@@ -25,9 +25,60 @@ function popupRppcFolioNumerico(p) {
   return txt.replace(/\D/g, "") || txt;
 }
 
-function buildUrlVisorPdfRppcDoc(docId) {
+function htmlComparacionTitularMetaRppc(comp) {
+  const estado = String(comp.estado || "sin_datos");
+  const clase = estado === "coincide" ? "coincide" : estado === "difiere" ? "difiere" : "pendiente";
+  const nombreRppc = comp.nombre_rppc ? popupRppcEsc(comp.nombre_rppc) : "";
+  const rol = comp.rol_rppc_etiqueta ? popupRppcEsc(comp.rol_rppc_etiqueta) : "Titular folio";
+  const resumen = popupRppcEsc(comp.mensaje || "Comparación de titular");
+
+  if (estado === "coincide") {
+    const detalle = nombreRppc ? ` · ${rol}: ${nombreRppc}` : "";
+    return `<span class="popup-rppc-comparacion-meta coincide" role="status" title="${resumen}">
+      <b>✓ COINCIDEN AMBOS REGISTROS</b>${detalle}
+    </span>`;
+  }
+
+  if (estado === "difiere") {
+    const detalle = nombreRppc ? ` · ${rol}: ${nombreRppc}` : "";
+    return `<span class="popup-rppc-comparacion-meta difiere" role="status" title="${resumen}">
+      <b>✕ NO COINCIDEN LOS REGISTROS</b>${detalle}
+    </span>`;
+  }
+
+  return `<span class="popup-rppc-comparacion-meta ${clase} popup-rppc-comparacion-meta-ancho" role="status" title="${resumen}">
+    <b>ℹ Validación:</b> ${resumen}
+  </span>`;
+}
+
+function pintarComparacionTitularRppc(comp) {
+  const contenedor = document.getElementById("popupRppcComparacionTitular");
+  const headerViejo = document.getElementById("popupPredioComparacionRppc");
+  if (headerViejo) {
+    headerViejo.innerHTML = "";
+    headerViejo.classList.add("oculto");
+  }
+  if (!contenedor) return;
+  if (!comp) {
+    contenedor.innerHTML = "";
+    contenedor.className = "popup-rppc-comparacion-meta-wrap oculto";
+    return;
+  }
+  contenedor.innerHTML = htmlComparacionTitularMetaRppc(comp);
+  contenedor.className = "popup-rppc-comparacion-meta-wrap";
+}
+
+function limpiarComparacionTitularRppc() {
+  pintarComparacionTitularRppc(null);
+}
+
+function buildUrlVisorPdfRppcDoc(docId, claveNorm) {
   const base = apiBaseRppc();
-  return `${base}/rppc/visor/pdf/doc/${encodeURIComponent(docId)}`;
+  let url = `${base}/rppc/visor/pdf/doc/${encodeURIComponent(docId)}`;
+  if (claveNorm) {
+    url += `?clave_catastral=${encodeURIComponent(claveNorm)}`;
+  }
+  return url;
 }
 
 function buildUrlResolverRppc(claveNorm, folioNum) {
@@ -53,6 +104,7 @@ function destruirPopupRppc() {
     popupRppcBlobUrl = null;
   }
   popupRppcUrlPdfOriginal = "";
+  limpiarComparacionTitularRppc();
 }
 
 async function extraerErrorFetchRppc(response) {
@@ -65,6 +117,18 @@ async function extraerErrorFetchRppc(response) {
     }
   } catch (e) {}
   return msg;
+}
+
+async function refrescarComparacionTitularRppc(claveNorm) {
+  if (!claveNorm) return;
+  try {
+    const r = await fetch(
+      `${apiBaseRppc()}/rppc/comparar-titular/clave/${encodeURIComponent(claveNorm)}`,
+      { cache: "no-store", headers: typeof authHeaders === "function" ? authHeaders() : {} }
+    );
+    if (!r.ok) return;
+    pintarComparacionTitularRppc(await r.json());
+  } catch (e) {}
 }
 
 async function resolverDocumentoRppc(claveNorm, folioNum) {
@@ -189,6 +253,11 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
     const data = await resolverDocumentoRppc(claveNorm, folioNum);
     const folioDetectado = data.folio_real || data.FOLIO_REAL;
 
+    const compInicial = data.comparacion_titular || null;
+    if (compInicial && compInicial.estado !== "sin_rppc" && compInicial.estado !== "sin_datos") {
+      pintarComparacionTitularRppc(compInicial);
+    }
+
     if (folioDetectado) {
       const meta = document.querySelector(".popup-rppc-meta");
       if (meta) {
@@ -206,7 +275,7 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
     const docId = data.doc_tramite_id || data.DOC_TRAMITE_ID;
     const pdfUrl = data.pdf_url || data.PDF_URL;
     const urlPdf = docId
-      ? buildUrlVisorPdfRppcDoc(docId)
+      ? buildUrlVisorPdfRppcDoc(docId, claveNorm)
       : buildAbsoluteRppcUrl(pdfUrl);
 
     if (estado) {
@@ -216,9 +285,11 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
     }
 
     await mostrarPdfRppcEnVisor(urlPdf);
+    await refrescarComparacionTitularRppc(claveNorm);
   } catch (error) {
     frame.src = "about:blank";
     popupRppcUrlPdfOriginal = "";
+    pintarComparacionTitularRppc(null);
     if (estado) {
       estado.textContent = error.message || "Error al consultar el RPPC.";
       estado.classList.add("popup-rppc-estado-error");
@@ -268,6 +339,7 @@ async function pintarPopupTabRppc(clave, p) {
           <span><b>Clave:</b> ${popupRppcEsc(claveNorm)}</span>
           <span><b>Folio real:</b> ${popupRppcEsc(folioTxt)}</span>
           <span><b>Contribuyente:</b> ${popupRppcEsc(nombre)}</span>
+          <span id="popupRppcComparacionTitular" class="popup-rppc-comparacion-meta-wrap oculto" aria-live="polite"></span>
         </div>
         <p id="popupRppcEstado" class="popup-rppc-estado">Preparando consulta RPPC…</p>
         <div class="popup-rppc-iframe-wrap" id="popupRppcVisorWrap">
@@ -286,7 +358,8 @@ async function pintarPopupTabRppc(clave, p) {
   await cargarPdfRppcEnIframe(claveNorm, folioNum);
 }
 
-window.buildUrlResolverRppc = buildUrlResolverRppc;
+window.limpiarComparacionTitularRppc = limpiarComparacionTitularRppc;
+window.pintarComparacionTitularRppc = pintarComparacionTitularRppc;
 window.pintarPopupTabRppc = pintarPopupTabRppc;
 window.destruirPopupRppc = destruirPopupRppc;
 window.refrescarVisorPdfRppcConMarca = refrescarVisorPdfRppcConMarca;
