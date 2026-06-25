@@ -1641,6 +1641,9 @@ async function abrirPopupPredioWorkspace(ficha) {
   aplicarTamanoPopupPredioGuardado();
   actualizarPopupPredioHeader(p);
   aplicarVisibilidadPestanasPopupPredio();
+  if (typeof encolarPrecalcRppcPredio === "function") {
+    encolarPrecalcRppcPredio(p);
+  }
   const tabInicial = (typeof popupPredioTabActiva !== "undefined" && popupPredioTabActiva
     && typeof puedeVerPestanaPopupPredio === "function" && puedeVerPestanaPopupPredio(popupPredioTabActiva))
     ? popupPredioTabActiva

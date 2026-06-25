@@ -15,7 +15,9 @@ from pathlib import Path
 from typing import Any
 import shutil
 import tempfile
+import threading
 import unicodedata
+from concurrent.futures import ThreadPoolExecutor
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -69,6 +71,10 @@ _rppc_working_documento_method: str = "GET"
 _rppc_apis_cache: list[dict[str, Any]] = []
 _rppc_auth_token: str | None = None
 _rppc_comparacion_por_clave: dict[str, dict[str, Any]] = {}
+_rppc_columnas_cache_verificadas = False
+_rppc_precalc_en_curso: set[str] = set()
+_rppc_precalc_lock = threading.Lock()
+_rppc_precalc_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="rppc-precalc")
 _rppc_usuario_id: int | None = None
 _rppc_cookie_jar: CookieJar | None = None
 _rppc_last_help_error: str | None = None
@@ -1631,6 +1637,9 @@ def _guardar_folio_real_en_padron(clave_catastral: str, folio_real: int) -> None
 
 def _asegurar_columnas_rppc_cache(cur, conn) -> None:
     """Asegura columnas cache para acelerar consultas RPPC posteriores."""
+    global _rppc_columnas_cache_verificadas
+    if _rppc_columnas_cache_verificadas:
+        return
     try:
         cur.execute(
             """
@@ -1653,6 +1662,7 @@ def _asegurar_columnas_rppc_cache(cur, conn) -> None:
             """
         )
         conn.commit()
+        _rppc_columnas_cache_verificadas = True
     except Exception:
         conn.rollback()
         raise
@@ -2842,6 +2852,80 @@ def _doc_ref_comparacion_titular(
     return ""
 
 
+def _comparacion_dict_desde_fila_padron(
+    row: dict[str, Any] | None,
+    *,
+    nombre_padron: str | None = None,
+) -> dict[str, Any] | None:
+    if not row or not row.get("rppc_titular_estado"):
+        return None
+
+    estado = str(row["rppc_titular_estado"]).strip().lower()
+    if estado not in {"coincide", "difiere"}:
+        return None
+
+    rol = str(row.get("rppc_titular_rol_folio") or "").strip() or None
+    nombre_ref = row.get("rppc_titular_nombre_padron_ref")
+    return {
+        "estado": estado,
+        "coincide": estado == "coincide",
+        "mensaje": row.get("rppc_titular_mensaje") or (
+            "COINCIDEN AMBOS REGISTROS" if estado == "coincide" else "NO COINCIDEN LOS REGISTROS"
+        ),
+        "nombre_padron": nombre_padron or nombre_ref,
+        "nombre_rppc": row.get("rppc_titular_nombre_folio"),
+        "fuente_rppc": rol,
+        "rol_rppc": rol,
+        "rol_rppc_etiqueta": _etiqueta_rol_titular_rppc(rol),
+        "desde_cache_db": True,
+        "comparacion_fecha": row.get("rppc_titular_comparacion_fecha"),
+    }
+
+
+def _fila_comparacion_titular_padron(cur, clave: str) -> dict[str, Any] | None:
+    cur.execute(
+        """
+        SELECT
+            rppc_titular_estado,
+            rppc_titular_mensaje,
+            rppc_titular_nombre_folio,
+            rppc_titular_rol_folio,
+            rppc_titular_nombre_padron_ref,
+            rppc_titular_doc_ref,
+            rppc_titular_comparacion_fecha
+        FROM catalogos.padron_2026
+        WHERE clave_catastral = %s
+        LIMIT 1;
+        """,
+        (clave,),
+    )
+    return cur.fetchone()
+
+
+def _leer_comparacion_titular_cache_rapido(clave_catastral: str) -> dict[str, Any] | None:
+    """Lee comparación cacheada (memoria + BD) sin consultas pesadas ni releer PDF."""
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        return None
+
+    mem = _rppc_comparacion_por_clave.get(clave)
+    if mem and str(mem.get("estado") or "").lower() in {"coincide", "difiere"}:
+        return mem
+
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                _asegurar_columnas_rppc_cache(cur, conn)
+                row = _fila_comparacion_titular_padron(cur, clave)
+    except Exception:
+        return None
+
+    comparacion = _comparacion_dict_desde_fila_padron(row)
+    if comparacion:
+        _cachear_comparacion_titular(clave, comparacion)
+    return comparacion
+
+
 def _leer_comparacion_titular_desde_padron(
     clave_catastral: str,
     nombre_padron: str | None,
@@ -2851,36 +2935,21 @@ def _leer_comparacion_titular_desde_padron(
     clave = _normalizar_clave(clave_catastral)
     if not clave:
         return None
+
+    comparacion = _leer_comparacion_titular_cache_rapido(clave)
+    if not comparacion:
+        return None
+
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 _asegurar_columnas_rppc_cache(cur, conn)
-                cur.execute(
-                    """
-                    SELECT
-                        rppc_titular_estado,
-                        rppc_titular_mensaje,
-                        rppc_titular_nombre_folio,
-                        rppc_titular_rol_folio,
-                        rppc_titular_nombre_padron_ref,
-                        rppc_titular_doc_ref,
-                        rppc_titular_comparacion_fecha
-                    FROM catalogos.padron_2026
-                    WHERE UPPER(TRIM(clave_catastral)) = %s
-                    LIMIT 1;
-                    """,
-                    (clave,),
-                )
-                row = cur.fetchone()
+                row = _fila_comparacion_titular_padron(cur, clave)
     except Exception:
-        return None
+        return comparacion
 
-    if not row or not row.get("rppc_titular_estado"):
-        return None
-
-    estado = str(row["rppc_titular_estado"]).strip().lower()
-    if estado not in {"coincide", "difiere"}:
-        return None
+    if not row:
+        return comparacion
 
     ref_padron = str(row.get("rppc_titular_nombre_padron_ref") or "").strip()
     if nombre_padron and ref_padron:
@@ -2891,21 +2960,9 @@ def _leer_comparacion_titular_desde_padron(
     if doc_ref and ref_doc and ref_doc != doc_ref:
         return None
 
-    rol = str(row.get("rppc_titular_rol_folio") or "").strip() or None
-    return {
-        "estado": estado,
-        "coincide": estado == "coincide",
-        "mensaje": row.get("rppc_titular_mensaje") or (
-            "COINCIDEN AMBOS REGISTROS" if estado == "coincide" else "NO COINCIDEN LOS REGISTROS"
-        ),
-        "nombre_padron": nombre_padron,
-        "nombre_rppc": row.get("rppc_titular_nombre_folio"),
-        "fuente_rppc": rol,
-        "rol_rppc": rol,
-        "rol_rppc_etiqueta": _etiqueta_rol_titular_rppc(rol),
-        "desde_cache_db": True,
-        "comparacion_fecha": row.get("rppc_titular_comparacion_fecha"),
-    }
+    if nombre_padron:
+        comparacion["nombre_padron"] = nombre_padron
+    return comparacion
 
 
 def _guardar_comparacion_titular_en_padron(
@@ -3042,10 +3099,57 @@ def _cachear_comparacion_titular(clave_catastral: str | None, comparacion: dict[
         _rppc_comparacion_por_clave[clave] = comparacion
 
 
-def _comparar_titular_clave_recalcular(clave_catastral: str, *, forzar: bool = False) -> dict[str, Any]:
+def _rppc_precalc_activo(clave: str) -> bool:
+    with _rppc_precalc_lock:
+        return clave in _rppc_precalc_en_curso
+
+
+def _rppc_marcar_precalc_inicio(clave: str) -> bool:
+    with _rppc_precalc_lock:
+        if clave in _rppc_precalc_en_curso:
+            return False
+        _rppc_precalc_en_curso.add(clave)
+        return True
+
+
+def _rppc_marcar_precalc_fin(clave: str) -> None:
+    with _rppc_precalc_lock:
+        _rppc_precalc_en_curso.discard(clave)
+
+
+def _rppc_respuesta_procesando() -> dict[str, Any]:
+    return {
+        "estado": "procesando",
+        "mensaje": "Comparación RPPC en segundo plano",
+    }
+
+
+def _precalcular_rppc_wrapper(clave_catastral: str) -> None:
+    clave = _normalizar_clave(clave_catastral)
+    if not clave or not _rppc_marcar_precalc_inicio(clave):
+        return
+    try:
+        _precalcular_rppc_para_clave(clave)
+    finally:
+        _rppc_marcar_precalc_fin(clave)
+
+
+def _comparar_titular_clave_recalcular(
+    clave_catastral: str,
+    *,
+    forzar: bool = False,
+    solo_cache: bool = False,
+) -> dict[str, Any]:
     clave = _normalizar_clave(clave_catastral)
     if not clave:
         raise HTTPException(status_code=400, detail="Clave catastral no válida")
+
+    if not forzar:
+        rapido = _leer_comparacion_titular_cache_rapido(clave)
+        if rapido:
+            return rapido
+        if solo_cache or _rppc_precalc_activo(clave):
+            return _rppc_respuesta_procesando()
 
     cache_padron = _cache_rppc_por_clave_o_folio(clave_catastral=clave)
     folio_real = _normalizar_numero((cache_padron or {}).get("folio_real"))
@@ -3059,14 +3163,10 @@ def _comparar_titular_clave_recalcular(clave_catastral: str, *, forzar: bool = F
     nombre_padron = _obtener_nombre_propietario_padron(clave_catastral=clave, folio_real=folio_real)
 
     if not forzar:
-        db_cache = _leer_comparacion_titular_desde_padron(clave, nombre_padron, doc_ref=doc_ref or None)
-        if db_cache:
-            _cachear_comparacion_titular(clave, db_cache)
-            return db_cache
-
-        cached = _rppc_comparacion_por_clave.get(clave)
-        if cached and cached.get("nombre_rppc") and cached.get("estado") in {"coincide", "difiere"}:
-            return cached
+        validada = _leer_comparacion_titular_desde_padron(clave, nombre_padron, doc_ref=doc_ref or None)
+        if validada:
+            _cachear_comparacion_titular(clave, validada)
+            return validada
 
     pdf_bytes: bytes | None = None
     if partida:
@@ -3095,6 +3195,51 @@ def _comparar_titular_clave_recalcular(clave_catastral: str, *, forzar: bool = F
     return comparacion
 
 
+def _precalcular_rppc_para_clave(clave_catastral: str) -> None:
+    """Resuelve documento RPPC, cachea PDF local y guarda comparación titular en BD."""
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        return
+    if _leer_comparacion_titular_cache_rapido(clave):
+        return
+    try:
+        folio_real = _obtener_folio_por_clave(clave)
+        cache_padron = _cache_rppc_por_clave_o_folio(clave_catastral=clave, folio_real=folio_real)
+        if not folio_real:
+            folio_real = _normalizar_numero((cache_padron or {}).get("folio_real"))
+        if not folio_real:
+            return
+
+        partida = _normalizar_numero((cache_padron or {}).get("rppc_partida"))
+        doc_tramite_id = _normalizar_numero((cache_padron or {}).get("rppc_doc_tramite_id"))
+        if not partida and not doc_tramite_id:
+            _resolver_documento_por_folio(folio_real, clave_catastral=clave)
+            cache_padron = _cache_rppc_por_clave_o_folio(clave_catastral=clave, folio_real=folio_real)
+            partida = _normalizar_numero((cache_padron or {}).get("rppc_partida"))
+            doc_tramite_id = _normalizar_numero((cache_padron or {}).get("rppc_doc_tramite_id"))
+
+        pdf_bytes: bytes | None = None
+        if partida:
+            doc_ref = f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}"
+            pdf_bytes = _leer_pdf_local_any(doc_ref, clave)
+        if not pdf_bytes and doc_tramite_id:
+            pdf_bytes = _leer_pdf_local_any(doc_tramite_id, clave)
+        if not pdf_bytes and (partida or doc_tramite_id):
+            pdf_bytes = _obtener_bytes_pdf_rppc_para_lectura(
+                doc_tramite_id=doc_tramite_id,
+                partida=partida,
+                clave_catastral=clave,
+            )
+            if pdf_bytes and doc_tramite_id:
+                _guardar_pdf_local(doc_tramite_id, pdf_bytes, clave)
+            elif pdf_bytes and partida:
+                _guardar_pdf_local(f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}", pdf_bytes, clave)
+
+        _comparar_titular_clave_recalcular(clave, forzar=False)
+    except Exception:
+        pass
+
+
 def _construir_comparacion_titular(
     *,
     clave_catastral: str | None,
@@ -3114,6 +3259,9 @@ def _construir_comparacion_titular(
     doc_ref = _doc_ref_comparacion_titular(partida=partida, doc_tramite_id=doc_tramite_id)
 
     if usar_cache_db and clave:
+        rapido = _leer_comparacion_titular_cache_rapido(clave)
+        if rapido:
+            return rapido
         db_cache = _leer_comparacion_titular_desde_padron(clave, nombre_padron, doc_ref=doc_ref or None)
         if db_cache:
             return db_cache
@@ -3191,14 +3339,11 @@ def _adjuntar_comparacion_titular(
     clave_catastral: str | None,
     folio_real: int | None,
 ) -> dict[str, Any]:
-    resultado["comparacion_titular"] = _construir_comparacion_titular(
-        clave_catastral=clave_catastral,
-        folio_real=folio_real,
-        movimiento=resultado.get("movimiento"),
-        inscripcion=resultado.get("inscripcion"),
-        partida=_normalizar_numero(resultado.get("partida")),
-        doc_tramite_id=_normalizar_numero(resultado.get("doc_tramite_id")),
-    )
+    clave = _normalizar_clave(clave_catastral or "")
+    if clave:
+        rapido = _leer_comparacion_titular_cache_rapido(clave)
+        if rapido:
+            resultado["comparacion_titular"] = rapido
     return resultado
 
 
@@ -3482,15 +3627,18 @@ def _stream_pdf(
     if not isinstance(doc_id, str) or not str(doc_id).startswith(RPPC_HOJA_INSCRIPCION_DOC_PREFIX):
         doc_tramite_num = _normalizar_numero(doc_id)
 
-    comparacion = _construir_comparacion_titular(
-        clave_catastral=clave_catastral,
-        folio_real=folio_real,
-        movimiento=None,
-        inscripcion=None,
-        partida=partida,
-        doc_tramite_id=doc_tramite_num,
-        pdf_bytes_override=content,
-    )
+    clave_norm = _normalizar_clave(clave_catastral or "")
+    comparacion = _leer_comparacion_titular_cache_rapido(clave_norm) if clave_norm else None
+    if not comparacion:
+        comparacion = _construir_comparacion_titular(
+            clave_catastral=clave_catastral,
+            folio_real=folio_real,
+            movimiento=None,
+            inscripcion=None,
+            partida=partida,
+            doc_tramite_id=doc_tramite_num,
+            pdf_bytes_override=content,
+        )
     _cachear_comparacion_titular(clave_catastral, comparacion)
 
     return StreamingResponse(
@@ -3841,16 +3989,37 @@ def resolver_por_clave(
     return data
 
 
+@router.post("/precalcular/clave/{clave_catastral}")
+def precalcular_rppc_clave(
+    clave_catastral: str,
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
+):
+    """Precalcula en segundo plano la comparación titular RPPC al consultar un predio."""
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+
+    rapido = _leer_comparacion_titular_cache_rapido(clave)
+    if rapido:
+        return {"estado": "listo", "comparacion_titular": rapido}
+
+    if not _rppc_precalc_activo(clave):
+        _rppc_precalc_executor.submit(_precalcular_rppc_wrapper, clave)
+    return _rppc_respuesta_procesando()
+
+
 @router.get("/comparar-titular/clave/{clave_catastral}")
 def comparar_titular_por_clave(
     clave_catastral: str,
     recalcular: bool = False,
+    solo_cache: bool = False,
     usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     """Comparación padrón vs titular RPPC. Usa cache en BD salvo ?recalcular=true."""
     return _comparar_titular_clave_recalcular(
         _normalizar_clave(clave_catastral),
         forzar=recalcular,
+        solo_cache=solo_cache,
     )
 
 

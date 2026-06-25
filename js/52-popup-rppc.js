@@ -2,6 +2,132 @@
 
 let popupRppcBlobUrl = null;
 let popupRppcUrlPdfOriginal = "";
+const popupRppcComparacionMemoria = {};
+const popupRppcPrecalcClaves = new Set();
+const popupRppcPrecalcTimers = {};
+const RPPC_PRECALC_RETRASO_MS = 6000;
+const RPPC_PRECALC_POLL_MS = 5000;
+const RPPC_PRECALC_POLL_MAX = 8;
+
+function claveNormRppc(predio) {
+  return String(predio?.clave_catastral || "").trim().toUpperCase();
+}
+
+function puedePrecalcularRppc() {
+  return typeof puedeVerPestanaPopupPredio === "function"
+    && puedeVerPestanaPopupPredio("documento-rppc");
+}
+
+function guardarComparacionRppcMemoria(claveNorm, comp) {
+  if (!claveNorm || !comp) return;
+  popupRppcComparacionMemoria[claveNorm] = comp;
+}
+
+function leerComparacionRppcMemoria(claveNorm) {
+  return claveNorm ? (popupRppcComparacionMemoria[claveNorm] || null) : null;
+}
+
+function estaPopupRppcActivo(claveNorm) {
+  return typeof popupPredioTabActiva !== "undefined"
+    && popupPredioTabActiva === "documento-rppc"
+    && claveNormRppc(window.predioSeleccionado) === claveNorm;
+}
+
+function pintarComparacionSiValida(comp) {
+  if (!comp) return false;
+  const estado = String(comp.estado || "");
+  if (estado === "coincide" || estado === "difiere") {
+    pintarComparacionTitularRppc(comp);
+    return true;
+  }
+  return false;
+}
+
+function cancelarPrecalcRppcProgramado(claveNorm) {
+  if (!claveNorm) return;
+  const t = popupRppcPrecalcTimers[claveNorm];
+  if (t) {
+    window.clearTimeout(t);
+    delete popupRppcPrecalcTimers[claveNorm];
+  }
+}
+
+function encolarPrecalcRppcPredio(predio, retrasoMs) {
+  const claveNorm = claveNormRppc(predio);
+  if (!claveNorm || !puedePrecalcularRppc()) return;
+
+  cancelarPrecalcRppcProgramado(claveNorm);
+  popupRppcPrecalcTimers[claveNorm] = window.setTimeout(function() {
+    delete popupRppcPrecalcTimers[claveNorm];
+    precalcularRppcPredioEnBackground(predio);
+  }, typeof retrasoMs === "number" ? retrasoMs : RPPC_PRECALC_RETRASO_MS);
+}
+
+function encolarPollComparacionRppc(claveNorm, intento) {
+  if (!claveNorm) return;
+  const n = typeof intento === "number" ? intento : 0;
+  if (n >= RPPC_PRECALC_POLL_MAX) {
+    popupRppcPrecalcClaves.delete(claveNorm);
+    return;
+  }
+  window.setTimeout(function() {
+    if (!document.body.classList.contains("popup-predio-abierto")) {
+      popupRppcPrecalcClaves.delete(claveNorm);
+      return;
+    }
+    obtenerComparacionTitularRppc(claveNorm, { soloCache: true }).then(function(comp) {
+      if (comp && (comp.estado === "coincide" || comp.estado === "difiere")) {
+        guardarComparacionRppcMemoria(claveNorm, comp);
+        if (estaPopupRppcActivo(claveNorm)) pintarComparacionSiValida(comp);
+        popupRppcPrecalcClaves.delete(claveNorm);
+        return;
+      }
+      if (comp && comp.estado === "procesando") {
+        encolarPollComparacionRppc(claveNorm, n + 1);
+        return;
+      }
+      popupRppcPrecalcClaves.delete(claveNorm);
+    });
+  }, RPPC_PRECALC_POLL_MS);
+}
+
+function precalcularRppcPredioEnBackground(predio) {
+  const claveNorm = claveNormRppc(predio);
+  if (!claveNorm || !puedePrecalcularRppc()) return;
+  if (popupRppcPrecalcClaves.has(claveNorm)) return;
+
+  const mem = leerComparacionRppcMemoria(claveNorm);
+  if (mem && (mem.estado === "coincide" || mem.estado === "difiere")) {
+    return;
+  }
+
+  popupRppcPrecalcClaves.add(claveNorm);
+  const headers = typeof authHeaders === "function" ? authHeaders() : {};
+
+  fetch(
+    `${apiBaseRppc()}/rppc/precalcular/clave/${encodeURIComponent(claveNorm)}`,
+    { method: "POST", cache: "no-store", headers }
+  )
+    .then(function(r) { return r.ok ? r.json() : null; })
+    .then(function(data) {
+      if (data?.comparacion_titular) {
+        guardarComparacionRppcMemoria(claveNorm, data.comparacion_titular);
+        if (estaPopupRppcActivo(claveNorm)) {
+          pintarComparacionSiValida(data.comparacion_titular);
+        }
+        popupRppcPrecalcClaves.delete(claveNorm);
+        return;
+      }
+      if (data?.estado === "procesando") {
+        encolarPollComparacionRppc(claveNorm, 0);
+        return;
+      }
+      popupRppcPrecalcClaves.delete(claveNorm);
+    })
+    .catch(function() {
+      popupRppcPrecalcClaves.delete(claveNorm);
+    });
+}
 
 function popupRppcEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
@@ -119,16 +245,27 @@ async function extraerErrorFetchRppc(response) {
   return msg;
 }
 
-async function refrescarComparacionTitularRppc(claveNorm) {
-  if (!claveNorm) return;
+async function obtenerComparacionTitularRppc(claveNorm, opciones) {
+  if (!claveNorm) return null;
+  const soloCache = !!(opciones && opciones.soloCache);
   try {
+    const qs = soloCache ? "?solo_cache=true" : "";
     const r = await fetch(
-      `${apiBaseRppc()}/rppc/comparar-titular/clave/${encodeURIComponent(claveNorm)}`,
+      `${apiBaseRppc()}/rppc/comparar-titular/clave/${encodeURIComponent(claveNorm)}${qs}`,
       { cache: "no-store", headers: typeof authHeaders === "function" ? authHeaders() : {} }
     );
-    if (!r.ok) return;
-    pintarComparacionTitularRppc(await r.json());
-  } catch (e) {}
+    if (!r.ok) return null;
+    const comp = await r.json();
+    if (comp) guardarComparacionRppcMemoria(claveNorm, comp);
+    return comp;
+  } catch (e) {
+    return null;
+  }
+}
+
+async function refrescarComparacionTitularRppc(claveNorm) {
+  const comp = await obtenerComparacionTitularRppc(claveNorm);
+  if (comp) pintarComparacionTitularRppc(comp);
 }
 
 async function resolverDocumentoRppc(claveNorm, folioNum) {
@@ -249,13 +386,22 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
     btnExterno.removeAttribute("href");
   }
 
+  let comparacionMostrada = pintarComparacionSiValida(leerComparacionRppcMemoria(claveNorm));
+
   try {
-    const data = await resolverDocumentoRppc(claveNorm, folioNum);
+    const promesaComparacion = comparacionMostrada ? Promise.resolve(null) : obtenerComparacionTitularRppc(claveNorm);
+    const promesaResolver = resolverDocumentoRppc(claveNorm, folioNum);
+
+    const compTemprana = await promesaComparacion;
+    if (pintarComparacionSiValida(compTemprana)) {
+      comparacionMostrada = true;
+    }
+
+    const data = await promesaResolver;
     const folioDetectado = data.folio_real || data.FOLIO_REAL;
 
-    const compInicial = data.comparacion_titular || null;
-    if (compInicial && compInicial.estado !== "sin_rppc" && compInicial.estado !== "sin_datos") {
-      pintarComparacionTitularRppc(compInicial);
+    if (!comparacionMostrada && pintarComparacionSiValida(data.comparacion_titular)) {
+      comparacionMostrada = true;
     }
 
     if (folioDetectado) {
@@ -284,8 +430,15 @@ async function cargarPdfRppcEnIframe(claveNorm, folioNum) {
         : `Hoja de inscripción localizada. Partida ${data.partida ?? "—"}. Cargando PDF…`;
     }
 
-    await mostrarPdfRppcEnVisor(urlPdf);
-    await refrescarComparacionTitularRppc(claveNorm);
+    const tareaPdf = mostrarPdfRppcEnVisor(urlPdf);
+
+    if (!comparacionMostrada) {
+      promesaComparacion.then(function(comp) {
+        if (comp) pintarComparacionTitularRppc(comp);
+      });
+    }
+
+    await tareaPdf;
   } catch (error) {
     frame.src = "about:blank";
     popupRppcUrlPdfOriginal = "";
@@ -355,10 +508,14 @@ async function pintarPopupTabRppc(clave, p) {
     await inicializarMarcaAguaRppc();
   }
 
+  pintarComparacionSiValida(leerComparacionRppcMemoria(claveNorm));
   await cargarPdfRppcEnIframe(claveNorm, folioNum);
 }
 
 window.limpiarComparacionTitularRppc = limpiarComparacionTitularRppc;
+window.obtenerComparacionTitularRppc = obtenerComparacionTitularRppc;
+window.precalcularRppcPredioEnBackground = precalcularRppcPredioEnBackground;
+window.encolarPrecalcRppcPredio = encolarPrecalcRppcPredio;
 window.pintarComparacionTitularRppc = pintarComparacionTitularRppc;
 window.pintarPopupTabRppc = pintarPopupTabRppc;
 window.destruirPopupRppc = destruirPopupRppc;
