@@ -17,6 +17,7 @@ from routers.admin import router as admin_router
 from routers.propietarios import router as propietarios_router
 from routers.catalogos import router as catalogos_router
 from routers.rppc import router as rppc_router
+from routers.importador_cartografia import router as importador_cartografia_router
 
 VISOR_DIR = "/var/www/catastro"
 VISOR_JS_DIR = os.path.join(VISOR_DIR, "js")
@@ -38,7 +39,7 @@ app.include_router(admin_router)
 app.include_router(propietarios_router)
 app.include_router(catalogos_router)
 app.include_router(rppc_router)
-
+app.include_router(importador_cartografia_router)
 logger = logging.getLogger("catastro-api")
 
 

@@ -1,0 +1,90 @@
+/* Importador de cartografía */
+
+.importador-card .permisos-info {
+  margin-bottom: 10px;
+}
+
+.importador-kpi-row .admin-kpi b {
+  font-size: 13px;
+}
+
+.importador-alerta {
+  padding: 9px 10px;
+  border: 1px solid #facc15;
+  background: #fefce8;
+  color: #854d0e;
+  border-radius: 8px;
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.importador-form {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr .6fr;
+  gap: 10px;
+  align-items: end;
+}
+
+.importador-file {
+  grid-column: span 1;
+}
+
+.importador-file input[type=file] {
+  padding: 8px;
+  border: 1px dashed #94a3b8;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.importador-check {
+  grid-column: 1 / -1;
+  margin: 2px 0 4px;
+  font-size: 12px;
+}
+
+.btn-importador-principal {
+  grid-column: 1 / -1;
+  background: #166534;
+  color: #fff;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.btn-importador-principal:hover {
+  background: #14532d;
+}
+
+.importador-log {
+  min-height: 170px;
+  max-height: 330px;
+  overflow: auto;
+  background: #0f172a;
+  color: #d1fae5;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  margin-top: 10px;
+}
+
+.importador-mensaje.ok {
+  color: #166534;
+}
+
+.importador-mensaje.error {
+  color: #991b1b;
+}
+
+.importador-mensaje.info {
+  color: #1d4ed8;
+}
+
+@media (max-width: 900px) {
+  .importador-form {
+    grid-template-columns: 1fr;
+  }
+}

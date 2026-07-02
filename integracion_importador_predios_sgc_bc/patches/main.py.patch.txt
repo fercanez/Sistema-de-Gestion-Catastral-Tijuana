@@ -1,0 +1,5 @@
+# En /opt/catastro_api/main.py agregue este import junto a los otros routers:
+from routers.importador_cartografia import router as importador_cartografia_router
+
+# Y agregue este include_router después de admin_router:
+app.include_router(importador_cartografia_router)

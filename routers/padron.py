@@ -484,14 +484,9 @@ def geojson_predio(clave: str, usuario_actual: dict = Depends(obtener_usuario_ac
         cur = conn.cursor()
         cur.execute("""
             SELECT
-                CASE
-                    WHEN g.geom IS NULL THEN NULL
-                    ELSE ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json
-                END AS geometry
-            FROM catalogos.padron_2026 p
-            LEFT JOIN catastro.predios g
-                ON UPPER(TRIM(g.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
-            WHERE UPPER(TRIM(p.clave_catastral)) = UPPER(TRIM(%s))
+                ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json AS geometry
+            FROM public.predios_mexicali g
+            WHERE UPPER(TRIM(g.clavecatas)) = UPPER(TRIM(%s))
             LIMIT 1;
         """, (clave,))
         row = cur.fetchone()

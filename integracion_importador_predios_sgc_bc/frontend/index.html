@@ -1,0 +1,1782 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Sistema de Gestión Catastral · Mexicali, B.C.</title>
+  <base href="/api/catastro/visor/">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css">
+  <link rel="stylesheet" href="css/00-base.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/10-mapa.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/20-ficha.css?v=20260610_v125_portal">
+  <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
+  <link rel="stylesheet" href="css/40-modales.css?v=20260611_v158_catalogos_listbox">
+  <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v152_analisis_zonas_ficha">
+  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260611_rppc_cache_comparacion">
+  <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
+  <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
+  <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
+  <link rel="stylesheet" href="css/60-importador-cartografia.css?v=20260702_importador_predios">
+</head>
+
+<body>
+
+<!-- LOGIN INSTITUCIONAL · Propuesta C -->
+<div id="loginOverlay" class="login-overlay">
+  <div class="login-portal">
+    <header class="login-topbar">
+      <div class="login-topbar-marca">
+        <img src="logomxli.png" alt="Gobierno de Mexicali" class="login-topbar-logo" width="72" height="72">
+        <div class="login-topbar-texto">
+          <div class="login-topbar-linea">Dirección de Administración Urbana</div>
+          <div class="login-topbar-linea login-topbar-linea-principal">Jefatura de Catastro</div>
+          <div class="login-topbar-linea login-topbar-linea-municipio">Mexicali, Baja California</div>
+        </div>
+      </div>
+    </header>
+
+    <div class="login-card">
+      <section class="login-info-panel" aria-label="Información institucional">
+        <h1 class="login-info-titulo">Sistema de Gestión Catastral</h1>
+        <p class="login-info-subtitulo">Portal Institucional de Consultas y Administración Catastral Multifinalitaria</p>
+        <p class="login-info-descripcion">
+          Plataforma web para la consulta, integración y administración de la información predial
+          del Municipio de Mexicali. Acceso exclusivo para personal autorizado de la Jefatura de Catastro
+          y dependencias vinculadas.
+        </p>
+        <ul class="login-info-lista">
+          <li><span class="login-info-icono" aria-hidden="true">🗺️</span> Consulta cartográfica y catastral</li>
+          <li><span class="login-info-icono" aria-hidden="true">📋</span> Expedientes y titularidad predial</li>
+          <li><span class="login-info-icono" aria-hidden="true">🔒</span> Operaciones con registro de auditoría</li>
+        </ul>
+      </section>
+
+      <section class="login-body" aria-label="Acceso al sistema">
+        <div class="login-body-inner">
+          <h2>Ingresar</h2>
+          <p class="login-body-aviso">Introduzca su nombre de cuenta y contraseña institucional.</p>
+          <label for="loginUsuario">Usuario</label>
+          <input id="loginUsuario" type="text" autocomplete="username" placeholder="Nombre de cuenta">
+
+          <label for="loginPassword">Contraseña</label>
+          <input id="loginPassword" type="password" autocomplete="current-password" placeholder="Contraseña">
+
+          <button id="btnLogin" type="button" onclick="loginInstitucional()">Ingresar sesión</button>
+
+          <div id="loginMensaje" class="login-mensaje"></div>
+          <p class="login-body-legal">Acceso exclusivo para personal autorizado.</p>
+        </div>
+      </section>
+    </div>
+
+    <footer class="login-footer">
+      <div class="login-footer-grid">
+        <div class="login-footer-col">
+          <strong>Dirección</strong>
+          <span>Av. Independencia 998, Centro Cívico C.P. 21000, Mexicali, Baja California.</span>
+        </div>
+        <div class="login-footer-col">
+          <strong>Contacto</strong>
+          <a href="mailto:contacto@mexicali.gob.mx">contacto@mexicali.gob.mx</a>
+          <span>(686) 558.1600</span>
+        </div>
+        <div class="login-footer-col">
+          <strong>Horario</strong>
+          <span>Lunes a Viernes 8:00 – 3:00 p.m.</span>
+          <span>Sábados 10:00 – 3:00 p.m.</span>
+        </div>
+      </div>
+      <div class="login-footer-auditoria">
+        Todas las operaciones quedan registradas en auditoría institucional.
+      </div>
+    </footer>
+  </div>
+</div>
+
+<!-- SELECTOR DE MÓDULOS (post-login) -->
+<div id="selectorModulosOverlay" class="selector-modulos-overlay oculto">
+  <div class="selector-modulos-portal">
+    <header class="selector-modulos-topbar">
+      <div class="selector-modulos-topbar-marca">
+        <img src="logomxli.png" alt="Gobierno de Mexicali" class="selector-modulos-topbar-logo" width="64" height="64">
+        <div class="selector-modulos-topbar-texto">
+          <div class="selector-modulos-topbar-linea">Dirección de Administración Urbana</div>
+          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-principal">Jefatura de Catastro</div>
+          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-municipio">Mexicali, Baja California</div>
+        </div>
+      </div>
+      <p id="selectorModulosBienvenida" class="selector-modulos-bienvenida">Bienvenido</p>
+    </header>
+    <div class="selector-modulos-body">
+      <h2>Seleccione el módulo al que desea ingresar:</h2>
+      <p class="selector-modulos-aviso">Solo se muestran los módulos autorizados para su rol institucional.</p>
+      <ul id="listaModulosInstitucionales" class="selector-modulos-lista"></ul>
+      <div class="selector-modulos-footer">
+        <button type="button" class="btn-modulos-salir" onclick="cerrarSesionInstitucional()">Salir del sistema</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- BARRA DE SESIÓN legacy (compatibilidad) -->
+<div id="barraSesionLegacy" class="oculto" aria-hidden="true"></div>
+
+<div id="appInstitucional" class="app-institucional oculto">
+
+<header id="headerInstitucional" class="header-institucional">
+  <div class="header-inst-marca">
+    <div class="header-inst-logo">
+      <img src="logomxli.png" alt="Gobierno de Mexicali" class="header-inst-logo-img" width="120" height="44">
+    </div>
+    <div class="header-inst-titles">
+      <div class="header-inst-titulo">Catastro Mexicali</div>
+      <div class="header-inst-subtitulo">Sistema de Gestión Catastral · Mexicali, Baja California</div>
+    </div>
+  </div>
+  <div class="header-inst-kpis">
+    <div class="header-kpi"><span>Predios</span><b id="headerDashTotal">—</b></div>
+    <div class="header-kpi"><span>Cobertura</span><b id="headerDashCobertura">—</b></div>
+    <div class="header-kpi"><span>Cambios</span><b id="headerDashCambios">—</b></div>
+  </div>
+  <div class="header-inst-meta">
+    <button type="button" class="header-btn-modulos" onclick="volverSelectorModulos()" title="Volver al selector de módulos">← Módulos</button>
+    <div id="headerRelojInstitucional" class="header-reloj-inst"></div>
+    <div id="barraSesion" class="header-sesion oculto">
+      <div class="header-sesion-info">
+        <b id="sesionNombre">Usuario</b>
+        <span id="sesionRol">rol</span>
+      </div>
+      <button type="button" class="header-sesion-salir" onclick="cerrarSesionInstitucional()">Salir</button>
+    </div>
+  </div>
+</header>
+
+<div id="subheaderInstitucional" class="subheader-institucional">
+  <nav id="breadcrumbInstitucional" class="breadcrumb-inst" aria-label="Navegación">
+    <a href="#" onclick="return irBreadcrumbInicioInstitucional()">Inicio</a>
+    <span class="breadcrumb-sep">›</span>
+    <span id="breadcrumbModulo">Consulta catastral</span>
+    <span id="breadcrumbPredioWrap" class="oculto">
+      <span class="breadcrumb-sep">›</span>
+      <span id="breadcrumbPredio">—</span>
+    </span>
+  </nav>
+  <div id="estadoPredioInstitucional" class="estado-predio-inst oculto"></div>
+  <button type="button" class="subheader-btn-indicadores" onclick="toggleDashboard()" title="Indicadores cartográficos">
+    Indicadores <span id="dashboardToggleIcon">▸</span>
+  </button>
+</div>
+
+<div id="dashboardCartografico" class="dashboard-inst-panel minimizado">
+  <div id="dashboardContenido">
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <span>Total predios</span>
+        <b id="dashTotal">...</b>
+      </div>
+      <div class="kpi-card">
+        <span>Cobertura</span>
+        <b id="dashCobertura">...</b>
+      </div>
+      <div class="kpi-card kpi-ok">
+        <span>Sin adeudo</span>
+        <b id="dashSinAdeudo">...</b>
+      </div>
+      <div class="kpi-card kpi-danger">
+        <span>Con adeudo</span>
+        <b id="dashConAdeudo">...</b>
+      </div>
+    </div>
+    <div class="dashboard-row"><span>Dibujados:</span><span id="dashDibujados" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Sin geometría:</span><span id="dashSinGeom" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Cambios:</span><span id="dashCambios" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Adeudo total:</span><span id="dashAdeudoTotal" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Valor catastral:</span><span id="dashValorTotal" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Con documentos:</span><span id="dashConDocs" class="dashboard-value">...</span></div>
+    <div class="dashboard-row"><span>Sin documentos:</span><span id="dashSinDocs" class="dashboard-value">...</span></div>
+  </div>
+</div>
+
+<div id="cuerpoInstitucional" class="cuerpo-institucional">
+
+<div id="panel" class="panel-modern">
+  <div class="panel-header panel-header-sidebar">
+    <div class="panel-sidebar-label">Panel de trabajo</div>
+    <button type="button" id="btnOcultarPanel" class="panel-close-btn" title="Ocultar panel" aria-label="Ocultar panel de trabajo">×</button>
+  </div>
+
+  <div class="tabs tabs-modulos-trabajo">
+    <button type="button" class="tab-btn active" onclick="mostrarTab('tabConsulta', this)" title="Consulta catastral">
+      <span class="tab-btn-icon" aria-hidden="true">🔍</span>
+      <span class="tab-btn-label">Consulta</span>
+    </button>
+    <button type="button" class="tab-btn" onclick="mostrarTab('tabCapas', this)" title="Capas del mapa">
+      <span class="tab-btn-icon" aria-hidden="true">🗺️</span>
+      <span class="tab-btn-label">Capas</span>
+    </button>
+    <button type="button" class="tab-btn tab-modulo-extra" onclick="mostrarTab('tabHerramientas', this)" title="Herramientas de medición">
+      <span class="tab-btn-icon" aria-hidden="true">📐</span>
+      <span class="tab-btn-label">Herramientas</span>
+    </button>
+    <button type="button" class="tab-btn tab-modulo-extra requiere-analisis-zonas" onclick="mostrarTab('tabAnalisisZonas', this)" title="Análisis de zonas homogéneas">
+      <span class="tab-btn-icon" aria-hidden="true">📊</span>
+      <span class="tab-btn-label">Zonas H.</span>
+    </button>
+    <button type="button" class="tab-btn tab-modulo-extra requiere-analisis-condominios" onclick="mostrarTab('tabCondominios', this)" title="Análisis régimen en condominio">
+      <span class="tab-btn-icon" aria-hidden="true">🏢</span>
+      <span class="tab-btn-label">Condominios</span>
+    </button>
+    <button type="button" class="tab-btn tab-modulo-extra requiere-movimientos" onclick="mostrarTab('tabMovimientos', this)" title="Movimientos catastrales">
+      <span class="tab-btn-icon" aria-hidden="true">📝</span>
+      <span class="tab-btn-label">Movimientos</span>
+    </button>
+    <button type="button" class="tab-btn tab-modulo-extra solo-admin" onclick="mostrarTab('tabAdministracion', this)" title="Administración">
+      <span class="tab-btn-icon" aria-hidden="true">⚙️</span>
+      <span class="tab-btn-label">Admin</span>
+    </button>
+  </div>
+
+  <div id="tabConsulta" class="tab-content active">
+    <div class="card-panel consulta-unificada">
+      <div class="section-label">Búsqueda catastral</div>
+
+      <input type="text" id="claveInput" placeholder="CLAVE CATASTRAL O MANZANA (ej. ST311)">
+      <input type="text" id="nombreInput" placeholder="NOMBRE / RAZÓN SOCIAL">
+
+      <div class="busqueda-grid-2">
+        <input type="text" id="calleInput" placeholder="CALLE">
+        <input type="text" id="numeroInput" placeholder="NÚMERO OFICIAL">
+      </div>
+
+      <input type="text" id="coloniaInput" placeholder="COLONIA">
+
+      <input type="text" id="folioRealInput" inputmode="numeric" pattern="[0-9]*" placeholder="FOLIO REAL (NUMÉRICO)">
+
+      <div class="busqueda-acciones">
+        <button type="button" class="btn-busqueda-unica" onclick="buscarAvanzado()">🔎 Buscar</button>
+        <button type="button" class="btn-busqueda-limpiar" onclick="limpiarBusquedaCatastral()">Limpiar</button>
+      </div>
+
+      <div id="contadorBusquedaGeneral" class="contador-busqueda contador-general">Sin búsqueda realizada</div>
+
+      <!-- Compatibilidad interna con funciones existentes -->
+      <div id="contadorClave" class="contador-busqueda contador-oculto">Sin búsqueda realizada</div>
+      <div id="contadorNombre" class="contador-busqueda contador-oculto">Sin búsqueda realizada</div>
+      <div id="contadorDireccion" class="contador-busqueda contador-oculto">Sin búsqueda realizada</div>
+    </div>
+
+    <div id="resultadosBusqueda"></div>
+
+    <div id="movimientosPredioAcciones" class="mov-predio-acciones oculto" aria-label="Acciones del predio encontrado"></div>
+
+    <div id="panelLeyendaIntegrada" class="panel-leyenda-integrada">
+      <button type="button" class="panel-leyenda-bar" onclick="toggleLeyendaIntegradaPanel()">
+        <span>Leyenda del mapa</span>
+        <span id="panelLeyendaToggle">▾</span>
+      </button>
+      <div id="leyendaContenido" class="leyenda-contenido-panel"></div>
+    </div>
+
+    <div id="ficha"></div>
+
+    <div class="card-panel perm-editar-cartografia">
+      <div class="section-label">Edición cartográfica</div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 8px;">Ajuste el contorno del predio en mapa dedicado (panel izquierdo + mapa derecho).</p>
+      <button type="button" onclick="abrirEdicionCartografica()">✏️ Editar geometría del predio</button>
+    </div>
+  </div>
+
+  <div id="tabCapas" class="tab-content">
+    <div class="card-panel">
+      <div class="section-label">Mapa base</div>
+      <select id="baseLayerSelect" onchange="cambiarCapaBase()">
+        <option value="osm">OpenStreetMap</option>
+        <option value="esri">ESRI Satellite</option>
+        <option value="googleSat">Google Satellite</option>
+        <option value="googleHybrid" selected>Google Hybrid</option>
+      </select>
+    </div>
+
+    
+<div class="card-panel">
+      <div class="section-label">Capas WMS</div>
+
+      <div class="layer-item" data-layer-id="predios">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkPrediosWms" onchange="togglePrediosWms()">
+            <span class="layer-dot dot-red"></span>
+            <b>Predios GeoServer WMS</b>
+          </label>
+          <span id="opPrediosTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opPredios" oninput="cambiarOpacidadCapa('predios', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('predios')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('predios')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="fiscal">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkAdeudosFiscal" onchange="toggleAdeudosFiscal()">
+            <span class="layer-dot dot-green"></span>
+            <b>Temático fiscal local</b>
+          </label>
+          <span id="opFiscalTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opFiscal" oninput="cambiarOpacidadCapa('fiscal', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('fiscal')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('fiscal')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="colonias">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkColoniasWms" checked onchange="toggleColoniasWms()">
+            <span class="layer-dot dot-purple"></span>
+            <b>Colonias WMS</b>
+          </label>
+          <span id="opColoniasTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opColonias" oninput="cambiarOpacidadCapa('colonias', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('colonias')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('colonias')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="codigos">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkCodigosWms" onchange="toggleCodigosWms()">
+            <span class="layer-dot dot-orange"></span>
+            <b>Códigos postales WMS</b>
+          </label>
+          <span id="opCodigosTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opCodigos" oninput="cambiarOpacidadCapa('codigos', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('codigos')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('codigos')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <div class="layer-item" data-layer-id="auditoria">
+        <div class="layer-top">
+          <label class="layer-name">
+            <input type="checkbox" id="chkCambiosGeom" onchange="toggleCambiosGeom()">
+            <span class="layer-dot dot-amber"></span>
+            <b>Auditoría geométrica</b>
+          </label>
+          <span id="opAuditoriaTxt" class="layer-percent">100%</span>
+        </div>
+        <input type="range" min="0" max="100" value="100" id="opAuditoria" oninput="cambiarOpacidadCapa('auditoria', this.value)">
+        <div class="layer-actions">
+          <button type="button" onclick="subirCapa('auditoria')">↑ Subir</button>
+          <button type="button" onclick="bajarCapa('auditoria')">↓ Bajar</button>
+        </div>
+      </div>
+
+      <label class="check-row dashboard-toggle-row">
+        <input type="checkbox" id="chkDashboard" onchange="toggleDashboardVisible()" checked>
+        <span>Panel control cartográfico</span>
+      </label>
+
+      <label class="check-row">
+        <input type="checkbox" id="chkLeyenda" onchange="toggleLeyendaDesdePanel()" checked>
+        <span>Leyenda bajo resultados de búsqueda</span>
+      </label>
+
+      <div class="fiscal-legend">
+        <div><span class="legend-box legend-verde"></span> Sin adeudo</div>
+        <div><span class="legend-box legend-rojo"></span> Con adeudo</div>
+        <div><span class="legend-box legend-amarillo"></span> Sin dato fiscal</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="tabHerramientas" class="tab-content">
+
+    <div class="card-panel">
+      <div class="section-label">Impresión institucional</div>
+      <button id="btnPdfInstitucional" class="perm-exportar-pdf" type="button" onclick="generarPDFInstitucional()">📄 Generar ficha PDF</button>
+      <div id="estadoPdfInstitucional" class="estado-pdf">Listo para generar PDF.</div>
+      <div class="nota-herramienta">
+        Genera un PDF del predio seleccionado con croquis, datos catastrales, estado fiscal y QR.
+      </div>
+    </div>
+
+    <div class="card-panel">
+      <div class="section-label">Medición</div>
+      <button type="button" class="perm-medir" onclick="alert('Herramienta de línea pendiente de integrar')">📏 Línea</button>
+      <button type="button" class="perm-medir" onclick="alert('Herramienta de polígono pendiente de integrar')">📐 Polígono</button>
+      <button type="button" class="perm-medir" onclick="alert('Borrar medición pendiente de integrar')">🗑️ Borrar medición</button>
+    </div>
+
+    <div class="card-panel">
+      <div class="section-label">Cotas y cuadro de construcción</div>
+      <button type="button" class="perm-editar-cartografia" onclick="abrirEdicionCartografica()">✏️ Editar geometría del predio</button>
+      <button type="button" class="perm-editar-cartografia" onclick="alert('Generación de cotas pendiente de integrar')">📐 Generar cotas y cuadro</button>
+      <button type="button" class="perm-exportar-excel" onclick="exportarResultadosExcel()">⬇ Excel</button>
+    </div>
+  </div>
+
+  
+
+  <div id="tabMovimientos" class="tab-content">
+    <div class="card-panel movimientos-card">
+      <div class="section-label">Movimientos catastrales</div>
+      <p class="solo-lectura-catastro" style="font-size:12px;color:#64748b;margin:0 0 10px;">Seleccione un predio en la consulta y pulse el botón del movimiento que desea registrar.</p>
+
+      <div class="mov-botones-grid perm-editar-catastro">
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_SUPERFICIE">📐 Superficie</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_CONSTRUCCION">🏗️ Construcción</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_USO_SUELO">🌿 Uso suelo</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_ZONA_HOMOGENEA">🗺️ Zona H.</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="NUMERO_OFICIAL">🔢 Núm. oficial</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CORRECCION_DOMICILIO">🏠 Corrección domicilio</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_TITULARIDAD">👥 Titularidad</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_NOMBRE">🪪 Cambio nombre</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="CAMBIO_CLAVE">🔑 Cambio clave</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="BLOQUEO">🔒 Bloqueo</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="DESBLOQUEO">🔓 Desbloqueo</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="BAJA_CLAVE">⬇️ Baja clave</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="ALTA_CLAVE">⬆️ Alta clave</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="SUBDIVISION">✂️ Subdivisión</button>
+        <button type="button" class="btn-mov-tipo" data-mov-tipo="FUSION">🔗 Fusión</button>
+      </div>
+    </div>
+
+    <div class="card-panel movimientos-card perm-editar-catastro">
+      <div class="section-label">Catálogos institucionales</div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 10px;">Depuración de catálogos: propietarios, calles y colonias. Fusionar duplicados y corregir nomenclatura.</p>
+      <div class="catalogos-mant-btn-row">
+        <button type="button" class="btn-mov-tipo btn-mant-prop" onclick="abrirMantenimientoPropietarios()">👤 Propietarios</button>
+        <button type="button" class="btn-mov-tipo btn-mant-cat" onclick="abrirMantenimientoCalles()">🛣️ Calles</button>
+        <button type="button" class="btn-mov-tipo btn-mant-cat" onclick="abrirMantenimientoColonias()">🏘️ Colonias</button>
+        <button type="button" class="btn-mov-tipo btn-mant-adeudos perm-editar-catastro" onclick="abrirMantenimientoAdeudos()">💰 Adeudos 2026</button>
+        <button type="button" class="btn-mov-tipo btn-mant-folios perm-editar-catastro" onclick="abrirMantenimientoFolios()">📁 Folios reales</button>
+      </div>
+    </div>
+
+    <div class="card-panel movimientos-card">
+      <div class="section-label">Historial de movimientos</div>
+      <div class="admin-toolbar admin-toolbar-mov-acciones">
+        <button type="button" class="btn-gestor-mov" onclick="abrirModalGestorMovimientos()">📋 Gestionar</button>
+        <button type="button" onclick="cargarMovimientosPadron()">🔄</button>
+      </div>
+      <div id="movimientosTabla" class="admin-table-wrap">Sin movimientos cargados.</div>
+    </div>
+  </div>
+
+  <div id="tabAnalisisZonas" class="tab-content">
+    <div class="card-panel">
+      <div class="section-label">Análisis de zonas homogéneas</div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 12px;">
+        Consulte la evolución del valor por m² (2024–2026) por zona, sector, subsector o código de zona homogénea.
+      </p>
+      <button type="button" class="btn-busqueda-unica" onclick="abrirModuloAnalisisZonas()">📊 Abrir módulo de análisis</button>
+    </div>
+  </div>
+
+  <div id="tabCondominios" class="tab-content">
+    <div class="card-panel">
+      <div class="section-label">Régimen en condominio</div>
+      <p style="font-size:12px;color:#64748b;margin:0 0 10px;">
+        <b>Tipo de tenencia</b> en padrón (<b>condominio</b>): <b>C</b> Condominio · <b>P</b> Privado · <b>G</b> Gobierno/Pública · <b>S</b> Social · <b>R</b> Rústica · <b>E</b> Ejidal.
+      </p>
+      <div class="admin-kpi-row" id="condominiosTabKpi">
+        <div class="admin-kpi"><span>Tipos</span><b id="condTabTotalCondominios">—</b></div>
+        <div class="admin-kpi"><span>Unidades</span><b id="condTabTotalUnidades">—</b></div>
+        <div class="admin-kpi"><span>Valor 2026</span><b id="condTabValorTotal">—</b></div>
+      </div>
+      <button type="button" class="btn-busqueda-unica" style="margin-top:10px;" onclick="abrirModuloAnalisisCondominios()">🏢 Abrir análisis de condominios</button>
+      <button type="button" class="btn-busqueda-unica perm-editar-catastro" style="margin-top:8px;" onclick="abrirClasificacionCondominioMasiva()">🏷️ Clasificación masiva vertical/horizontal</button>
+    </div>
+  </div>
+
+
+  <div id="tabAdministracion" class="tab-content">
+    <div class="card-panel admin-card">
+      <div class="section-label">Administración del Sistema</div>
+      <p class="permisos-info">Este módulo se abre en pantalla completa desde el portal de módulos.</p>
+      <button type="button" class="btn-busqueda-unica" onclick="abrirModuloAdministracion()">Abrir administración</button>
+    </div>
+  </div>
+
+</div>
+
+<button id="btnMostrarPanel" class="btn-mostrar-panel oculto" onclick="mostrarPanelPrincipal()">Panel</button>
+
+<div class="area-central-inst">
+  <div id="zonaMapaInstitucional" class="zona-mapa-institucional">
+    <div id="map"></div>
+    <div id="movimientosModuloWorkspace" class="movimientos-modulo-workspace oculto" aria-label="Módulo movimientos catastrales">
+      <div id="movimientosModuloCard" class="movimientos-modulo-card">
+        <div id="movimientosModuloDragHandle" class="movimientos-modulo-head" title="Arrastrar panel">
+          <div class="movimientos-modulo-head-text">
+            <h2>Movimientos catastrales</h2>
+          </div>
+          <div class="movimientos-modulo-head-actions">
+            <button type="button" class="mov-modulo-head-btn" onclick="movModuloToggleBusqueda()" title="Mostrar u ocultar búsqueda">🔍</button>
+            <button type="button" id="movimientosModuloBtnMin" class="mov-modulo-head-btn" onclick="movModuloToggleMinimizar()" title="Minimizar panel">—</button>
+          </div>
+        </div>
+        <div id="movimientosModuloBody" class="movimientos-modulo-body">
+          <div id="movimientosModuloBusqueda" class="movimientos-modulo-busqueda mov-busqueda-compacta"></div>
+          <div id="movimientosModuloHost" class="movimientos-modulo-host"></div>
+        </div>
+      </div>
+    </div>
+    <div id="movimientosCapasMapa" class="mov-capas-mapa oculto" aria-label="Capas del mapa">
+      <button type="button" id="movCapasBtnMostrar" class="mov-capas-mapa-btn" onclick="movModuloToggleCapasPanel()" title="Mostrar capas del mapa">🗺 Capas</button>
+      <div id="movimientosCapasPanel" class="mov-capas-panel-full popup-capas-menu mov-capas-main-panel oculto">
+        <div class="popup-capas-menu-head mov-capas-panel-head">
+          <strong>Capas del plano</strong>
+          <button type="button" class="popup-capas-cerrar" onclick="movModuloToggleCapasPanel()" title="Ocultar capas">−</button>
+        </div>
+        <div id="movimientosCapasHost" class="mov-capas-host"></div>
+      </div>
+    </div>
+    <div id="fichaFlotante" class="ficha-flotante ficha-sobre-mapa oculto">
+      <div id="fichaFlotanteHeader" class="ficha-flotante-header" title="Arrastrar para mover">
+        <div>
+          <div class="ficha-flotante-title">Información del predio</div>
+          <div id="fichaFlotanteClave" class="ficha-flotante-clave">Sin selección</div>
+        </div>
+        <div class="ficha-flotante-actions">
+          <button type="button" onclick="minimizarFichaFlotante()" title="Minimizar">—</button>
+          <button type="button" onclick="cerrarFichaFlotante()" title="Cerrar">×</button>
+        </div>
+      </div>
+      <div id="fichaFlotanteBody" class="ficha-flotante-body"></div>
+      <div class="ficha-flotante-resize ficha-resize-e" data-resize="e" title="Ancho"></div>
+      <div class="ficha-flotante-resize ficha-resize-s" data-resize="s" title="Alto"></div>
+      <div class="ficha-flotante-resize ficha-resize-se" data-resize="se" title="Redimensionar"></div>
+    </div>
+  </div>
+
+  <div id="tablaResultadosFlotante" class="tabla-flotante oculto">
+  <div class="tabla-header">
+    <span id="tablaTitulo">Resultados</span>
+    <div class="tabla-actions">
+      <button type="button" class="tabla-small-btn" onclick="toggleTablaResultadosMinimizada()" title="Minimizar / expandir">—</button>
+      <button type="button" class="tabla-small-btn" onclick="toggleTablaCompacta()">Compacto</button>
+      <button type="button" class="tabla-small-btn" onclick="exportarResultadosExcel()">⬇ Excel</button>
+      <button type="button" class="tabla-small-btn" onclick="cerrarTablaResultados()" title="Ocultar">×</button>
+    </div>
+  </div>
+
+  <div class="tabla-cuerpo">
+  <div class="datagrid-toolbar">
+    <input type="text" id="filtroTablaResultados" placeholder="Filtro general..." onkeyup="filtrarTablaResultados()">
+    <select id="pageSizeResultados" onchange="cambiarPageSizeResultados()">
+      <option value="10">10 filas</option>
+      <option value="25" selected>25 filas</option>
+      <option value="50">50 filas</option>
+      <option value="100">100 filas</option>
+      <option value="500">500 filas</option>
+      <option value="1000">1000 filas</option>
+    </select>
+  </div>
+
+  <div id="tablaResultadosContenido"></div>
+
+  <div class="datagrid-footer">
+    <span id="tablaResumen">Sin resultados</span>
+    <div>
+      <button type="button" class="tabla-small-btn" onclick="paginaResultadosAnterior()">◀</button>
+      <span id="tablaPagina">1 / 1</span>
+      <button type="button" class="tabla-small-btn" onclick="paginaResultadosSiguiente()">▶</button>
+    </div>
+  </div>
+  </div>
+</div>
+
+</div><!-- /area-central-inst -->
+
+</div><!-- /cuerpoInstitucional -->
+
+<div id="leyendaDinamica" class="leyenda-dinamica oculto">
+  <div class="leyenda-header">
+    <span>Leyenda</span>
+    <div class="leyenda-actions">
+      <button type="button" onclick="minimizarLeyendaDinamica()" title="Minimizar">—</button>
+      <button type="button" onclick="toggleLeyendaDinamica()" title="Ocultar">×</button>
+    </div>
+  </div>
+  <div id="leyendaContenidoFlotante" class="leyenda-contenido"></div>
+</div>
+
+<button id="btnMostrarLeyenda" class="btn-mostrar-leyenda oculto" onclick="toggleLeyendaDinamica()">Leyenda</button>
+
+<footer id="footerInstitucional" class="footer-institucional">
+  <span id="footerVersionInst">SGC v164 · RPPC API</span>
+  <span class="footer-inst-copy">© Municipio de Mexicali, Baja California</span>
+  <button type="button" class="footer-inst-ayuda" onclick="alert('Manual de usuario en preparación.')">Ayuda</button>
+</footer>
+
+</div><!-- /appInstitucional -->
+
+<!-- Edición cartográfica — panel izquierdo + mapa derecho -->
+<div id="overlayEdicionCartografica" class="edicion-carto-overlay oculto" role="dialog" aria-modal="true" aria-labelledby="edicionCartoTitulo">
+  <header class="edicion-carto-topbar">
+    <div>
+      <h2 id="edicionCartoTitulo">Módulo cartográfico</h2>
+      <p id="edicionCartoSubtitulo">Edición geométrica · alta, subdivisión, fusión y ajustes · Mexicali UTM zona 11</p>
+    </div>
+    <div class="edicion-carto-topbar-actions">
+      <button type="button" id="edicionCartoBtnModulos" class="edicion-carto-btn-modulos oculto" onclick="edCartoVolverModulos()">← Módulos</button>
+      <span id="edicionCartoBadgeDirty" class="edicion-carto-badge-dirty oculto">Cambios sin guardar</span>
+      <button type="button" class="edicion-carto-btn-cerrar" onclick="cerrarEdicionCartografica()">Cerrar</button>
+    </div>
+  </header>
+  <div class="edicion-carto-layout">
+    <aside class="edicion-carto-panel" id="edicionCartoPanel">
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Procedimiento cartográfico</div>
+        <label class="edicion-carto-campo"><span>Tipo de trabajo</span>
+          <select id="edicionCartoProcedimiento" onchange="edCartoCambiarProcedimiento()">
+            <option value="EDICION">Edición de contorno existente</option>
+            <option value="ALTA_CLAVE">Alta de nueva clave catastral</option>
+            <option value="SUBDIVISION">Subdivisión predial</option>
+            <option value="FUSION">Fusión de predios</option>
+          </select>
+        </label>
+        <ol class="edicion-carto-pasos" id="edicionCartoPasos"></ol>
+      </div>
+      <div id="edicionCartoProcSubdivision" class="edicion-carto-bloque edicion-carto-proc-extra oculto">
+        <div class="edicion-carto-bloque-titulo">Subdivisión</div>
+        <label class="edicion-carto-campo"><span>Claves resultantes (coma)</span>
+          <input type="text" id="edicionCartoClavesResultantes" placeholder="CLAVE-1, CLAVE-2, CLAVE-3">
+        </label>
+        <p class="edicion-carto-nota">Cargue la clave origen abajo y dibuje o ajuste el contorno de cada lote resultante en el mapa.</p>
+      </div>
+      <div id="edicionCartoProcFusion" class="edicion-carto-bloque edicion-carto-proc-extra oculto">
+        <div class="edicion-carto-bloque-titulo">Fusión</div>
+        <label class="edicion-carto-campo"><span>Claves a fusionar (coma)</span>
+          <input type="text" id="edicionCartoClavesOrigen" placeholder="CLAVE-A, CLAVE-B">
+        </label>
+        <label class="edicion-carto-campo"><span>Clave destino / resultante</span>
+          <input type="text" id="edicionCartoClaveDestino" placeholder="Clave del predio fusionado">
+        </label>
+        <p class="edicion-carto-nota">Dibuje o ajuste el contorno del predio resultante. Las claves origen se registran en el trámite de padrón.</p>
+      </div>
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Predio</div>
+        <label class="edicion-carto-campo"><span>Clave catastral</span>
+          <input type="text" id="edicionCartoInputClave" placeholder="Ej. ST311-001-001">
+        </label>
+        <div class="edicion-carto-tools" style="margin-bottom:8px;">
+          <button type="button" onclick="edCartoCargarPredio()">Cargar clave</button>
+          <button type="button" id="edicionCartoBtnPredioActual" onclick="edCartoCargarPredioActual()">Predio actual</button>
+        </div>
+        <div class="edicion-carto-resumen">
+          <div><span>Clave activa</span><b id="edicionCartoClaveActiva">—</b></div>
+          <div><span>Área UTM</span><b id="edicionCartoArea">—</b></div>
+          <div><span>Perímetro</span><b id="edicionCartoPerimetro">—</b></div>
+        </div>
+      </div>
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Herramientas</div>
+        <div class="edicion-carto-tools edicion-carto-tools-sig">
+          <button type="button" class="edicion-carto-tool-modo activo" data-modo="select" onclick="edCartoActivarModoSelect()">Seleccionar</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="translate" onclick="edCartoActivarModoTranslate()">Mover</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="rotate" onclick="edCartoActivarModoRotate()">Rotar</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="modify" onclick="edCartoActivarModoModify()">Vértices</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="draw" onclick="edCartoActivarModoDraw()">Dibujar</button>
+          <button type="button" class="edicion-carto-tool-modo" data-modo="cutline" onclick="edCartoActivarModoCutLine()">Línea corte</button>
+          <button type="button" class="edicion-carto-tool-accion" onclick="edCartoFusionarSeleccionados()">Fusionar ⊕</button>
+          <button type="button" class="edicion-carto-tool-accion edicion-carto-tool-borrar" onclick="edCartoBorrarSeleccion()">Borrar</button>
+          <button type="button" id="edicionCartoBtnSnap" class="activo" onclick="edCartoToggleSnap()">Snap: ON</button>
+          <button type="button" id="edicionCartoBtnVerCambios" class="activo" onclick="edCartoToggleVerCambios()" disabled>👁 Cambios: ON</button>
+        </div>
+        <p class="edicion-carto-nota"><strong>SIG:</strong> Subdivisión: pulse «Línea corte» y trace 2 clics (inicio/fin). No requiere Sel previo. Shift+clic = multi-selección · Fusionar = 2+ polígonos · <span style="color:#ea580c">Naranja</span> original · <span style="color:#0050ff">Azul</span> edición · <span style="color:#facc15">Amarillo</span> selección / corte.</p>
+      </div>
+      <div class="edicion-carto-bloque">
+        <div class="edicion-carto-bloque-titulo">Guardar</div>
+        <label class="edicion-carto-campo"><span>Motivo (opcional)</span>
+          <textarea id="edicionCartoMotivo" rows="2" placeholder="Ajuste de contorno, alta cartográfica, subdivisión…"></textarea>
+        </label>
+        <div class="edicion-carto-acciones">
+          <button type="button" class="edicion-carto-btn-guardar" onclick="edCartoGuardar()">Guardar en cartografía</button>
+          <button type="button" class="edicion-carto-btn-descartar" onclick="edCartoDescartar()">Descartar cambios</button>
+          <button type="button" id="edicionCartoBtnTramite" class="edicion-carto-btn-tramite oculto" onclick="edCartoAbrirTramitePadron()">Continuar trámite en padrón →</button>
+        </div>
+        <div id="edicionCartoMensaje" class="edicion-carto-mensaje"></div>
+      </div>
+    </aside>
+    <div class="edicion-carto-mapa-col">
+      <div class="edicion-carto-mapa-head">
+        <span>Satélite · Colonias · <b style="color:#ea580c">Naranja</b> original · <b style="color:#60a5fa">Azul</b> edición · <b style="color:#facc15">Amarillo</b> selección</span>
+      </div>
+      <div class="edicion-carto-mapa-wrap">
+        <div class="edicion-carto-mapa-toolbar" id="edicionCartoMapToolbar" role="toolbar" aria-label="Herramientas cartográficas">
+          <span class="edicion-carto-mapa-toolbar-label">Operación</span>
+          <button type="button" class="activo" data-proc="EDICION" title="Editar contorno existente" onclick="edCartoToolbarProcedimiento('EDICION')">✏️ Edición</button>
+          <button type="button" data-proc="ALTA_CLAVE" title="Alta de nueva clave" onclick="edCartoToolbarProcedimiento('ALTA_CLAVE')">➕ Crear</button>
+          <button type="button" data-proc="SUBDIVISION" title="Subdivisión predial" onclick="edCartoToolbarProcedimiento('SUBDIVISION')">✂️ Corte</button>
+          <button type="button" data-proc="FUSION" title="Fusión de predios" onclick="edCartoToolbarProcedimiento('FUSION')">🔗 Fusión</button>
+          <span class="edicion-carto-mapa-toolbar-sep" aria-hidden="true"></span>
+          <span class="edicion-carto-mapa-toolbar-label">SIG</span>
+          <button type="button" class="activo" data-modo="select" title="Seleccionar polígonos (Shift = varios)" onclick="edCartoActivarModoSelect()">🖱 Sel</button>
+          <button type="button" data-modo="translate" title="Mover polígono" onclick="edCartoActivarModoTranslate()">↕ Mover</button>
+          <button type="button" data-modo="rotate" title="Rotar polígono" onclick="edCartoActivarModoRotate()">↻ Rotar</button>
+          <button type="button" data-modo="modify" title="Mover vértices" onclick="edCartoActivarModoModify()">◇ Vértices</button>
+          <button type="button" data-modo="draw" title="Dibujar polígono" onclick="edCartoActivarModoDraw()">⬠ Dibujar</button>
+          <button type="button" data-modo="cutline" title="Dividir con línea (JSTS)" onclick="edCartoActivarModoCutLine()">✂ L.corte</button>
+          <button type="button" class="edicion-carto-mapa-btn-accion" title="Unir polígonos seleccionados" onclick="edCartoFusionarSeleccionados()">⊕ Unir</button>
+          <button type="button" class="edicion-carto-mapa-btn-accion edicion-carto-mapa-btn-borrar" title="Borrar selección" onclick="edCartoBorrarSeleccion()">🗑 Borrar</button>
+          <span class="edicion-carto-mapa-toolbar-sep" aria-hidden="true"></span>
+          <button type="button" id="edicionCartoMapBtnSnap" class="activo" title="Snap a vecinos" onclick="edCartoToggleSnap()">Snap: ON</button>
+          <button type="button" id="edicionCartoMapBtnVerCambios" class="activo" title="Ver/ocultar cambios" onclick="edCartoToggleVerCambios()" disabled>👁 Cambios</button>
+        </div>
+        <div id="edicionCartoMap" class="edicion-carto-mapa"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Pop-up de trabajo del predio (Gestión Catastral) -->
+<div id="popupPredioWorkspace" class="popup-predio-workspace oculto" role="dialog" aria-modal="true" aria-labelledby="popupPredioClave">
+  <div class="popup-predio-backdrop" onclick="cerrarPopupPredioWorkspace()"></div>
+  <div class="popup-predio-window">
+    <header class="popup-predio-header">
+      <div class="popup-predio-header-main">
+      <div class="popup-predio-nav">
+        <button type="button" onclick="navegarPopupPredio(-1)" title="Predio anterior">‹</button>
+        <button type="button" onclick="navegarPopupPredio(1)" title="Predio siguiente">›</button>
+      </div>
+      <div id="popupPredioResumen" class="popup-predio-resumen"></div>
+      <div id="popupPredioClave" class="popup-predio-clave">—</div>
+      <div id="popupPredioNavInfo" class="popup-predio-nav-info"></div>
+      <button type="button" class="popup-predio-btn-cerrar" onclick="cerrarPopupPredioWorkspace()" title="Cerrar">×</button>
+      </div>
+    </header>
+    <nav class="popup-predio-tabs" aria-label="Pestañas del predio">
+      <button type="button" class="popup-predio-tab active" data-tab="datos-generales" title="Datos Generales" onclick="mostrarPopupPredioTab('datos-generales')">Datos</button>
+      <button type="button" class="popup-predio-tab" data-tab="construcciones" title="Construcciones y Medidas" onclick="mostrarPopupPredioTab('construcciones')">Construcción</button>
+      <button type="button" class="popup-predio-tab" data-tab="archivo" title="Archivo Digitalizado" onclick="mostrarPopupPredioTab('archivo')">Archivo</button>
+      <button type="button" class="popup-predio-tab" data-tab="control-urbano" title="Control Urbano" onclick="mostrarPopupPredioTab('control-urbano')">Ctrl. Urbano</button>
+      <button type="button" class="popup-predio-tab" data-tab="documento-rppc" title="Documento RPPC" onclick="mostrarPopupPredioTab('documento-rppc')">RPPC</button>
+      <button type="button" class="popup-predio-tab" data-tab="numeros-oficiales" title="Números Oficiales" onclick="mostrarPopupPredioTab('numeros-oficiales')">Núm. Oficial</button>
+      <button type="button" class="popup-predio-tab" data-tab="carta-urbana" title="Carta Urbana 2040" onclick="mostrarPopupPredioTab('carta-urbana')">Carta 2040</button>
+      <button type="button" class="popup-predio-tab" data-tab="colonia" title="Colonia / Fraccionamiento" onclick="mostrarPopupPredioTab('colonia')">Colonia</button>
+      <button type="button" class="popup-predio-tab" data-tab="zona-homogenea" title="Zona Homogénea" onclick="mostrarPopupPredioTab('zona-homogenea')">Zona H.</button>
+    </nav>
+    <div class="popup-predio-body">
+      <div id="popupTabDatosGenerales" class="popup-tab-panel active" data-tab="datos-generales"></div>
+      <div id="popupTabConstrucciones" class="popup-tab-panel" data-tab="construcciones"></div>
+      <div id="popupTabArchivo" class="popup-tab-panel" data-tab="archivo"></div>
+      <div id="popupTabControlUrbano" class="popup-tab-panel" data-tab="control-urbano"></div>
+      <div id="popupTabDocumentoRppc" class="popup-tab-panel" data-tab="documento-rppc"></div>
+      <div id="popupTabNumerosOficiales" class="popup-tab-panel" data-tab="numeros-oficiales"></div>
+      <div id="popupTabCartaUrbana" class="popup-tab-panel" data-tab="carta-urbana"></div>
+      <div id="popupTabColonia" class="popup-tab-panel" data-tab="colonia"></div>
+      <div id="popupTabZonaHomogenea" class="popup-tab-panel" data-tab="zona-homogenea"></div>
+    </div>
+  </div>
+</div>
+
+<canvas id="qrPdfTemp" style="display:none;"></canvas>
+<div id="popup"></div>
+
+<!-- v76 - Mantenimiento de propietarios -->
+<div id="modalMantenimientoPropietarios" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window">
+    <div class="mant-prop-titlebar">
+      <h2>👤 Mantenimiento Propietarios</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoPropietarios()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-prop-search">
+      <label for="mantPropBuscar">Propietario:</label>
+      <input type="text" id="mantPropBuscar" placeholder="APELLIDO, NOMBRE, RFC..." onkeydown="if(event.key==='Enter'){event.preventDefault();buscarMantenimientoPropietarios();}">
+          <button type="button" class="mant-prop-btn mant-prop-btn-buscar" onclick="buscarMantenimientoPropietarios()">Buscar</button>
+      <div id="mantPropProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar"></div></div>
+    </div>
+
+    <div class="mant-prop-grid-wrap">
+      <div class="mant-prop-grid-toolbar">
+        <label class="mant-prop-fusion-all"><input type="checkbox" id="mantPropFusionTodos" onchange="toggleFusionTodosPropietarios(this.checked)"> Marcar todos</label>
+        <button type="button" class="mant-prop-btn fusion" onclick="fusionarPropietariosMantenimiento()" title="Fusiona catálogo y padrón; el padrón se registra automáticamente">🔗 Fusionar marcados</button>
+        <small class="mant-prop-fusion-hint">Destino = clic fila (amarillo catálogo · naranja padrón) · ✓ = duplicados a unir</small>
+        <span id="mantPropToolbarMsg" class="mant-prop-msg mant-prop-toolbar-msg"></span>
+      </div>
+      <table class="mant-prop-grid" id="mantPropGrid">
+        <thead>
+          <tr>
+            <th class="mant-prop-col-chk">✓</th>
+            <th>Propietario</th>
+            <th>Colonia</th>
+            <th>Dirección</th>
+            <th>No. Oficial</th>
+            <th>Origen</th>
+          </tr>
+        </thead>
+        <tbody id="mantPropGridBody">
+          <tr><td colspan="6" class="mant-prop-empty">Capture un criterio y presione Buscar.</td></tr>
+        </tbody>
+      </table>
+      <div class="mant-prop-grid-hint">[ ENTER ] o doble click — modifica propietario · <span id="mantPropContador">0</span> resultado(s)</div>
+    </div>
+
+    <fieldset class="mant-prop-form">
+      <legend>Datos del propietario</legend>
+      <input type="hidden" id="mantPropIdPersona" value="">
+      <input type="hidden" id="mantPropClavePredio" value="">
+
+      <div class="mant-prop-form-row">
+        <label>Tipo</label>
+        <select id="mantPropTipoPersona" onchange="cambiarTipoPersonaMantenimiento()">
+          <option value="FISICA">PERSONA FÍSICA</option>
+          <option value="MORAL">PERSONA MORAL</option>
+        </select>
+      </div>
+
+      <div id="mantPropBloqueFisica">
+        <div class="mant-prop-form-row mant-prop-form-4">
+          <div><label>Ap. Paterno</label><input type="text" id="mantPropApPat"></div>
+          <div><label>Ap. Materno</label><input type="text" id="mantPropApMat"></div>
+          <div><label>Nombre (1)</label><input type="text" id="mantPropNombre1"></div>
+          <div><label>Nombre (2)</label><input type="text" id="mantPropNombre2"></div>
+        </div>
+      </div>
+
+      <div id="mantPropBloqueMoral" class="oculto">
+        <div class="mant-prop-form-row"><label>Razón social</label><input type="text" id="mantPropRazonSocial"></div>
+      </div>
+
+      <div class="mant-prop-form-row mant-prop-form-2">
+        <div><label>RFC</label><input type="text" id="mantPropRFC"></div>
+        <div><label>CURP</label><input type="text" id="mantPropCURP"></div>
+      </div>
+
+      <div class="mant-prop-form-row mant-prop-form-4">
+        <div class="mant-prop-campo-calle">
+          <label>Calle</label>
+          <input type="text" id="mantPropCalle" placeholder="CATÁLOGO DE CALLES" autocomplete="off">
+          <input type="hidden" id="mantPropIdCalle" value="">
+          <div id="mantPropSugCalles" class="mant-prop-sugerencias"></div>
+        </div>
+        <div><label>No. Oficial</label><input type="text" id="mantPropNumof" placeholder="NÚMERO"></div>
+        <div><label>Colonia</label><input type="text" id="mantPropColonia" placeholder="COLONIA"></div>
+        <div><label>C.P.</label><input type="text" id="mantPropCP" placeholder="C.P."></div>
+      </div>
+
+      <div class="mant-prop-form-row mant-prop-form-2">
+        <div><label>Delegación / Ciudad</label><input type="text" id="mantPropDelegacion" placeholder="MUNICIPIO"></div>
+        <div><label>Clave catastral</label><input type="text" id="mantPropClaveDisplay" readonly title="Referencia del padrón fiscal"></div>
+      </div>
+
+      <div class="mant-prop-form-row">
+        <label>Nombre completo</label>
+        <input type="text" id="mantPropNombreCompleto" class="mant-prop-preview" readonly>
+      </div>
+
+      <div class="mant-prop-form-actions">
+        <button type="button" class="mant-prop-btn ok" onclick="grabarMantenimientoPropietario()">💾 Grabar</button>
+        <button type="button" class="mant-prop-btn sec" onclick="cancelarMantenimientoPropietario()">Cancelar</button>
+        <button type="button" class="mant-prop-btn" onclick="nuevoMantenimientoPropietario()">➕ Nuevo</button>
+        <button type="button" class="mant-prop-btn danger" onclick="borrarMantenimientoPropietario()">🗑️ Borrar</button>
+        <span id="mantPropMsg" class="mant-prop-msg"></span>
+      </div>
+    </fieldset>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoPropietarios()">Salir</button>
+    </div>
+  </div>
+</div>
+
+<!-- v89 - Mantenimiento calles -->
+<div id="modalMantenimientoCalles" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window">
+    <div class="mant-prop-titlebar">
+      <h2>🛣️ Mantenimiento Calles</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoCalles()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-prop-search">
+      <label for="mantCalleBuscar">Calle:</label>
+      <input type="text" id="mantCalleBuscar" placeholder="NOMBRE DE CALLE..." onkeydown="if(event.key==='Enter'){event.preventDefault();buscarMantenimientoCalles();}">
+      <button type="button" class="mant-prop-btn mant-prop-btn-buscar" onclick="buscarMantenimientoCalles()">Buscar</button>
+      <div id="mantCalleProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar"></div></div>
+    </div>
+
+    <div class="mant-prop-grid-wrap">
+      <div class="mant-prop-grid-toolbar">
+        <label class="mant-prop-fusion-all"><input type="checkbox" id="mantCalleFusionTodos" onchange="toggleFusionTodosCatalogoMantenimiento('calles', this.checked)"> Marcar todos</label>
+        <button type="button" class="mant-prop-btn fusion" onclick="fusionarCatalogoMantenimiento('calles')">🔗 Fusionar marcados</button>
+        <small class="mant-prop-fusion-hint">Destino = clic fila (amarillo catálogo · naranja padrón) · ✓ = duplicados a unir</small>
+        <span id="mantCalleToolbarMsg" class="mant-prop-msg mant-prop-toolbar-msg"></span>
+      </div>
+      <table class="mant-prop-grid" id="mantCalleGrid">
+        <thead>
+          <tr>
+            <th class="mant-prop-col-chk">✓</th>
+            <th>Calle</th>
+            <th>Predios padrón</th>
+            <th>Personas cat.</th>
+            <th>Origen</th>
+          </tr>
+        </thead>
+        <tbody id="mantCalleGridBody">
+          <tr><td colspan="5" class="mant-prop-empty">Capture un criterio y presione Buscar.</td></tr>
+        </tbody>
+      </table>
+      <div class="mant-prop-grid-hint">[ ENTER ] o doble click — edita calle · <span id="mantCalleContador">0</span> resultado(s)</div>
+    </div>
+
+    <fieldset class="mant-prop-form">
+      <legend>Datos de la calle</legend>
+      <input type="hidden" id="mantCalleId" value="">
+      <div class="mant-prop-form-row">
+        <label>Nombre de calle</label>
+        <input type="text" id="mantCalleNombre" placeholder="NOMBRE OFICIAL DE LA CALLE">
+      </div>
+      <div class="mant-prop-form-actions">
+        <button type="button" class="mant-prop-btn ok" onclick="grabarCatalogoMantenimiento('calles')">💾 Grabar</button>
+        <button type="button" class="mant-prop-btn sec" onclick="cancelarCatalogoMantenimiento('calles')">Cancelar</button>
+        <button type="button" class="mant-prop-btn" onclick="nuevoCatalogoMantenimiento('calles')">➕ Nuevo</button>
+        <button type="button" class="mant-prop-btn danger" onclick="borrarCatalogoMantenimiento('calles')">🗑️ Borrar</button>
+        <span id="mantCalleMsg" class="mant-prop-msg"></span>
+      </div>
+    </fieldset>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoCalles()">Salir</button>
+    </div>
+  </div>
+</div>
+
+<!-- v89 - Mantenimiento colonias -->
+<div id="modalMantenimientoColonias" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window">
+    <div class="mant-prop-titlebar">
+      <h2>🏘️ Mantenimiento Colonias</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoColonias()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-prop-search">
+      <label for="mantColBuscar">Colonia:</label>
+      <input type="text" id="mantColBuscar" placeholder="NOMBRE DE COLONIA..." onkeydown="if(event.key==='Enter'){event.preventDefault();buscarMantenimientoColonias();}">
+      <button type="button" class="mant-prop-btn mant-prop-btn-buscar" onclick="buscarMantenimientoColonias()">Buscar</button>
+      <div id="mantColProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar"></div></div>
+    </div>
+
+    <div class="mant-prop-grid-wrap">
+      <div class="mant-prop-grid-toolbar">
+        <label class="mant-prop-fusion-all"><input type="checkbox" id="mantColFusionTodos" onchange="toggleFusionTodosCatalogoMantenimiento('colonias', this.checked)"> Marcar todos</label>
+        <button type="button" class="mant-prop-btn fusion" onclick="fusionarCatalogoMantenimiento('colonias')">🔗 Fusionar marcados</button>
+        <small class="mant-prop-fusion-hint">Destino = clic fila (amarillo catálogo · naranja padrón) · ✓ = duplicados a unir</small>
+        <span id="mantColToolbarMsg" class="mant-prop-msg mant-prop-toolbar-msg"></span>
+      </div>
+      <table class="mant-prop-grid" id="mantColGrid">
+        <thead>
+          <tr>
+            <th class="mant-prop-col-chk">✓</th>
+            <th>Colonia</th>
+            <th>Predios padrón</th>
+            <th>Personas cat.</th>
+            <th>Origen</th>
+          </tr>
+        </thead>
+        <tbody id="mantColGridBody">
+          <tr><td colspan="5" class="mant-prop-empty">Capture un criterio y presione Buscar.</td></tr>
+        </tbody>
+      </table>
+      <div class="mant-prop-grid-hint">[ ENTER ] o doble click — edita colonia · <span id="mantColContador">0</span> resultado(s)</div>
+    </div>
+
+    <fieldset class="mant-prop-form">
+      <legend>Datos de la colonia</legend>
+      <input type="hidden" id="mantColId" value="">
+      <div class="mant-prop-form-row">
+        <label>Nombre de colonia</label>
+        <input type="text" id="mantColNombre" placeholder="NOMBRE OFICIAL DE LA COLONIA">
+      </div>
+      <div class="mant-prop-form-actions">
+        <button type="button" class="mant-prop-btn ok" onclick="grabarCatalogoMantenimiento('colonias')">💾 Grabar</button>
+        <button type="button" class="mant-prop-btn sec" onclick="cancelarCatalogoMantenimiento('colonias')">Cancelar</button>
+        <button type="button" class="mant-prop-btn" onclick="nuevoCatalogoMantenimiento('colonias')">➕ Nuevo</button>
+        <button type="button" class="mant-prop-btn danger" onclick="borrarCatalogoMantenimiento('colonias')">🗑️ Borrar</button>
+        <span id="mantColMsg" class="mant-prop-msg"></span>
+      </div>
+    </fieldset>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoColonias()">Salir</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalMantenimientoAdeudos" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window mant-adeudos-window">
+    <div class="mant-prop-titlebar">
+      <h2>💰 Importar adeudos 2026</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoAdeudos()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-adeudos-body">
+      <p class="mant-adeudos-intro">
+        Cargue el reporte fiscal (<b>Adeudo2026.xlsx</b> o CSV) con columnas
+        <b>CLAVECATASTRAL</b>, <b>ADEUDO</b> y <b>PAGO</b> (SI/NO).
+        Si <b>PAGO = SI</b>, el predio queda sin adeudo; si <b>NO</b>, se registra el monto en adeudo 2026 y adeudo total.
+      </p>
+
+      <div class="analisis-zonas-import-block">
+        <label class="input-label-mini">Archivo Excel o CSV</label>
+        <input type="file" id="mantAdeudosFile" accept=".xlsx,.xls,.csv,.txt" onchange="vistaPreviaAdeudosMantenimiento()">
+        <div class="overlay-analisis-zonas-acciones">
+          <button type="button" class="btn-busqueda-unica" onclick="vistaPreviaAdeudosMantenimiento()">👁️ Vista previa</button>
+          <button type="button" onclick="descargarPlantillaAdeudosMantenimiento()">Plantilla CSV</button>
+        </div>
+      </div>
+
+      <div id="mantAdeudosResumen" class="mant-adeudos-resumen"></div>
+      <div id="mantAdeudosPreview" class="mant-adeudos-preview"></div>
+      <div id="mantAdeudosProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar" id="mantAdeudosProgressBar"></div></div>
+      <div id="mantAdeudosMsg" class="mant-prop-msg"></div>
+    </div>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn ok" onclick="importarAdeudosMantenimiento()">📥 Importar al padrón</button>
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoAdeudos()">Salir</button>
+    </div>
+  </div>
+</div>
+
+<div id="modalMantenimientoFolios" class="mant-prop-overlay oculto">
+  <div class="mant-prop-window mant-adeudos-window">
+    <div class="mant-prop-titlebar">
+      <h2>📁 Importar folio real</h2>
+      <button type="button" class="mant-prop-close" onclick="cerrarMantenimientoFolios()" title="Salir">×</button>
+    </div>
+
+    <div class="mant-adeudos-body">
+      <p class="mant-adeudos-intro">
+        Cargue <b>clave mas folio real.xlsx</b> (o CSV) con columnas
+        <b>CLAVE_CATASTRAL</b> y <b>Folio Real</b>.
+        Los valores <b>0</b> o vacíos se guardan como sin folio.
+      </p>
+
+      <div class="analisis-zonas-import-block">
+        <label class="input-label-mini">Archivo Excel o CSV</label>
+        <input type="file" id="mantFoliosFile" accept=".xlsx,.xls,.csv,.txt" onchange="vistaPreviaFoliosMantenimiento()">
+        <div class="overlay-analisis-zonas-acciones">
+          <button type="button" class="btn-busqueda-unica" onclick="vistaPreviaFoliosMantenimiento()">👁️ Vista previa</button>
+          <button type="button" onclick="descargarPlantillaFoliosMantenimiento()">Plantilla CSV</button>
+        </div>
+      </div>
+
+      <div id="mantFoliosResumen" class="mant-adeudos-resumen"></div>
+      <div id="mantFoliosPreview" class="mant-adeudos-preview"></div>
+      <div id="mantFoliosProgress" class="mant-prop-progress oculto"><div class="mant-prop-progress-bar" id="mantFoliosProgressBar"></div></div>
+      <div id="mantFoliosMsg" class="mant-prop-msg"></div>
+    </div>
+
+    <div class="mant-prop-footer">
+      <button type="button" class="mant-prop-btn ok" onclick="importarFoliosMantenimiento()">📥 Importar al padrón</button>
+      <button type="button" class="mant-prop-btn salir" onclick="cerrarMantenimientoFolios()">Salir</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.12.1/proj4.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode/1.5.1/qrcode.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="js/00-nucleo.js?v=20260620_consulta_zona_h"></script>
+<script src="js/10-mapa.js?v=20260611_v177_zoom_busqueda"></script>
+<script src="js/20-ficha.js?v=20260620_consulta_zona_h"></script>
+<script src="js/40-pdf.js?v=20260620_consulta_zona_h"></script>
+<script src="js/30-busqueda.js?v=20260620_consulta_zona_h"></script>
+<script src="js/05-modulos-portal.js?v=20260611_rppc_no_bloquea"></script>
+<script src="js/53-archivo-marca-agua.js?v=20260611_archivo_fotos_auth"></script>
+<script src="js/45-ficha-carta-urbana-preview.js?v=20260620_ficha_print_marca"></script>
+<script src="js/47-ficha-colonia-preview.js?v=20260620_ficha_print_marca"></script>
+<script src="js/48-ficha-zona-homogenea-preview.js?v=20260623_zonas_color_2023"></script>
+<script src="js/43-ficha-numero-oficial.js?v=20260620_ficha_print_marca"></script>
+<script src="js/11-control-urbano.js?v=20260619_cu_marca_perm"></script>
+<script src="js/52-popup-rppc.js?v=20260611_rppc_no_bloquea"></script>
+<script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
+<script src="js/46-ficha-mapa-capas.js?v=20260617_v168_uso_dist"></script>
+<script src="js/49-ficha-analisis-zona-homogenea-preview.js?v=20260611_print_chart_fix"></script>
+<script src="js/07-numeros-oficiales.js?v=20260613_v121_capas_unif"></script>
+<script src="js/08-carta-urbana.js?v=20260617_v170_matriz_compact"></script>
+<script src="js/09-colonias-fraccionamiento.js?v=20260613_v124_predio_fill"></script>
+<script src="js/10-zonas-homogeneas.js?v=20260613_v133_zona_datos"></script>
+<script src="js/44-cedula-numero-oficial-preview.js?v=20260620_consulta_zona_h"></script>
+<script src="js/41-ficha-preview.js?v=20260620_consulta_zona_h"></script>
+<script src="js/42-ficha-cartografia.js?v=20260620_consulta_zona_h"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsts@2.11.0/dist/jsts.min.js"></script>
+<script src="js/51-edicion-cartografica.js?v=20260611_v150_guardar_subdiv"></script>
+<script src="js/50-admin.js?v=20260613_v137_vigencia_matriz"></script>
+<script src="js/61-importador-cartografia.js?v=20260702_importador_predios"></script>
+<script src="js/60-propietarios.js?v=20260611_v178_popup_titularidad"></script>
+<script src="js/72-movimientos-modulo.js?v=20260611_v159_capas_min"></script>
+<script src="js/70-movimientos.js?v=20260611_v182_catalogos_listbox"></script>
+<script src="js/80-zonas.js?v=20260611_zona_limite_negro"></script>
+<script src="js/85-condominios.js?v=20260610_v125_portal"></script>
+<script src="js/90-mantenimiento.js?v=20260614_v158_folios"></script>
+<script src="js/99-init.js?v=20260610_v125_portal"></script>
+
+<!-- Modal edición / alta zona homogénea (z-index sobre módulo análisis) -->
+<div id="modalEditarZonaHomogenea" class="modal-analisis-zona-overlay oculto">
+  <div class="modal-editar-zona-card">
+    <button type="button" class="modal-cerrar" onclick="cerrarEditarZonaHomogenea()">×</button>
+    <h2 id="editarZonaHeading">Corregir zona homogénea</h2>
+    <p id="editarZonaTitulo" class="modal-editar-zona-sub">—</p>
+    <div id="editarZonaBloqueTipo" class="oculto">
+      <label class="input-label-mini">Tipo de registro</label>
+      <select id="editarZonaTipo">
+        <option value="OFICIAL">OFICIAL — tabla fiscal</option>
+        <option value="ADICIONAL">ADICIONAL — nueva en el ejercicio</option>
+        <option value="TEMPORAL">TEMPORAL — dictamen / vigencia acotada</option>
+      </select>
+    </div>
+    <label class="input-label-mini">Descripción col./fracc. *</label>
+    <input type="text" id="editarZonaDescripcion" placeholder="NOMBRE DE LA ZONA">
+    <div class="mov-zona-adic-grid">
+      <div><label class="input-label-mini">Zona *</label><input type="text" id="editarZonaZona" placeholder="Z1"></div>
+      <div><label class="input-label-mini">Sector *</label><input type="text" id="editarZonaSector" placeholder="A"></div>
+      <div><label class="input-label-mini">Subsector *</label><input type="text" id="editarZonaSubsector" placeholder="MXHA"></div>
+    </div>
+    <div class="mov-zona-adic-grid">
+      <div><label class="input-label-mini">Homoclave *</label><input type="text" id="editarZonaHomoclave" placeholder="FSA"></div>
+      <div><label class="input-label-mini">Sección *</label><input type="text" id="editarZonaSeccion" placeholder="A"></div>
+      <div><label class="input-label-mini">Código (preview)</label><input type="text" id="editarZonaCodigoPreview" readonly placeholder="MXHAFSA"></div>
+    </div>
+    <label class="input-label-mini">Valor / m² por ejercicio</label>
+    <div id="editarZonaValoresDinamic"></div>
+    <label class="input-label-mini">Motivo / fundamento legal *</label>
+    <textarea id="editarZonaMotivo" rows="3" placeholder="Corrección por error de captura, dictamen, resolución, etc."></textarea>
+    <button type="button" class="btn-modal-principal" id="editarZonaBtnGuardar" onclick="guardarAjusteZonaHomogenea()">💾 Guardar corrección</button>
+    <div id="editarZonaMensaje" class="modal-mov-msg"></div>
+  </div>
+</div>
+
+<!-- Módulo análisis zonas homogéneas 2024-2026 -->
+<div id="overlayAnalisisZonas" class="overlay-analisis-zonas oculto">
+  <div class="overlay-analisis-zonas-card">
+    <header class="overlay-analisis-zonas-header">
+      <div>
+        <h2>Análisis de zonas homogéneas</h2>
+        <p id="analisisZonasSubtitulo">Evolución del valor por m² · ejercicios fiscales</p>
+      </div>
+      <div class="overlay-analisis-zonas-nav">
+        <span id="analisisZonasContador">—</span>
+        <button type="button" onclick="navegarAnalisisZonas(-1)" title="Anterior">◀</button>
+        <button type="button" onclick="navegarAnalisisZonas(1)" title="Siguiente">▶</button>
+        <button type="button" class="modal-cerrar" onclick="cerrarModuloAnalisisZonas()">×</button>
+      </div>
+    </header>
+
+    <div class="overlay-analisis-zonas-body">
+      <aside class="overlay-analisis-zonas-filtros">
+        <div class="section-label">Consulta</div>
+        <label class="input-label-mini">Zona homogénea / SECSUB</label>
+        <input type="text" id="analisisZonasCodigo" placeholder="Ej. MCC005A, MXHBFSA">
+
+        <label class="input-label-mini">Zona</label>
+        <select id="analisisZonasZona"><option value="">TODAS</option></select>
+
+        <label class="input-label-mini">Sector</label>
+        <select id="analisisZonasSector"><option value="">TODOS</option></select>
+
+        <label class="input-label-mini">Subsector</label>
+        <select id="analisisZonasSubsector"><option value="">TODOS</option></select>
+
+        <label class="input-label-mini">Año (filtro)</label>
+        <select id="analisisZonasAnio"><option value="">TODOS</option></select>
+
+        <label class="input-label-mini">Texto libre</label>
+        <input type="text" id="analisisZonasTexto" placeholder="Colonia, descripción...">
+
+        <div class="overlay-analisis-zonas-acciones">
+          <button type="button" class="btn-busqueda-unica" onclick="buscarAnalisisZonasHomogeneas()">🔎 Buscar</button>
+          <button type="button" onclick="limpiarFiltrosAnalisisZonas()">Limpiar</button>
+        </div>
+
+        <div class="analisis-zonas-import-block perm-editar-catastro">
+          <div class="section-label" style="margin-top:12px;">Importar ejercicio</div>
+          <label class="input-label-mini">Año a importar</label>
+          <input type="number" id="analisisZonasImportAnio" min="2020" max="2035" value="2027">
+          <label class="input-label-mini">Archivo CSV o Excel</label>
+          <input type="file" id="analisisZonasImportFile" accept=".csv,.xlsx,.xls,.txt">
+          <label class="mov-zona-check-line">
+            <input type="checkbox" id="analisisZonasImportReemplazar">
+            <span class="mov-zona-check-text">Reemplazar todas las zonas del año antes de importar</span>
+          </label>
+          <div class="overlay-analisis-zonas-acciones">
+            <button type="button" class="btn-busqueda-unica" onclick="importarArchivoZonasHomogeneas()">📥 Importar</button>
+            <button type="button" onclick="descargarPlantillaZonasHomogeneas()">Plantilla CSV</button>
+          </div>
+          <div id="analisisZonasImportMsg" class="analisis-zonas-import-msg"></div>
+        </div>
+
+        <button type="button" class="btn-busqueda-unica perm-editar-catastro" style="margin-top:8px;" onclick="abrirNuevaZonaHomogenea()">➕ Nueva zona homogénea</button>
+        <button type="button" class="btn-busqueda-unica perm-editar-catastro" style="margin-top:8px;" onclick="abrirEditarZonaHomogenea()">✏️ Editar valores</button>
+
+        <div id="analisisZonasDetalleValores" class="analisis-zonas-valores-anio"></div>
+
+        <div id="analisisZonasMeta" class="analisis-zonas-meta"></div>
+
+        <button type="button" class="btn-busqueda-unica" style="margin-top:10px;" onclick="imprimirCedulaZonaHomogenea()">🖨️ Imprimir cédula</button>
+        <button type="button" onclick="cerrarModuloAnalisisZonas()">Regresar al visor</button>
+      </aside>
+
+      <section class="overlay-analisis-zonas-lista">
+        <div class="overlay-analisis-zonas-lista-head">
+          <div class="section-label">Resultados</div>
+          <button type="button" class="btn-busqueda-unica" onclick="exportarAnalisisZonasExcel()">⬇ Exportar Excel</button>
+        </div>
+        <div id="analisisZonasLista" class="analisis-zonas-lista-wrap">Use los filtros y pulse Buscar.</div>
+      </section>
+
+      <section class="overlay-analisis-zonas-grafica">
+        <div class="analisis-zonas-visual-head">
+          <div class="section-label">Visualización cartográfica y evolución</div>
+          <button type="button" class="btn-busqueda-unica analisis-zonas-btn-ficha" onclick="imprimirFichaAnalisisZonaHomogenea()">🖨️ Vista previa / Imprimir</button>
+        </div>
+        <div class="analisis-zonas-mapa-wrap">
+          <div class="section-label">Ubicación cartográfica</div>
+          <div id="analisisZonasMap" class="analisis-zonas-mapa">
+            <div class="analisis-zonas-mapa-vacio">Seleccione una zona para ver su dibujo cartográfico.</div>
+          </div>
+          <p id="analisisZonasMapEstado" class="analisis-zonas-mapa-estado"></p>
+        </div>
+        <div class="analisis-zonas-grafica-wrap">
+          <div class="section-label">Zona homogénea · valor × año</div>
+          <div id="analisisZonasLeyenda" class="analisis-zonas-leyenda"></div>
+          <canvas id="analisisZonasCanvas" width="480" height="280"></canvas>
+          <div id="analisisZonasVariacion" class="analisis-zonas-variacion"></div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+
+<!-- v90 - Análisis régimen en condominio -->
+<div id="overlayAnalisisCondominios" class="overlay-analisis-zonas overlay-analisis-condominios oculto">
+  <div class="overlay-analisis-zonas-card">
+    <header class="overlay-analisis-zonas-header">
+      <div>
+        <h2>Régimen en condominio</h2>
+        <p id="analisisCondominiosSubtitulo">Tipo de tenencia: C · P · G · S · R · E</p>
+      </div>
+      <div class="overlay-analisis-zonas-nav">
+        <span id="analisisCondominiosContador">—</span>
+        <button type="button" class="modal-cerrar" onclick="cerrarModuloAnalisisCondominios()">×</button>
+      </div>
+    </header>
+
+    <div class="condominios-kpi-bar" id="analisisCondominiosKpi">
+      <div class="condominios-kpi"><span>Tipos</span><b id="condKpiCondominios">—</b></div>
+      <div class="condominios-kpi"><span>Unidades</span><b id="condKpiUnidades">—</b></div>
+      <div class="condominios-kpi"><span>Valor 2026</span><b id="condKpiValor">—</b></div>
+      <div class="condominios-kpi"><span>Adeudo total</span><b id="condKpiAdeudo">—</b></div>
+    </div>
+
+    <div class="overlay-analisis-zonas-body condominios-body-grid">
+      <aside class="overlay-analisis-zonas-filtros">
+        <div class="section-label">Consulta</div>
+
+        <label class="input-label-mini">Tipo de tenencia</label>
+        <select id="analisisCondominiosTipo" onchange="onCambioTipoCondominios()">
+          <option value="C" selected>C — Condominio</option>
+          <option value="P">P — Privado</option>
+          <option value="G">G — Gobierno / Pública</option>
+          <option value="S">S — Social</option>
+          <option value="R">R — Rústica</option>
+          <option value="E">E — Ejidal</option>
+          <option value="TODOS">Todos los tipos</option>
+        </select>
+
+        <div id="analisisCondominiosLeyenda" class="condominios-leyenda-tipos"></div>
+
+        <label class="input-label-mini">Prefijo de clave</label>
+        <input type="text" id="analisisCondominiosPrefijoClave" placeholder="RU" maxlength="12"
+          onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCatalogoCondominios();}">
+        <small class="condominios-ayuda-prefijo">Solo claves que <b>empiecen</b> con este texto (ej. RU → RU001, RU123). No busca en titular.</small>
+
+        <label class="input-label-mini">Colonia</label>
+        <input type="text" id="analisisCondominiosColonia" placeholder="COLONIA" onkeydown="if(event.key==='Enter'){event.preventDefault();buscarCatalogoCondominios();}">
+
+        <label class="input-label-mini">Titular / colonia / calle</label>
+        <input type="text" id="analisisCondominiosTexto" placeholder="Filtro adicional..." onkeydown="if(event.key==='Enter'){event.preventDefault();buscarUnidadesCondominio();}">
+
+        <div class="overlay-analisis-zonas-acciones">
+          <button type="button" class="btn-busqueda-unica" onclick="buscarCatalogoCondominios()">🔎 Buscar condominios</button>
+          <button type="button" class="btn-busqueda-unica perm-editar-catastro" onclick="abrirClasificacionCondominioMasiva()">🏷️ Clasificación masiva</button>
+          <button type="button" class="perm-editar-catastro btn-busqueda-unica" onclick="asignarTenenciaPorPrefijoClave()">Asignar tenencia por prefijo</button>
+          <button type="button" onclick="limpiarFiltrosAnalisisCondominios()">Limpiar</button>
+        </div>
+
+        <div id="analisisCondominiosMeta" class="analisis-zonas-meta"></div>
+        <button type="button" onclick="cerrarModuloAnalisisCondominios()">Regresar al visor</button>
+      </aside>
+
+      <section class="overlay-analisis-zonas-lista condominios-panel-catalogo">
+        <div class="overlay-analisis-zonas-lista-head">
+          <div class="section-label">Tipo de tenencia</div>
+          <button type="button" class="btn-busqueda-unica" onclick="exportarCatalogoCondominiosExcel()">⬇ Excel</button>
+        </div>
+        <div id="analisisCondominiosCatalogo" class="analisis-zonas-lista-wrap">Pulse Buscar condominios.</div>
+      </section>
+
+      <section class="overlay-analisis-zonas-lista condominios-panel-unidades">
+        <div class="overlay-analisis-zonas-lista-head">
+          <div class="section-label">Unidades · <span id="analisisCondominiosTituloUnidades">Seleccione un tipo</span></div>
+          <button type="button" class="btn-busqueda-unica" onclick="exportarUnidadesCondominioExcel()">⬇ Excel unidades</button>
+        </div>
+        <div id="analisisCondominiosUnidades" class="analisis-zonas-lista-wrap">Seleccione un tipo del catálogo o pulse Buscar.</div>
+      </section>
+    </div>
+  </div>
+</div>
+
+
+<!-- Módulo Administración del Sistema -->
+<div id="overlayAdministracion" class="overlay-admin-sistema oculto">
+  <div class="overlay-admin-card">
+    <header class="overlay-admin-header">
+      <div>
+        <h2>Administración del Sistema</h2>
+        <p>Usuarios, permisos por módulo con vigencia, renovación y auditoría</p>
+      </div>
+      <div class="overlay-admin-nav">
+        <button type="button" onclick="cargarModuloAdministracion()">Actualizar</button>
+        <button type="button" class="modal-cerrar" onclick="cerrarModuloAdministracion()" title="Cerrar">×</button>
+      </div>
+    </header>
+
+    <div class="overlay-admin-tabs">
+      <button type="button" class="activo" data-seccion="usuarios" onclick="adminCambiarSeccion('usuarios')">Usuarios</button>
+      <button type="button" data-seccion="permisos" onclick="adminCambiarSeccion('permisos')">Permisos y vigencia</button>
+      <button type="button" data-seccion="matriz" onclick="adminCambiarSeccion('matriz')">Matriz ACL</button>
+      <button type="button" data-seccion="cartografia" onclick="adminCambiarSeccion('cartografia')">Cartografía</button>
+      <button type="button" data-seccion="auditoria" onclick="adminCambiarSeccion('auditoria')">Auditoría</button>
+    </div>
+
+    <div class="overlay-admin-body">
+      <section class="admin-seccion" data-seccion="usuarios">
+        <div class="admin-kpi-row">
+          <div class="admin-kpi"><span>Usuarios</span><b id="adminTotalUsuarios">0</b></div>
+          <div class="admin-kpi"><span>Activos</span><b id="adminUsuariosActivos">0</b></div>
+          <div class="admin-kpi"><span>Inactivos</span><b id="adminUsuariosInactivos">0</b></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Alta de usuario</div>
+          <div class="admin-form">
+            <input type="text" id="adminNuevoUsuario" placeholder="Usuario">
+            <input type="text" id="adminNuevoNombre" placeholder="Nombre completo">
+            <input type="password" id="adminNuevoPassword" placeholder="Contraseña">
+            <select id="adminNuevoRol">
+              <option value="consulta">consulta</option>
+              <option value="catastro">catastro</option>
+              <option value="cartografia">cartografia</option>
+              <option value="fiscalizacion">fiscalizacion</option>
+              <option value="supervisor">supervisor</option>
+              <option value="admin">admin</option>
+            </select>
+            <button type="button" onclick="crearUsuarioAdmin()">Crear usuario</button>
+          </div>
+          <div id="adminMensaje" class="admin-mensaje"></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Usuarios del sistema</div>
+          <div class="admin-toolbar">
+            <input type="text" id="adminFiltroUsuarios" placeholder="Filtrar..." onkeyup="filtrarUsuariosAdmin()">
+            <button type="button" onclick="cargarUsuariosAdmin()">Actualizar</button>
+          </div>
+          <div id="adminUsuariosTabla" class="admin-table-wrap">Cargando usuarios...</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="permisos">
+        <div class="admin-kpi-row">
+          <div class="admin-kpi"><span>Activos</span><b id="adminAccesosActivos">0</b></div>
+          <div class="admin-kpi"><span>Negados</span><b id="adminAccesosNegados">0</b></div>
+          <div class="admin-kpi"><span>Vencidos</span><b id="adminAccesosVencidos">0</b></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Otorgar acceso a módulo</div>
+          <p class="permisos-info">Define módulo, vigencia (inicio/fin) y motivo. La fecha de fin incluye todo ese día (hasta 23:59 hora de Mexicali). Sin fecha fin = acceso permanente.</p>
+          <div class="admin-accesos-form">
+            <label class="admin-campo-mini"><span>Usuario</span><select id="adminAccesoUsuario"></select></label>
+            <label class="admin-campo-mini"><span>Módulo / permiso</span><select id="adminAccesoModulo"></select></label>
+            <label class="admin-campo-mini"><span>Inicio vigencia</span><input type="date" id="adminAccesoInicio"></label>
+            <label class="admin-campo-mini"><span>Fin vigencia</span><input type="date" id="adminAccesoFin" title="Vacío = permanente"></label>
+            <label class="admin-campo-mini admin-campo-motivo"><span>Motivo</span><input type="text" id="adminAccesoMotivo" placeholder="Fundamento del acceso"></label>
+            <button type="button" onclick="crearAccesoAdmin()">Otorgar permiso</button>
+          </div>
+          <div id="adminMensajeAccesos" class="admin-mensaje"></div>
+        </div>
+        <div class="admin-card">
+          <div class="section-label">Permisos otorgados</div>
+          <div class="admin-toolbar">
+            <select id="adminFiltroUsuarioAccesos" onchange="filtrarAccesosAdmin()"><option value="">Todos los usuarios</option></select>
+            <select id="adminFiltroModuloAccesos" onchange="filtrarAccesosAdmin()"><option value="">Todos los módulos</option></select>
+            <button type="button" onclick="cargarAccesosAdmin()">Actualizar</button>
+          </div>
+          <div id="adminAccesosTabla" class="admin-table-wrap">Cargando permisos...</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="matriz">
+        <div class="admin-card">
+          <div class="section-label">Matriz ACL — roles y permisos</div>
+          <p class="permisos-info">Marque los permisos por rol y pulse «Guardar rol». Puede crear permisos y roles nuevos. Los accesos temporales por módulo siguen en «Permisos y vigencia».</p>
+          <div class="admin-toolbar admin-toolbar-matriz admin-toolbar-flex">
+            <button type="button" onclick="cargarMatrizPermisosAdmin()">Recargar matriz</button>
+            <button type="button" onclick="guardarMatrizAclSeleccionada()">Guardar rol seleccionado</button>
+          </div>
+          <div class="admin-acl-grupo">
+            <div class="admin-acl-grupo-titulo">Crear rol</div>
+            <div class="admin-acl-grupo-campos">
+              <label class="admin-campo-mini"><span>Nombre del rol</span><input type="text" id="adminNuevoRolAcl" placeholder="ej. capturista"></label>
+              <label class="admin-campo-mini"><span>Descripción</span><input type="text" id="adminNuevoRolAclDesc" placeholder="Opcional"></label>
+            </div>
+            <button type="button" class="admin-acl-submit" onclick="crearRolAclAdmin()">Crear rol</button>
+          </div>
+          <div class="admin-acl-grupo">
+            <div class="admin-acl-grupo-titulo">Crear permiso</div>
+            <div class="admin-acl-grupo-campos">
+              <label class="admin-campo-mini"><span>Código del permiso</span><input type="text" id="adminNuevoPermisoAcl" placeholder="ej. editar_padron"></label>
+              <label class="admin-campo-mini"><span>Descripción</span><input type="text" id="adminNuevoPermisoAclDesc" placeholder="Editar padrón"></label>
+            </div>
+            <button type="button" class="admin-acl-submit" onclick="crearPermisoAclAdmin()">Crear permiso</button>
+          </div>
+          <div id="adminMensajeMatriz" class="admin-mensaje"></div>
+          <label class="admin-campo-mini admin-campo-rol-editar"><span>Rol a editar</span><select id="adminMatrizRolSeleccion" onchange="adminMatrizSeleccionarRol()"></select></label>
+          <div id="adminMatrizPermisos" class="permisos-matriz-wrap">Cargando...</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="cartografia">
+        <div class="admin-kpi-row importador-kpi-row">
+          <div class="admin-kpi"><span>Tabla destino</span><b id="importadorTablaDestino">predios_mexicali</b></div>
+          <div class="admin-kpi"><span>Modo</span><b id="importadorModo">Prueba</b></div>
+          <div class="admin-kpi"><span>Última importación</span><b id="importadorUltima">—</b></div>
+        </div>
+
+        <div class="admin-card importador-card">
+          <div class="section-label">Importar predios a PostGIS</div>
+          <p class="permisos-info">
+            Cargue los archivos del shapefile de predios de Mexicali. Primero se recomienda importar a
+            <b>predios_mexicali_prueba</b>. Cuando valide conteo, SRID y visualización, active producción.
+          </p>
+
+          <div class="importador-alerta">
+            <b>Archivos requeridos:</b> .shp, .dbf y .shx. Recomendados: .prj y .cpg.
+          </div>
+
+          <div class="importador-form">
+            <label class="admin-campo-mini importador-file">
+              <span>Archivos SHP</span>
+              <input type="file" id="importadorArchivosShape" multiple
+                     accept=".shp,.dbf,.shx,.prj,.cpg,.qmd,.zip">
+            </label>
+
+            <label class="admin-campo-mini">
+              <span>Tabla destino</span>
+              <select id="importadorTabla">
+                <option value="predios_mexicali_prueba" selected>predios_mexicali_prueba (prueba)</option>
+                <option value="predios_mexicali">predios_mexicali (producción)</option>
+              </select>
+            </label>
+
+            <label class="admin-campo-mini">
+              <span>SRID destino</span>
+              <input type="number" id="importadorSrid" value="32611">
+            </label>
+
+            <label class="check-row importador-check">
+              <input type="checkbox" id="importadorConfirmarProduccion">
+              <span>Autorizo reemplazar la tabla de producción si selecciono predios_mexicali</span>
+            </label>
+
+            <button type="button" class="btn-importador-principal" onclick="importadorSubirPredios()">
+              📥 Importar predios
+            </button>
+          </div>
+
+          <div id="importadorMensaje" class="admin-mensaje importador-mensaje"></div>
+          <pre id="importadorLog" class="importador-log">Sin importación ejecutada.</pre>
+        </div>
+
+        <div class="admin-card">
+          <div class="section-label">Validación rápida</div>
+          <div class="admin-toolbar">
+            <button type="button" onclick="importadorConsultarEstado()">Consultar estado</button>
+            <button type="button" onclick="importadorValidarTabla('predios_mexicali_prueba')">Validar prueba</button>
+            <button type="button" onclick="importadorValidarTabla('predios_mexicali')">Validar producción</button>
+          </div>
+          <div id="importadorEstadoTabla" class="admin-table-wrap">Sin consulta.</div>
+        </div>
+      </section>
+
+      <section class="admin-seccion oculto" data-seccion="auditoria">
+        <div class="admin-card">
+          <div class="section-label">Auditoría institucional</div>
+          <div class="admin-toolbar">
+            <button type="button" onclick="cargarAuditoriaAdmin()">Actualizar auditoría</button>
+          </div>
+          <div id="adminAuditoriaTabla" class="admin-table-wrap">Sin datos.</div>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     v27 - Modal institucional Cambio de Nombre
+============================================================ -->
+<div id="modalMovimientoNombre" class="modal-movimiento-overlay oculto">
+  <div class="modal-movimiento-card">
+    <div class="modal-movimiento-left">
+      <div class="modal-icon">🏛️</div>
+      <h2>Movimiento Catastral</h2>
+      <h3>Cambio de Nombre / Titular</h3>
+      <p>
+        Este módulo registra una solicitud institucional para modificar el titular
+        asociado a la clave catastral seleccionada.
+      </p>
+      <div class="modal-nota">
+        La solicitud queda en historial y posteriormente puede ser aplicada al padrón.
+      </div>
+    </div>
+
+    <div class="modal-movimiento-right">
+      <button type="button" class="modal-cerrar" onclick="cerrarModalCambioNombre()">×</button>
+
+      <div class="section-label">Datos del movimiento</div>
+
+      <label class="input-label-mini">Clave catastral</label>
+      <input type="text" id="modalMovClave" placeholder="CLAVE CATASTRAL" readonly>
+
+      <label class="input-label-mini">Nombre actual (padrón)</label>
+      <input type="text" id="modalMovNombreActual" placeholder="NOMBRE ACTUAL" readonly>
+
+      <div class="mov-cat-card">
+        <h4>Catálogo de propietarios</h4>
+        <small class="mov-cat-leyenda"><b>Origen:</b> <b>Catálogo</b> = ficha existente · <b>Padrón</b> = nombre del padrón fiscal</small>
+        <div class="mov-cat-row">
+          <input id="modalMovBuscarTexto" type="text" placeholder="APELLIDO, NOMBRE, RFC O RAZÓN SOCIAL..." onkeyup="if(event.key==='Enter') buscarPropietariosCatalogoCambioNombre()">
+          <button type="button" class="mov-cat-btn" onclick="buscarPropietariosCatalogoCambioNombre()">Buscar</button>
+        </div>
+        <div id="modalMovResultadosCatalogo" class="mov-cat-resultados"><div class="mov-cat-item">Captura criterios y presiona buscar, o use el formulario abajo.</div></div>
+      </div>
+
+      <div class="section-label">Nuevo titular</div>
+      <div id="modalMovTitularSeleccionado" class="mov-cat-seleccion oculto"></div>
+      <input type="hidden" id="modalMovIdPersona" value="">
+
+      <label class="input-label-mini">Tipo de persona</label>
+      <select id="modalMovTipoPersona" onchange="cambiarTipoPersonaModal()">
+        <option value="FISICA">PERSONA FÍSICA</option>
+        <option value="MORAL">PERSONA MORAL</option>
+      </select>
+
+      <div id="bloquePersonaFisica">
+        <div class="mov-cat-campo">
+          <label class="input-label-mini">Apellido paterno</label>
+          <input type="text" id="modalMovPrimerApellido" placeholder="APELLIDO PATERNO">
+          <div id="modalMovSugApPat" class="mov-cat-sugerencias"></div>
+        </div>
+        <div class="mov-cat-campo">
+          <label class="input-label-mini">Apellido materno</label>
+          <input type="text" id="modalMovSegundoApellido" placeholder="APELLIDO MATERNO">
+          <div id="modalMovSugApMat" class="mov-cat-sugerencias"></div>
+        </div>
+        <div class="mov-cat-campo">
+          <label class="input-label-mini">Nombre(s)</label>
+          <input type="text" id="modalMovNombres" placeholder="NOMBRE(S) - EJ: GENARO FERNANDO">
+          <small class="mov-cat-hint">Puede capturar varios nombres separados por espacio.</small>
+          <div id="modalMovSugNombres" class="mov-cat-sugerencias"></div>
+        </div>
+        <label class="input-label-mini">CURP</label>
+        <input type="text" id="modalMovCURP" placeholder="CURP">
+      </div>
+
+      <div id="bloquePersonaMoral" class="oculto">
+        <div class="mov-cat-campo">
+          <label class="input-label-mini">Razón social</label>
+          <input type="text" id="modalMovRazonSocial" placeholder="RAZÓN SOCIAL">
+          <div id="modalMovSugRazon" class="mov-cat-sugerencias"></div>
+        </div>
+      </div>
+
+      <label class="input-label-mini">Nombre completo generado</label>
+      <input type="text" id="modalMovNombreNuevo" class="mov-cat-preview" placeholder="SE GENERA AUTOMÁTICAMENTE" readonly>
+
+      <label class="input-label-mini">RFC</label>
+      <input type="text" id="modalMovRFC" placeholder="RFC">
+
+      <div class="mov-cat-row mov-cat-acciones-form">
+        <button type="button" class="mov-cat-btn ok" onclick="crearPropietarioCatalogoCambioNombre()">Crear propietario</button>
+        <button type="button" class="mov-cat-btn sec" onclick="limpiarFormularioCambioNombreTitular()">Limpiar titular</button>
+      </div>
+      <div id="modalMovMsgCatalogo" class="mov-cat-msg"></div>
+
+      <label class="input-label-mini">Motivo</label>
+      <input type="text" id="modalMovMotivo" placeholder="MOTIVO DEL CAMBIO" value="ACTUALIZACION">
+
+      <label class="input-label-mini">Observaciones</label>
+      <textarea id="modalMovObservaciones" placeholder="OBSERVACIONES"></textarea>
+
+      <button type="button" class="btn-modal-principal" onclick="guardarCambioNombreModal()">💾 Guardar solicitud</button>
+
+      <div id="modalMovMensaje" class="modal-mov-msg"></div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     v57g - Modal gestor de movimientos (autorizar / aplicar)
+============================================================ -->
+<div id="modalGestorMovimientos" class="modal-gestor-mov-overlay oculto">
+  <div class="modal-gestor-mov-card">
+    <div class="modal-gestor-mov-header">
+      <div>
+        <h2>Gestión de movimientos</h2>
+        <p>Autorizar, revisar y aplicar solicitudes al padrón sin salir del mapa</p>
+      </div>
+      <button type="button" class="modal-cerrar" onclick="cerrarModalGestorMovimientos()">×</button>
+    </div>
+
+    <div class="modal-gestor-mov-toolbar">
+      <input type="text" id="gestorMovFiltroClave" placeholder="FILTRAR POR CLAVE">
+      <select id="gestorMovFiltroEstado">
+        <option value="">Todos los estados</option>
+        <option value="PENDIENTES">Pendientes de aplicar</option>
+        <option value="BORRADOR">Borrador</option>
+        <option value="EN_REVISION">En revisión</option>
+        <option value="AUTORIZADO">Autorizado</option>
+        <option value="APLICADO">Aplicado</option>
+        <option value="RECHAZADO">Rechazado</option>
+      </select>
+      <button type="button" onclick="cargarGestorMovimientos()">🔄 Actualizar</button>
+    </div>
+
+    <div class="modal-gestor-mov-split">
+      <div id="gestorMovLista" class="modal-gestor-mov-lista">
+        <div class="gestor-mov-placeholder">Cargando movimientos...</div>
+      </div>
+      <div id="gestorMovDetalle" class="modal-gestor-mov-detalle">
+        <div class="gestor-mov-placeholder">Seleccione un movimiento de la lista para ver detalle, autorizar o aplicar.</div>
+      </div>
+    </div>
+
+    <div id="gestorMovMensaje" class="modal-mov-msg"></div>
+
+    <div class="modal-gestor-mov-footer">
+      <button type="button" class="btn-gestor-salir" onclick="cerrarModalGestorMovimientos()">Salir del gestor</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     v27b - Modal seguimiento movimiento
+============================================================ -->
+<div id="modalSeguimientoMovimiento" class="modal-seguimiento-overlay oculto">
+  <div class="modal-seguimiento-card">
+    <button type="button" class="modal-cerrar" onclick="cerrarModalSeguimientoMovimiento()">×</button>
+
+    <div class="seguimiento-icon">📋</div>
+    <h2>Seguimiento del Movimiento</h2>
+
+    <div class="seguimiento-row">
+      <span>Folio</span>
+      <b id="segMovFolio">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Clave catastral</span>
+      <b id="segMovClave">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Tipo</span>
+      <b id="segMovTipo">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Estado</span>
+      <b id="segMovEstado">BORRADOR</b>
+    </div>
+
+    <div class="seguimiento-etapas">
+      <div class="etapa activa">1<br><small>Solicitud</small></div>
+      <div class="etapa">2<br><small>Revisión</small></div>
+      <div class="etapa">3<br><small>Autorización</small></div>
+      <div class="etapa">4<br><small>Aplicación</small></div>
+    </div>
+
+    <div id="segMovDetalles" class="seg-mov-detalles"></div>
+
+    <div id="segMovAcciones" class="seg-mov-acciones oculto"></div>
+
+    <div class="seguimiento-actions">
+      <button type="button" id="segMovBtnCedulaNumof" class="oculto principal" onclick="imprimirCedulaNumeroOficial()">🖨️ Imprimir cédula No. Oficial</button>
+      <button type="button" onclick="cerrarModalSeguimientoMovimiento()">Cerrar</button>
+      <button type="button" class="principal" onclick="abrirModalGestorMovimientosDesdeSeguimiento()">Gestionar todos</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ============================================================
+     v27e - Modal aplicar movimiento seguro
+============================================================ -->
+<div id="modalAplicarMovimiento" class="modal-aplicar-overlay oculto">
+  <div class="modal-aplicar-card">
+    <button type="button" class="modal-cerrar" onclick="cerrarModalAplicarMovimiento()">×</button>
+
+    <div class="seguimiento-icon">✅</div>
+    <h2>Aplicar Movimiento al Padrón</h2>
+
+    <div class="seguimiento-row">
+      <span>Folio</span>
+      <b id="aplicarMovFolio">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Clave catastral</span>
+      <b id="aplicarMovClave">---</b>
+    </div>
+
+    <div class="seguimiento-row">
+      <span>Tipo</span>
+      <b id="aplicarMovTipo">---</b>
+    </div>
+
+    <div class="modal-alerta-aplicar">
+      Esta acción modificará la base real del padrón catastral y quedará registrada en auditoría.
+    </div>
+
+    <label class="input-label-mini">Observaciones de aplicación</label>
+    <textarea id="aplicarMovObservaciones" placeholder="OBSERVACIONES DE APLICACIÓN"></textarea>
+
+    <div class="seguimiento-actions">
+      <button type="button" onclick="cerrarModalAplicarMovimiento()">Cancelar</button>
+      <button type="button" class="principal" onclick="confirmarAplicarMovimientoModal()">Aplicar</button>
+    </div>
+
+    <div id="aplicarMovMensaje" class="modal-mov-msg"></div>
+  </div>
+</div>
+
+</body>
+</html>
