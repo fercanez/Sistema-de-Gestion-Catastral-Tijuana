@@ -1836,17 +1836,23 @@ def listar_propietarios_predio_v28(
     with get_conn() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             asegurar_tabla_predio_condominio(cur, conn)
+            cols_pp = columnas_tabla(cur, "catastro", "predio_propietario")
+            id_predio_sql = "pp.id_predio" if "id_predio" in cols_pp else "NULL::INTEGER AS id_predio"
+            vigente_sql = "pp.vigente" if "vigente" in cols_pp else "TRUE AS vigente"
+            fecha_inicio_sql = "pp.fecha_inicio" if "fecha_inicio" in cols_pp else "NULL::TIMESTAMP AS fecha_inicio"
+            fecha_fin_sql = "pp.fecha_fin" if "fecha_fin" in cols_pp else "NULL::TIMESTAMP AS fecha_fin"
+            filtro_vigente_sql = "AND pp.vigente = TRUE" if "vigente" in cols_pp else ""
             cur.execute(f"""
                 SELECT
                     pp.id_predio_propietario,
-                    pp.id_predio,
+                    {id_predio_sql},
                     pp.clave_catastral,
                     pp.id_persona,
                     pp.porcentaje_propiedad,
                     pp.tipo_titularidad,
-                    pp.vigente,
-                    pp.fecha_inicio,
-                    pp.fecha_fin,
+                    {vigente_sql},
+                    {fecha_inicio_sql},
+                    {fecha_fin_sql},
                     p.tipo_persona,
                     p.nombre,
                     p.apellido_paterno,
@@ -1859,7 +1865,7 @@ def listar_propietarios_predio_v28(
                 LEFT JOIN catalogos.personas p
                     ON p.id_persona = pp.id_persona
                 WHERE UPPER(TRIM(pp.clave_catastral)) = UPPER(TRIM(%s))
-                  AND pp.vigente = TRUE
+                  {filtro_vigente_sql}
                 ORDER BY
                     CASE WHEN pp.tipo_titularidad = 'PROPIETARIO' THEN 1 ELSE 2 END,
                     pp.porcentaje_propiedad DESC,

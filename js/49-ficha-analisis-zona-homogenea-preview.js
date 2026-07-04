@@ -1,6 +1,6 @@
 /* Ficha análisis zonas homogéneas — vista previa, capas WMS e impresión oficio horizontal */
 
-const LOGO_FICHA_ANALISIS_ZONA_URL = "logomxli.png";
+const LOGO_FICHA_ANALISIS_ZONA_URL = "logotijuana.png";
 const FICHA_ANALISIS_OL_CSS = typeof OL_FICHA_CSS !== "undefined"
   ? OL_FICHA_CSS
   : "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
@@ -12,7 +12,7 @@ const FICHA_ANALISIS_GEONODE_WMS = typeof POPUP_ZONA_GEONODE_WMS !== "undefined"
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_ANALISIS_CATASTRO_WMS = typeof POPUP_ZONA_CATASTRO_WMS !== "undefined"
   ? POPUP_ZONA_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_ANALISIS_WMS_ZONAS = typeof POPUP_ZONA_WMS_LAYER !== "undefined"
   ? POPUP_ZONA_WMS_LAYER
   : "zonas_homogeneas";
@@ -214,8 +214,8 @@ function buildFichaAnalisisMapScript(featuresJson) {
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
     const capaZonasWms=crearWmsAnalisis("${FICHA_ANALISIS_GEONODE_WMS}",wmsLayer,true,0.72,6);
-    const capaPredios=crearWmsAnalisis("${FICHA_ANALISIS_CATASTRO_WMS}","catastro_bc:predios_oficial",false,0.45,10);
-    const capaColonias=crearWmsAnalisis("${FICHA_ANALISIS_GEONODE_WMS}","colonias",false,0.55,8);
+    const capaPredios=crearWmsAnalisis("${FICHA_ANALISIS_CATASTRO_WMS}","geonode:predios_tijuana",false,0.45,10);
+    const capaColonias=crearWmsAnalisis("${FICHA_ANALISIS_GEONODE_WMS}","geonode:colonias_tij",false,0.55,8);
     const srcZona=new ol.source.Vector();
     const format=new ol.format.GeoJSON({dataProjection:"EPSG:4326",featureProjection:"EPSG:3857"});
     (featuresAnalisis.features||[]).forEach(function(f){
@@ -224,7 +224,7 @@ function buildFichaAnalisisMapScript(featuresJson) {
     });
     const capaZona=new ol.layer.Vector({source:srcZona,zIndex:50,style:estiloZonaAnalisis()});
     previewMapAnalisis=new ol.Map({target:"previewAnalisisMap",layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaZonasWms,capaColonias,capaPredios,capaZona],
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:15}),controls:[]});
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:15}),controls:[]});
     window.__analisisPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaZonasWms,capaColonias,capaPredios,capaZona};
     window.__analisisVistaUsuario=false;
     if(typeof inicializarOrdenCapasFichaAnalisis==="function")inicializarOrdenCapasFichaAnalisis();
@@ -619,7 +619,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
   <div class="aviso-impresion" id="analisisMapaEstado">Cargando plano cartográfico…</div>
   <div class="contenedor">
     <header class="encabezado-compacto">
-      <div class="enc-logo"><img src="${LOGO_FICHA_ANALISIS_ZONA_URL}" alt="Gobierno de Mexicali"></div>
+      <div class="enc-logo"><img src="${LOGO_FICHA_ANALISIS_ZONA_URL}" alt="Gobierno de Tijuana"></div>
       <div class="enc-centro">
         <h1>FICHA DE ZONA HOMOGÉNEA</h1>
         <p class="sub">Ubicación cartográfica y evolución del valor unitario de suelo</p>

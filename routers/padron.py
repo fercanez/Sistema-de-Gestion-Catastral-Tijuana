@@ -15,6 +15,7 @@ from psycopg2.extras import execute_values
 
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
 from auth.permisos_operativos import requerir_pestana_zona_homogenea
+from config import GEONODE_PREDIOS_TABLE
 from database import get_conn, asegurar_tabla_predio_condominio, asegurar_columna_folio_real_padron
 try:
     from routers.pducp_consulta import consultar_pducp_predio
@@ -28,6 +29,250 @@ except ImportError:
     get_geonode_conn = None
 
 router = APIRouter(tags=["padron"])
+
+
+def _tabla_sql_segura(nombre: str) -> str:
+    partes = str(nombre or "").strip().split(".")
+    if len(partes) not in (1, 2) or not all(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", p) for p in partes):
+        raise RuntimeError(f"Nombre de tabla cartográfica no válido: {nombre}")
+    return ".".join(partes)
+
+
+PREDIOS_GEO_TABLE_SQL = _tabla_sql_segura(GEONODE_PREDIOS_TABLE)
+PREDIOS_GEO_CLAVE_CANDIDATAS = (
+    "cve_cat_or",
+    "clavecatas",
+    "clave_catastral",
+    "clavecat",
+    "clave_cata",
+    "clave",
+    "cve_cat",
+    "cvecat",
+    "cvecatas",
+    "cuenta_predial",
+    "cuenta",
+)
+PREDIOS_GEO_GEOM_CANDIDATAS = ("geom", "the_geom", "wkb_geometry")
+_PREDIOS_GEO_RESOLUCION_CACHE: dict[str, tuple[str, list[str]] | bool] = {}
+_PREDIOS_GEO_SRID_CACHE: dict[str, int] = {}
+
+
+def _identificador_sql(nombre: str) -> str:
+    if not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", str(nombre or "")):
+        raise RuntimeError(f"Identificador SQL no válido: {nombre}")
+    return '"' + nombre.replace('"', '""') + '"'
+
+
+def _partes_tabla_predios_geo() -> tuple[str, str]:
+    partes = GEONODE_PREDIOS_TABLE.strip().split(".")
+    if len(partes) == 1:
+        return "public", partes[0]
+    return partes[0], partes[1]
+
+
+def _columnas_tabla_predios_geo(cur) -> set[str]:
+    esquema, tabla = _partes_tabla_predios_geo()
+    cur.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = %s
+          AND table_name = %s;
+        """,
+        (esquema, tabla),
+    )
+    return {r["column_name"] for r in cur.fetchall()}
+
+
+def _elegir_columna_geometria(cols: set[str]) -> str | None:
+    por_lower = {c.lower(): c for c in cols}
+    for cand in PREDIOS_GEO_GEOM_CANDIDATAS:
+        if cand in por_lower:
+            return por_lower[cand]
+    return None
+
+
+def _elegir_columnas_clave(cols: set[str]) -> list[str]:
+    por_lower = {c.lower(): c for c in cols}
+    elegidas: list[str] = []
+    for cand in PREDIOS_GEO_CLAVE_CANDIDATAS:
+        col = por_lower.get(cand)
+        if col and col not in elegidas:
+            elegidas.append(col)
+    for col in cols:
+        low = col.lower()
+        if col in elegidas:
+            continue
+        if "catas" in low or ("clave" in low and ("cat" in low or "cve" in low)) or low in {"clave", "cuenta", "cuenta_predial"}:
+            elegidas.append(col)
+    return elegidas[:8]
+
+
+def _abrir_conexiones_predios_geo():
+    if get_geonode_conn is not None:
+        yield get_geonode_conn
+    yield get_conn
+
+
+def _resolver_columnas_predios_geo(cur, abrir_conn):
+    cache_key = getattr(abrir_conn, "__name__", str(abrir_conn))
+    resolucion = _PREDIOS_GEO_RESOLUCION_CACHE.get(cache_key)
+    if resolucion is False:
+        return None, []
+    if resolucion:
+        return resolucion
+
+    columnas = _columnas_tabla_predios_geo(cur)
+    geom_col = _elegir_columna_geometria(columnas)
+    clave_cols = _elegir_columnas_clave(columnas)
+    if not geom_col or not clave_cols:
+        _PREDIOS_GEO_RESOLUCION_CACHE[cache_key] = False
+        return None, []
+
+    _PREDIOS_GEO_RESOLUCION_CACHE[cache_key] = (geom_col, clave_cols)
+    return geom_col, clave_cols
+
+
+def _buscar_geometria_predio_por_clave(clave: str):
+    clave_norm = str(clave or "").strip().upper()
+    if not clave_norm:
+        return None
+
+    for abrir_conn in _abrir_conexiones_predios_geo():
+        conn = None
+        cur = None
+        try:
+            conn = abrir_conn()
+            cur = conn.cursor()
+            geom_col, clave_cols = _resolver_columnas_predios_geo(cur, abrir_conn)
+            if not geom_col or not clave_cols:
+                continue
+
+            geom_sql = _identificador_sql(geom_col)
+            condiciones = []
+            params = []
+            for col in clave_cols:
+                col_sql = _identificador_sql(col)
+                condiciones.append(
+                    f"""(
+                        UPPER(TRIM(g.{col_sql}::text)) = UPPER(TRIM(%s))
+                        OR REGEXP_REPLACE(UPPER(TRIM(g.{col_sql}::text)), '[^A-Z0-9]', '', 'g')
+                           = REGEXP_REPLACE(UPPER(TRIM(%s)), '[^A-Z0-9]', '', 'g')
+                    )"""
+                )
+                params.extend([clave_norm, clave_norm])
+
+            cur.execute(
+                f"""
+                SELECT ST_AsGeoJSON(ST_Transform(g.{geom_sql}, 4326))::json AS geometry
+                FROM {PREDIOS_GEO_TABLE_SQL} g
+                WHERE g.{geom_sql} IS NOT NULL
+                  AND ({" OR ".join(condiciones)})
+                LIMIT 1;
+                """,
+                params,
+            )
+            row = cur.fetchone()
+            if row and row.get("geometry"):
+                return row["geometry"]
+        except Exception:
+            continue
+        finally:
+            try:
+                if cur:
+                    cur.close()
+            except Exception:
+                pass
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+    return None
+
+
+def _buscar_predio_geo_por_punto(lon: float, lat: float):
+    for abrir_conn in _abrir_conexiones_predios_geo():
+        conn = None
+        cur = None
+        try:
+            conn = abrir_conn()
+            cur = conn.cursor()
+            geom_col, clave_cols = _resolver_columnas_predios_geo(cur, abrir_conn)
+            if not geom_col or not clave_cols:
+                continue
+
+            cache_key = getattr(abrir_conn, "__name__", str(abrir_conn))
+            geom_sql = _identificador_sql(geom_col)
+            clave_expr = "COALESCE(" + ", ".join(
+                f"NULLIF(TRIM(g.{_identificador_sql(col)}::text), '')" for col in clave_cols
+            ) + ")"
+
+            srid = _PREDIOS_GEO_SRID_CACHE.get(cache_key)
+            if not srid:
+                cur.execute(
+                    f"""
+                    SELECT COALESCE(NULLIF(ST_SRID(g.{geom_sql}), 0), 4326) AS srid
+                    FROM {PREDIOS_GEO_TABLE_SQL} g
+                    WHERE g.{geom_sql} IS NOT NULL
+                    LIMIT 1;
+                    """
+                )
+                row_srid = cur.fetchone()
+                srid = int(row_srid.get("srid") or 4326) if row_srid else 4326
+                _PREDIOS_GEO_SRID_CACHE[cache_key] = srid
+
+            if srid == 4326:
+                punto_sql = "ST_SetSRID(ST_Point(%s, %s), 4326)"
+                geom_4326_sql = f"g.{geom_sql}"
+                tol = 0.00003
+            else:
+                punto_sql = f"ST_Transform(ST_SetSRID(ST_Point(%s, %s), 4326), {srid})"
+                geom_4326_sql = f"ST_Transform(g.{geom_sql}, 4326)"
+                tol = 2.0
+
+            cur.execute(
+                f"""
+                WITH punto AS (
+                    SELECT {punto_sql} AS geom
+                )
+                SELECT
+                    {clave_expr} AS clave_catastral,
+                    ST_AsGeoJSON({geom_4326_sql})::json AS geometry
+                FROM {PREDIOS_GEO_TABLE_SQL} g
+                CROSS JOIN punto pt
+                WHERE g.{geom_sql} IS NOT NULL
+                  AND {clave_expr} IS NOT NULL
+                  AND g.{geom_sql} && ST_Expand(pt.geom, %s)
+                  AND (
+                    ST_Intersects(g.{geom_sql}, pt.geom)
+                    OR ST_DWithin(g.{geom_sql}, pt.geom, %s)
+                  )
+                ORDER BY
+                    CASE WHEN ST_Intersects(g.{geom_sql}, pt.geom) THEN 0 ELSE 1 END,
+                    ST_Area(g.{geom_sql}) ASC,
+                    ST_Distance(g.{geom_sql}, pt.geom) ASC
+                LIMIT 1;
+                """,
+                (lon, lat, tol, tol),
+            )
+            row = cur.fetchone()
+            if row and row.get("clave_catastral") and row.get("geometry"):
+                return row
+        except Exception:
+            continue
+        finally:
+            try:
+                if cur:
+                    cur.close()
+            except Exception:
+                pass
+            try:
+                if conn:
+                    conn.close()
+            except Exception:
+                pass
+    return None
 
 
 class GeometriaPredioActualizar(BaseModel):
@@ -458,6 +703,10 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
             raise HTTPException(status_code=404, detail="Predio no encontrado")
 
         geometry = row.pop("geometry")
+        if not geometry:
+            geometry = _buscar_geometria_predio_por_clave(clave)
+            if geometry:
+                row["dibujado"] = True
 
         return {
             "type": "Feature",
@@ -480,21 +729,7 @@ def ficha_predio_alias(clave: str, usuario_actual: dict = Depends(obtener_usuari
 def geojson_predio(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
     """Geometría del predio para mapa (Feature GeoJSON)."""
     try:
-        conn = get_conn()
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT
-                ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json AS geometry
-            FROM public.predios_mexicali g
-            WHERE UPPER(TRIM(g.clavecatas)) = UPPER(TRIM(%s))
-            LIMIT 1;
-        """, (clave,))
-        row = cur.fetchone()
-        cur.close()
-        conn.close()
-        if not row:
-            raise HTTPException(status_code=404, detail="Predio no encontrado")
-        geometry = row.get("geometry")
+        geometry = _buscar_geometria_predio_por_clave(clave)
         if not geometry:
             raise HTTPException(status_code=404, detail="Predio sin geometría cartográfica")
         return {"type": "Feature", "geometry": geometry, "properties": {"clave_catastral": clave.upper().strip()}}
@@ -667,6 +902,19 @@ def predio_por_coordenada(
     usuario_actual: dict = Depends(obtener_usuario_actual)
 ):
     try:
+        row_geo = _buscar_predio_geo_por_punto(lon, lat)
+        if row_geo:
+            clave = str(row_geo.get("clave_catastral") or "").strip().upper()
+            return {
+                "type": "Feature",
+                "geometry": row_geo.get("geometry"),
+                "properties": {
+                    "clave_catastral": clave,
+                    "dibujado": True,
+                    "solo_cartografia": True,
+                },
+            }
+
         conn = get_conn()
         cur = conn.cursor()
 
@@ -1552,12 +1800,12 @@ def colonia_fraccionamiento_predio(
 
 
 ZONA_HOMOGENEA_WMS_URL = CARTA_URBANA_2040_WMS_URL
-ZONA_HOMOGENEA_WMS_LAYER = "zonas_homogeneas"
+ZONA_HOMOGENEA_WMS_LAYER = "geonode:zonahom2026_tij"
 ZONA_HOMOGENEA_WMS_LAYERS = [
-    "zonas_homogeneas",
-    "geonode:zonas_homogeneas",
+    "geonode:zonahom2026_tij",
+    "zonahom2026_tij",
 ]
-ZONA_HOMOGENEA_TABLAS = ["zonas_homogeneas"]
+ZONA_HOMOGENEA_TABLAS = ["zonahom2026_tij"]
 
 
 def _normalizar_atributos_zona_homogenea(props: Optional[dict]) -> dict:
@@ -1640,6 +1888,9 @@ def _consultar_zona_homogenea_geonode(cur, ewkt_predio: str, tablas: List[str]) 
 
 ZONA_HOMOGENEA_WFS_URL = ZONA_HOMOGENEA_WMS_URL.replace("/wms", "/wfs")
 ZONA_HOMOGENEA_CODIGO_COLS = [
+    "zonahom2026",
+    "zonahom",
+    "zona_hom",
     "zonah",
     "codigo",
     "codigo_zona",
@@ -1747,7 +1998,7 @@ def _consultar_zona_homogenea_wfs_por_codigo(codigo: str) -> Optional[dict]:
     cod_norm = _normalizar_codigo_zona_homogenea(codigo)
     if not cod_norm:
         return None
-    type_names = ["geonode:zonas_homogeneas", "zonas_homogeneas"]
+    type_names = ["geonode:zonahom2026_tij", "zonahom2026_tij"]
     for type_name in type_names:
         for col in ZONA_HOMOGENEA_CODIGO_COLS:
             cql = f"{col}='{cod_norm}'"
@@ -1996,7 +2247,7 @@ def _zona_homogenea_payload(clave: str) -> dict:
     if not zona_carto:
         mensaje = (
             "No se intersectó el predio con la capa de zonas homogéneas. "
-            "Verifique geometría del predio o la simbología geonode:zonas_homogeneas."
+            "Verifique geometría del predio o la simbología geonode:zonahom2026_tij."
         )
 
     return {
@@ -2462,6 +2713,8 @@ def _parsear_fila_import(raw: dict, anio_default: int) -> Optional[dict]:
     codigo = _normalizar_clave_import(pick("codigozonahomogenea", "codigozona", "zonah", "codigo", "zonahomogenea"))
     if not codigo and subsector and homoclave and seccion:
         codigo = _codigo_zonah_desde_partes(subsector, homoclave, seccion)
+    if codigo and not subsector:
+        subsector = codigo
 
     valor_txt = pick("valorm2", "valor", "valorley", "valor_m2")
     if not valor_txt:
@@ -2477,7 +2730,7 @@ def _parsear_fila_import(raw: dict, anio_default: int) -> Optional[dict]:
     except ValueError:
         anio = int(anio_default)
 
-    if not (zona and sector and subsector and homoclave and seccion and descripcion and codigo):
+    if not (subsector and descripcion and codigo):
         return None
 
     return {
@@ -3084,11 +3337,11 @@ def crear_zona_homogenea(
 
 class ImportZonaHomogeneaFila(BaseModel):
     anio: Optional[int] = None
-    zona: str
-    sector: str
-    subsector: str
-    homoclave_col_fracc: str
-    seccion: str
+    zona: str = ""
+    sector: str = ""
+    subsector: str = ""
+    homoclave_col_fracc: str = ""
+    seccion: str = ""
     descripcion_col_fracc: str
     valor_m2: float
     codigo_zona_homogenea: Optional[str] = None
@@ -3135,11 +3388,15 @@ def _importar_filas_zonas(cur, anio_objetivo: int, filas: list, reemplazar: bool
             errores.append(f"Fila {idx}: valor_m2 invalido")
             continue
 
+        subsector_in = str(fila_in.get("subsector") or "").strip().upper()
+        if codigo and not subsector_in:
+            subsector_in = codigo
+
         fila = {
             "anio": int(fila_in.get("anio") or anio_objetivo),
             "zona": str(fila_in.get("zona") or "").strip().upper(),
             "sector": str(fila_in.get("sector") or "").strip().upper(),
-            "subsector": str(fila_in.get("subsector") or "").strip().upper(),
+            "subsector": subsector_in,
             "homoclave_col_fracc": str(fila_in.get("homoclave_col_fracc") or "").strip().upper(),
             "seccion": str(fila_in.get("seccion") or "").strip().upper(),
             "descripcion_col_fracc": str(fila_in.get("descripcion_col_fracc") or "").strip().upper(),
@@ -3150,8 +3407,7 @@ def _importar_filas_zonas(cur, anio_objetivo: int, filas: list, reemplazar: bool
         if fila["anio"] != anio_objetivo:
             fila["anio"] = anio_objetivo
 
-        if not all([fila["zona"], fila["sector"], fila["subsector"], fila["homoclave_col_fracc"],
-                    fila["seccion"], fila["descripcion_col_fracc"], fila["codigo_zona_homogenea"]]):
+        if not all([fila["subsector"], fila["descripcion_col_fracc"], fila["codigo_zona_homogenea"]]):
             omitidos += 1
             errores.append(f"Fila {idx}: faltan campos obligatorios")
             continue

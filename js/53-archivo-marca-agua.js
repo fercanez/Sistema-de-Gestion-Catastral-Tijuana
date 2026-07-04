@@ -1,6 +1,6 @@
 /* Marca de agua institucional — visores de documento (Archivo, RPPC, Control Urbano) */
 
-const MARCA_AGUA_DOCUMENTO_ASSET = "img/marca-agua-documento.png";
+const MARCA_AGUA_DOCUMENTO_ASSET = "img/marca.png?v=20260704_marca_tijuana";
 const MARCA_AGUA_ARCHIVO_ASSET = MARCA_AGUA_DOCUMENTO_ASSET;
 const MARCA_AGUA_STORAGE_KEY = "catastro_marca_agua_documento_activa";
 const MARCA_AGUA_ARCHIVO_STORAGE_KEY = MARCA_AGUA_STORAGE_KEY;

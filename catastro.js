@@ -1,7 +1,7 @@
 
 /* --- v21: Login institucional JWT --- */
-const TOKEN_KEY_CATASTRO = "catastro_bc_token";
-const USER_KEY_CATASTRO = "catastro_bc_usuario";
+const TOKEN_KEY_CATASTRO = "catastro_tijuana_token";
+const USER_KEY_CATASTRO = "catastro_tijuana_usuario";
 
 function obtenerTokenInstitucional() {
   return localStorage.getItem(TOKEN_KEY_CATASTRO) || "";
@@ -452,7 +452,7 @@ function mostrarPanelPrincipal() {
   actualizarLayoutPrincipal();
 }
 
-const API = "https://fcnarqnodo.hopto.org/api/catastro";
+const API = `${window.location.origin}/api/catastro-tijuana`;
 const COLOR_CONTORNO_SELECCION = "#0000ff";
 
 const vectorSource = new ol.source.Vector();
@@ -827,9 +827,9 @@ const prediosWmsLayer = new ol.layer.Tile({
   visible: true,
   opacity: 0.85,
   source: new ol.source.TileWMS({
-    url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+    url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
     params: {
-      "LAYERS": "catastro_bc:predios_oficial",
+      "LAYERS": "geonode:predios_tijuana",
       "TILED": true,
       "VERSION": "1.1.1",
       "FORMAT": "image/png",
@@ -846,7 +846,7 @@ const coloniasWmsLayer = new ol.layer.Tile({
   source: new ol.source.TileWMS({
     url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
     params: {
-      "LAYERS": "colonias",
+      "LAYERS": "geonode:colonias_tij",
       "TILED": true,
       "VERSION": "1.1.1",
       "FORMAT": "image/png",
@@ -934,7 +934,7 @@ const map = new ol.Map({
   controls: controlesMapaSinZoom(),
   view: new ol.View({
     projection: "EPSG:3857",
-    center: ol.proj.fromLonLat([-115.4683, 32.6245]),
+    center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]),
     zoom: 12
   })
 });
@@ -1484,7 +1484,7 @@ function pintarFichaFlotante(p) {
       <a class="btn-expediente-externo" href="${urlExpedienteExterno(p.clave_catastral)}" target="_blank" rel="noopener noreferrer">
         📂 Abrir expediente documental externo
       </a>
-      <div class="ficha-mini-row"><div class="label">Repositorio</div><div class="value">Mexicali / Documentación</div></div>
+      <div class="ficha-mini-row"><div class="label">Repositorio</div><div class="value">Tijuana / Documentación</div></div>
       <div class="ficha-mini-row"><div class="label">Clave enviada</div><div class="value">${val(p.clave_catastral)}</div></div>
       <div class="ficha-mini-row"><div class="label">Historial</div><div class="value">Disponible en ficha institucional</div></div>
     </div>
@@ -2477,9 +2477,9 @@ async function generarCroquisWMSPDF() {
     const bbox = expandirExtentPDF(extentOriginal, 3.0);
 
     const wmsUrl =
-      "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms?" +
+      "https://fcnarqnodo.hopto.org/geoserver/geonode/wms?" +
       "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap" +
-      "&LAYERS=catastro_bc:predios_oficial" +
+      "&LAYERS=geonode:predios_tijuana" +
       "&STYLES=" +
       "&FORMAT=image/png" +
       "&TRANSPARENT=false" +
@@ -2646,7 +2646,7 @@ async function generarPDFInstitucional() {
     doc.setFontSize(15);
     doc.text("Sistema de Gestión Catastral", 14, 10);
     doc.setFontSize(10);
-    doc.text("Ficha predial institucional · Catastro Mexicali", 14, 17);
+    doc.text("Ficha predial institucional · Catastro Tijuana", 14, 17);
 
     doc.setFontSize(9);
     const fecha = new Date().toLocaleString("es-MX");
@@ -4124,7 +4124,7 @@ async function guardarTenenciaPredio() {
     });
     const data = await r.json().catch(() => ({}));
     if (r.status === 404) {
-      throw new Error("Endpoint de tenencia no disponible en el servidor. Actualice propietarios.py y padron.py y reinicie catastro-api.");
+      throw new Error("Endpoint de tenencia no disponible en el servidor. Actualice propietarios.py y padron.py y reinicie catastro-tijuana-api.");
     }
     if (!r.ok) throw new Error(extraerMensajeApi(data, "No se pudo guardar la tenencia."));
     msgCoprop("copropMsgCondominio", data.mensaje || "Tenencia actualizada.", true);
@@ -5977,7 +5977,7 @@ document.addEventListener('click', function(e) {
    v28c - Restaurar guardado del modal Cambio de Nombre/Titular
 ============================================================ */
 function authHeaders() {
-  const token = (typeof obtenerTokenInstitucional === 'function') ? obtenerTokenInstitucional() : (localStorage.getItem('catastro_bc_token') || '');
+  const token = (typeof obtenerTokenInstitucional === 'function') ? obtenerTokenInstitucional() : (localStorage.getItem(TOKEN_KEY_CATASTRO) || '');
   return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`
@@ -7576,7 +7576,7 @@ async function imprimirCedulaNumeroOficial(movOpt) {
   doc.setFontSize(14);
   doc.text("Sistema de Gestión Catastral", logoImg ? 54 : 14, 12);
   doc.setFontSize(10);
-  doc.text("Dirección de Catastro · H. Ayuntamiento de Mexicali", logoImg ? 54 : 14, 19);
+  doc.text("Dirección de Catastro · H. Ayuntamiento de Tijuana", logoImg ? 54 : 14, 19);
   doc.setFontSize(9);
   doc.text("Estado de Baja California, México", logoImg ? 54 : 14, 25);
   doc.text("Fecha: " + fechaEmision, pageW - 14, 12, { align: "right" });
@@ -7641,7 +7641,7 @@ async function imprimirCedulaNumeroOficial(movOpt) {
   marcoSeccionCedula(y, hIdent, "IDENTIFICACIÓN DEL PREDIO");
   rowCedula("Propietario", nombre, 18, pageW - 18, y + 11);
   rowCedula("Colonia", colonia, 18, midX - 2, y + 15);
-  rowCedula("Delegación", String(p.delegacion || "MEXICALI").trim().toUpperCase(), midX + 2, pageW - 18, y + 15);
+  rowCedula("Delegación", String(p.delegacion || "TIJUANA").trim().toUpperCase(), midX + 2, pageW - 18, y + 15);
   rowCedula("Domicilio", domicilio + (cpTxt ? ", C.P. " + cpTxt : ""), 18, pageW - 18, y + 19);
 
   y += hIdent + 3;
@@ -9771,7 +9771,7 @@ function renderUnidadesCondominio() {
   }
   if (!rows.length) {
     if (_analisisCondominiosState.apiIgnoroPrefijoClave && prefActivo) {
-      cont.innerHTML = `<div class="analisis-zonas-error">La API no aplicó el prefijo «${escapeHtml(prefActivo)}». Suba <b>padron.py</b> y <b>catastro.js</b> al servidor, reinicie <b>catastro-api</b> y recargue con Ctrl+F5. Verifique en /api/catastro/ que aparezca <b>tenencia_prefijo_clave: true</b>.</div>`;
+      cont.innerHTML = `<div class="analisis-zonas-error">La API no aplicó el prefijo «${escapeHtml(prefActivo)}». Suba <b>padron.py</b> y <b>catastro.js</b> al servidor, reinicie <b>catastro-tijuana-api</b> y recargue con Ctrl+F5. Verifique en /api/catastro-tijuana/ que aparezca <b>tenencia_prefijo_clave: true</b>.</div>`;
       return;
     }
     cont.innerHTML = `<div class="analisis-zonas-meta">Sin predios para el criterio seleccionado.</div>`;
@@ -10309,7 +10309,7 @@ window.exportarUnidadesCondominioExcel = exportarUnidadesCondominioExcel;
 async function obtenerLogoInstitucionalDataUrl() {
   if (_logoInstitucionalCache) return _logoInstitucionalCache;
   try {
-    const r = await fetch("logomxli.png?_=" + Date.now(), { cache: "no-store" });
+    const r = await fetch("logotijuana.png?_=" + Date.now(), { cache: "no-store" });
     if (!r.ok) return null;
     const blob = await r.blob();
     return await new Promise(function(resolve) {
@@ -10364,7 +10364,7 @@ async function imprimirCedulaZonaHomogenea() {
   doc.setFontSize(14);
   doc.text("Sistema de Gestión Catastral", logoImg ? 54 : 14, 12);
   doc.setFontSize(10);
-  doc.text("Dirección de Catastro · H. Ayuntamiento de Mexicali", logoImg ? 54 : 14, 19);
+  doc.text("Dirección de Catastro · H. Ayuntamiento de Tijuana", logoImg ? 54 : 14, 19);
   doc.setFontSize(9);
   doc.text("Estado de Baja California, México", logoImg ? 54 : 14, 25);
   doc.text(`Fecha: ${fecha}`, pageW - 14, 12, { align: "right" });
@@ -10452,7 +10452,7 @@ async function imprimirCedulaZonaHomogenea() {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(100, 110, 125);
-  doc.text("Documento oficial generado por el Sistema de Gestión Catastral del H. Ayuntamiento de Mexicali.", 14, pageH - 16);
+  doc.text("Documento oficial generado por el Sistema de Gestión Catastral del H. Ayuntamiento de Tijuana.", 14, pageH - 16);
   doc.text("Los valores corresponden a la tabla de zonas homogéneas. Uso institucional · Sujeto a validación catastral.", 14, pageH - 11);
 
   doc.save(`cedula_zona_homogenea_${cod}.pdf`);
@@ -10465,7 +10465,7 @@ window.imprimirCedulaZonaHomogenea = imprimirCedulaZonaHomogenea;
 function mensajeErrorApiPropietarios(status, txt, accion) {
   if (status === 405) {
     return "El servidor no tiene activa la función de " + accion + " (HTTP 405). " +
-      "Suba routers/propietarios.py y main.py al servidor y ejecute: sudo systemctl restart catastro-api";
+      "Suba routers/propietarios.py y main.py al servidor y ejecute: sudo systemctl restart catastro-tijuana-api";
   }
   if (status === 404 && accion === "fusionar") {
     return "Endpoint /propietarios/fusionar no encontrado. Actualice propietarios.py en el servidor y reinicie la API.";

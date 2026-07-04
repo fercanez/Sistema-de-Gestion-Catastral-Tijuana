@@ -329,7 +329,7 @@ function renderUnidadesCondominio() {
   }
   if (!rows.length) {
     if (_analisisCondominiosState.apiIgnoroPrefijoClave && prefActivo) {
-      cont.innerHTML = `<div class="analisis-zonas-error">La API no aplicó el prefijo «${escapeHtml(prefActivo)}». Suba <b>padron.py</b> y <b>catastro.js</b> al servidor, reinicie <b>catastro-api</b> y recargue con Ctrl+F5. Verifique en /api/catastro/ que aparezca <b>tenencia_prefijo_clave: true</b>.</div>`;
+      cont.innerHTML = `<div class="analisis-zonas-error">La API no aplicó el prefijo «${escapeHtml(prefActivo)}». Suba <b>padron.py</b> y <b>catastro.js</b> al servidor, reinicie <b>catastro-tijuana-api</b> y recargue con Ctrl+F5. Verifique en /api/catastro-tijuana/ que aparezca <b>tenencia_prefijo_clave: true</b>.</div>`;
       return;
     }
     cont.innerHTML = `<div class="analisis-zonas-meta">Sin predios para el criterio seleccionado.</div>`;

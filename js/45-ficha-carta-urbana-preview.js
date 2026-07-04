@@ -1,6 +1,6 @@
 /* Ficha Carta Urbana 2040 — vista previa e impresión */
 
-const LOGO_FICHA_CARTA_URL = "logomxli.png";
+const LOGO_FICHA_CARTA_URL = "logotijuana.png";
 const FICHA_CARTA_OL_CSS = typeof OL_FICHA_CSS !== "undefined"
   ? OL_FICHA_CSS
   : "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
@@ -469,8 +469,8 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
     const capaUsos=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",wmsLayer,true,0.88,cartaCapaOrdenDef.carta);
     const capaSectores=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",sectoresLayer,true,1,cartaCapaOrdenDef.sectores);
     const capaDistritos=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}",distritosLayers,true,0.72,cartaCapaOrdenDef.distritos);
-    const capaPredios=crearWmsCarta("https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms","catastro_bc:predios_oficial",false,0.45,cartaCapaOrdenDef.prediosWms);
-    const capaColonias=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}","colonias",false,0.45,cartaCapaOrdenDef.colonias);
+    const capaPredios=crearWmsCarta("https://fcnarqnodo.hopto.org/geoserver/geonode/wms","geonode:predios_tijuana",false,0.45,cartaCapaOrdenDef.prediosWms);
+    const capaColonias=crearWmsCarta("${FICHA_CARTA_GEONODE_WMS}","geonode:colonias_tij",false,0.45,cartaCapaOrdenDef.colonias);
 
     const srcPredio=new ol.source.Vector();
     const srcZona=new ol.source.Vector();
@@ -488,7 +488,7 @@ function buildFichaCartaMapScript(featuresJson, mapaInicialJson) {
     previewMapCarta=new ol.Map({
       target:"previewCartaMap",
       layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaDistritos,capaPredios,capaColonias,capaZona,capaPredio],
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18}),
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:18}),
       controls:[]
     });
     window.__cartaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaUsos,capaSectores,capaDistritos,capaPredios,capaColonias,capaPredio,capaZona};
@@ -839,7 +839,7 @@ function construirHtmlFichaCartaUrbanaVentana(datos, cartaData, opciones) {
   const usoPadron = fichaCartaVal(cartaData?.uso_padron || datos?.uso || datos?.p?.descripcion_uso);
   const clave = fichaCartaEsc(datos?.clave || cartaData?.clave_catastral || "—");
   const coloniaTxt = fichaCartaEsc(cartaData?.colonia || datos?.colonia || "—");
-  const delegacion = fichaCartaEsc(cartaData?.delegacion || datos?.p?.delegacion || "MEXICALI");
+  const delegacion = fichaCartaEsc(cartaData?.delegacion || datos?.p?.delegacion || "TIJUANA");
   const numof = String(datos?.numof || datos?.p?.numof || "").trim();
   const domicilio = typeof construirDomicilioFisicoFicha === "function"
     ? fichaCartaEsc(construirDomicilioFisicoFicha(datos?.p || {}, numof))
@@ -976,7 +976,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
 
   <div class="contenedor">
     <header class="encabezado">
-      <div class="enc-logo"><img src="${LOGO_FICHA_CARTA_URL}" alt="Gobierno de Mexicali"></div>
+      <div class="enc-logo"><img src="${LOGO_FICHA_CARTA_URL}" alt="Gobierno de Tijuana"></div>
       <div class="enc-centro">
         <h1 class="titulo-carta">CARTA URBANA 2040</h1>
         <p class="clave-carta">${clave}</p>

@@ -840,7 +840,7 @@ async function guardarTenenciaPredio() {
     });
     const data = await r.json().catch(() => ({}));
     if (r.status === 404) {
-      throw new Error("Endpoint de tenencia no disponible en el servidor. Actualice propietarios.py y padron.py y reinicie catastro-api.");
+      throw new Error("Endpoint de tenencia no disponible en el servidor. Actualice propietarios.py y padron.py y reinicie catastro-tijuana-api.");
     }
     if (!r.ok) throw new Error(extraerMensajeApi(data, "No se pudo guardar la tenencia."));
     msgCoprop("copropMsgCondominio", data.mensaje || "Tenencia actualizada.", true);
@@ -2222,7 +2222,11 @@ async function fichaEnriquecidaPadronV28b(p) {
   let nombrePadron = "";
   if (dataPadron) {
     const props = dataPadron?.properties || dataPadron || {};
-    merged = { ...merged, ...props };
+    if (typeof mezclarSinSobrescribirConVacios === "function") {
+      merged = mezclarSinSobrescribirConVacios(merged, props);
+    } else {
+      merged = { ...merged, ...props };
+    }
     nombrePadron = (props.nombre_completo || props.propietario || "").trim();
   }
 

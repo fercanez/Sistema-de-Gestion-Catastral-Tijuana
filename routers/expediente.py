@@ -5,6 +5,8 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from datetime import datetime
+from html import unescape
+from html.parser import HTMLParser
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse, Response
@@ -15,11 +17,11 @@ from auth.permisos_operativos import (
     requerir_pestana_archivo,
     requerir_pestana_control_urbano,
 )
+from config import APP_MUNICIPIO, DOCUMENTOS_BASE_DIR
 from database import get_conn, filas_a_lista, asegurar_columna_folio_real_padron
 
 router = APIRouter(tags=["expediente"])
 
-DOCUMENTOS_BASE_DIR = "/var/www/catastro/documentos"
 FOTOS_SLOTS = {
     "fachada": "FOTO_FACHADA",
     "aerea": "FOTO_AEREA",
@@ -43,13 +45,282 @@ DOC_URBANO_EXTENSIONES = {".pdf", ".jpg", ".jpeg", ".png", ".webp"}
 MAX_DOC_URBANO_BYTES = 15 * 1024 * 1024
 ARCHIVO_DIGITAL_EXTERNO_BASE = os.getenv(
     "ARCHIVO_DIGITAL_EXTERNO_URL",
-    "https://www.mexicali.gob.mx/webpub/consultacatastro/documentacion.aspx?",
+    "",
 )
 ARCHIVO_EXTERNO_TIMEOUT = int(os.getenv("ARCHIVO_EXTERNO_TIMEOUT", "120"))
+TIJUANA_ARCHIVO_DIGITAL_LISTA_URL = os.getenv(
+    "TIJUANA_ARCHIVO_DIGITAL_LISTA_URL",
+    "https://plataforma.tijuana.gob.mx/sistemas/sig/consultas/consulta-x-clave-catastral-thumbails-separados.php",
+)
+TIJUANA_ARCHIVO_DIGITAL_REFERER = os.getenv(
+    "TIJUANA_ARCHIVO_DIGITAL_REFERER",
+    "https://plataforma.tijuana.gob.mx/plataforma/indexProductividad.php?mod=73&sis=74",
+)
+TIJUANA_ARCHIVO_DIGITAL_TIMEOUT = int(os.getenv("TIJUANA_ARCHIVO_DIGITAL_TIMEOUT", "45"))
+TIJUANA_ADEUDOS_URL = os.getenv(
+    "TIJUANA_ADEUDOS_URL",
+    "https://plataforma.tijuana.gob.mx/sistemas/sig/adeudos.php",
+)
+TIJUANA_ARCHIVO_DIGITAL_PARAMS = {
+    "libre": "true",
+    "testeado": "true",
+    "p155": "1",
+    "p237": "1",
+    "p238": "1",
+    "p158": "1",
+    "p11121": "1",
+    "debug": "0",
+}
+TIJUANA_ARCHIVO_THUMB_RE = re.compile(
+    r"""(?ix)
+    (?:
+        href|src
+    )\s*=\s*
+    (?P<quote>["'])
+    (?P<url>[^"']+?/archivos/DMC/[^"']+?/thumbnails/[^"']+?_thumb\.(?:jpg|jpeg|png|webp)(?:\?[^"']*)?)
+    (?P=quote)
+    |
+    (?P<plain>https?://[^\s"'<>]+?/archivos/DMC/[^\s"'<>]+?/thumbnails/[^\s"'<>]+?_thumb\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?)
+    """
+)
 
 
 def _normalizar_clave_expediente(clave: str) -> str:
     return re.sub(r"\s+", "", str(clave or "").strip().upper())
+
+
+def _normalizar_archivo_tijuana(nombre: str) -> str:
+    nombre_norm = os.path.basename(urllib.parse.unquote(str(nombre or "").strip()))
+    if not re.fullmatch(r"wd[A-Za-z0-9_-]+\.pdf", nombre_norm, re.I):
+        raise HTTPException(status_code=400, detail="Nombre de documento remoto no válido")
+    return nombre_norm
+
+
+def _url_lista_archivo_tijuana(clave_norm: str) -> str:
+    params = {"clave": clave_norm, **TIJUANA_ARCHIVO_DIGITAL_PARAMS}
+    return TIJUANA_ARCHIVO_DIGITAL_LISTA_URL + "?" + urllib.parse.urlencode(params)
+
+
+def _headers_archivo_tijuana() -> dict:
+    return {
+        "User-Agent": f"SGC-Catastro-{APP_MUNICIPIO}/1.0 (+archivo-digital-tijuana)",
+        "Referer": TIJUANA_ARCHIVO_DIGITAL_REFERER,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+
+
+def _url_adeudos_tijuana(clave_norm: str) -> str:
+    return TIJUANA_ADEUDOS_URL + "?" + urllib.parse.urlencode({"id": clave_norm})
+
+
+def _resultado_tabla_adeudos_vacio() -> dict:
+    return {"columnas": [], "filas_tabla": [], "filas": [], "total_adeudo": None}
+
+
+def _limpiar_texto_adeudos_tijuana(html_texto: str) -> str:
+    texto = re.sub(r"(?is)<script\b[^>]*>.*?</script>", " ", html_texto or "")
+    texto = re.sub(r"(?is)<style\b[^>]*>.*?</style>", " ", texto)
+    texto = re.sub(r"<[^>]+>", " ", texto)
+    texto = unescape(texto)
+    texto = re.sub(r"[.#][A-Za-z0-9_-]+\s*\{[^}]*\}", " ", texto)
+    return re.sub(r"\s+", " ", texto).strip()
+
+
+def _extraer_tabla_adeudos_tijuana_texto(html_texto: str) -> dict:
+    columnas = ["Valor Fiscal", "Tasa", "Valor Unitario", "Superficie", "Año", "Impuesto"]
+    texto = _limpiar_texto_adeudos_tijuana(html_texto)
+    if "valor fiscal" not in texto.lower() or "impuesto" not in texto.lower():
+        return _resultado_tabla_adeudos_vacio()
+
+    money = r"\$\s*[\d,]+(?:\.\d{2})?"
+    numero = r"\d+(?:,\d{3})*(?:\.\d+)?"
+    row_re = re.compile(
+        rf"({money})\s+({numero})\s+({money})\s+({numero})\s+(\d{{4}})\s+({money})"
+    )
+    filas_tabla = [list(m.groups()) for m in row_re.finditer(texto)]
+    if not filas_tabla:
+        return _resultado_tabla_adeudos_vacio()
+
+    total_adeudo = None
+    total_match = re.search(r"total\s+de\s+adeudo\s*(" + money + r")?", texto, re.I)
+    if total_match and total_match.group(1):
+        total_adeudo = total_match.group(1)
+
+    filas = [
+        {columnas[i]: row[i] if i < len(row) else "" for i in range(len(columnas))}
+        for row in filas_tabla
+    ]
+    return {
+        "columnas": columnas,
+        "filas_tabla": filas_tabla,
+        "filas": filas,
+        "total_adeudo": total_adeudo,
+    }
+
+
+class _TablaAdeudosTijuanaParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.tables = []
+        self._table_depth = 0
+        self._current_table = None
+        self._current_row = None
+        self._current_cell = None
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if tag == "table":
+            self._table_depth += 1
+            if self._table_depth == 1:
+                self._current_table = []
+            return
+        if self._table_depth < 1:
+            return
+        if tag == "tr":
+            self._current_row = []
+        elif tag in {"td", "th"} and self._current_row is not None:
+            self._current_cell = []
+
+    def handle_data(self, data):
+        if self._current_cell is not None:
+            self._current_cell.append(data)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if self._table_depth < 1:
+            return
+        if tag in {"td", "th"} and self._current_cell is not None:
+            texto = re.sub(r"\s+", " ", "".join(self._current_cell)).strip()
+            self._current_row.append(texto)
+            self._current_cell = None
+        elif tag == "tr" and self._current_row is not None:
+            if any(c for c in self._current_row):
+                self._current_table.append(self._current_row)
+            self._current_row = None
+        elif tag == "table":
+            if self._table_depth == 1 and self._current_table:
+                self.tables.append(self._current_table)
+                self._current_table = None
+            self._table_depth = max(0, self._table_depth - 1)
+
+
+def _extraer_tabla_adeudos_tijuana(html_texto: str) -> dict:
+    parser = _TablaAdeudosTijuanaParser()
+    try:
+        parser.feed(html_texto or "")
+    except Exception:
+        return _extraer_tabla_adeudos_tijuana_texto(html_texto)
+
+    tablas = [t for t in parser.tables if t]
+    if not tablas:
+        return _extraer_tabla_adeudos_tijuana_texto(html_texto)
+
+    def score(tabla):
+        plano = " ".join(" ".join(row) for row in tabla).lower()
+        puntos = len(tabla)
+        for token in ("valor fiscal", "tasa", "valor unitario", "superficie", "año", "impuesto"):
+            if token in plano:
+                puntos += 20
+        return puntos
+
+    tabla = max(tablas, key=score)
+    idx_header = 0
+    for i, row in enumerate(tabla):
+        row_norm = " ".join(row).lower()
+        if "valor fiscal" in row_norm and "impuesto" in row_norm:
+            idx_header = i
+            break
+
+    columnas = [c or f"Columna {i + 1}" for i, c in enumerate(tabla[idx_header])]
+    filas_tabla = []
+    total_adeudo = None
+    for row in tabla[idx_header + 1:]:
+        row_norm = " ".join(row).strip()
+        if not row_norm:
+            continue
+        if re.search(r"total\s+de\s+adeudo", row_norm, re.I):
+            montos = re.findall(r"\$\s*[\d,]+(?:\.\d{2})?", row_norm)
+            total_adeudo = montos[-1] if montos else total_adeudo
+            continue
+        if len(row) < len(columnas):
+            row = row + [""] * (len(columnas) - len(row))
+        elif len(row) > len(columnas):
+            row = row[:len(columnas)]
+        if not any(re.search(r"\d", c or "") for c in row):
+            continue
+        filas_tabla.append(row)
+
+    filas = [
+        {columnas[i]: row[i] if i < len(row) else "" for i in range(len(columnas))}
+        for row in filas_tabla
+    ]
+    if not filas_tabla:
+        return _extraer_tabla_adeudos_tijuana_texto(html_texto)
+    return {
+        "columnas": columnas,
+        "filas_tabla": filas_tabla,
+        "filas": filas,
+        "total_adeudo": total_adeudo,
+    }
+
+
+def _resumen_adeudos_tijuana(html_texto: str) -> dict:
+    texto = _limpiar_texto_adeudos_tijuana(html_texto)
+    sin_adeudos = bool(re.search(r"no\s+existen\s+adeudos", texto, re.I))
+    tabla = _extraer_tabla_adeudos_tijuana(html_texto)
+    total_filas = len(tabla["filas_tabla"])
+    tiene_adeudos = False if sin_adeudos else (True if total_filas else (None if not texto else True))
+    return {
+        "sin_adeudos": sin_adeudos,
+        "tiene_adeudos": tiene_adeudos,
+        "resumen": "No existen adeudos" if sin_adeudos else (
+            f"{total_filas} ejercicio(s) con adeudo" if total_filas else "Detalle remoto disponible"
+        ),
+        **tabla,
+    }
+
+
+def _thumb_tijuana_a_pdf(url_thumb: str) -> tuple[str, str]:
+    parsed = urllib.parse.urlparse(str(url_thumb or "").strip())
+    path = parsed.path
+    if "/thumbnails/" not in path:
+        raise ValueError("No es miniatura")
+    path_pdf = path.replace("/thumbnails/", "/")
+    path_pdf = re.sub(r"_thumb\.(?:jpg|jpeg|png|webp)$", ".pdf", path_pdf, flags=re.I)
+    nombre_pdf = os.path.basename(path_pdf)
+    parsed_pdf = parsed._replace(path=path_pdf, query="", fragment="")
+    return nombre_pdf, urllib.parse.urlunparse(parsed_pdf)
+
+
+def _extraer_documentos_tijuana_html(clave_norm: str, html_texto: str) -> list:
+    documentos = []
+    vistos = set()
+    for m in TIJUANA_ARCHIVO_THUMB_RE.finditer(html_texto or ""):
+        raw = (m.group("url") or m.group("plain") or "").strip()
+        if not raw:
+            continue
+        raw = urllib.parse.urljoin(TIJUANA_ARCHIVO_DIGITAL_LISTA_URL, raw)
+        if raw.startswith("//"):
+            raw = "https:" + raw
+        if f"/{clave_norm}/" not in urllib.parse.unquote(raw).upper():
+            continue
+        try:
+            nombre_pdf, url_pdf = _thumb_tijuana_a_pdf(raw)
+        except ValueError:
+            continue
+        if nombre_pdf in vistos:
+            continue
+        vistos.add(nombre_pdf)
+        documentos.append({
+            "id": len(documentos) + 1,
+            "nombre_archivo": nombre_pdf,
+            "thumbnail_url": raw,
+            "pdf_url": url_pdf,
+            "proxy_url": f"/expediente/{urllib.parse.quote(clave_norm)}/archivo-tijuana/pdf/{urllib.parse.quote(nombre_pdf)}",
+            "descripcion": f"Documento Optistor #{len(documentos) + 1}",
+            "origen": "TIJUANA_DIGITAL",
+        })
+    return documentos
 
 
 def _slot_foto_valido(slot: str) -> str:
@@ -400,11 +671,13 @@ def proxy_archivo_externo(clave: str, usuario_actual: dict = Depends(requerir_pe
     clave_norm = _normalizar_clave_expediente(clave)
     if not clave_norm:
         raise HTTPException(status_code=400, detail="Clave catastral no válida")
+    if not ARCHIVO_DIGITAL_EXTERNO_BASE:
+        raise HTTPException(status_code=503, detail="Archivo digital externo no configurado")
 
     url = f"{ARCHIVO_DIGITAL_EXTERNO_BASE}{urllib.parse.quote(clave_norm, safe='')}"
     req = urllib.request.Request(
         url,
-        headers={"User-Agent": "SGC-Catastro-Mexicali/1.0 (+archivo-externo-interno)"},
+        headers={"User-Agent": f"SGC-Catastro-{APP_MUNICIPIO}/1.0 (+archivo-externo-interno)"},
         method="GET",
     )
     try:
@@ -434,6 +707,122 @@ def proxy_archivo_externo(clave: str, usuario_actual: dict = Depends(requerir_pe
             "Cache-Control": "private, max-age=300",
         },
     )
+
+
+@router.get("/expediente/{clave}/archivo-tijuana/documentos")
+def documentos_archivo_tijuana(clave: str, usuario_actual: dict = Depends(requerir_pestana_archivo)):
+    """Lista documentos remotos del expediente digital Tijuana sin descargarlos."""
+    clave_norm = _normalizar_clave_expediente(clave)
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+
+    url = _url_lista_archivo_tijuana(clave_norm)
+    req = urllib.request.Request(
+        url,
+        headers=_headers_archivo_tijuana(),
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=TIJUANA_ARCHIVO_DIGITAL_TIMEOUT) as resp:
+            raw = resp.read()
+            charset = resp.headers.get_content_charset() or "utf-8"
+        texto = raw.decode(charset, errors="replace")
+    except urllib.error.HTTPError as e:
+        raise HTTPException(
+            status_code=e.code,
+            detail="No se pudo consultar el expediente digital Tijuana",
+        ) from e
+    except urllib.error.URLError as e:
+        raise HTTPException(
+            status_code=502,
+            detail="Servicio de expediente digital Tijuana no disponible",
+        ) from e
+
+    documentos = _extraer_documentos_tijuana_html(clave_norm, texto)
+    return {
+        "clave_catastral": clave_norm,
+        "total": len(documentos),
+        "url_consulta": url,
+        "documentos": documentos,
+    }
+
+
+@router.get("/expediente/{clave}/archivo-tijuana/pdf/{archivo}")
+def proxy_archivo_tijuana_pdf(
+    clave: str,
+    archivo: str,
+    usuario_actual: dict = Depends(requerir_pestana_archivo),
+):
+    """Proxy de PDF remoto Tijuana. No guarda documentos en disco."""
+    clave_norm = _normalizar_clave_expediente(clave)
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+    archivo_norm = _normalizar_archivo_tijuana(archivo)
+    url = f"https://plataforma.tijuana.gob.mx/archivos/DMC/{urllib.parse.quote(clave_norm)}/{urllib.parse.quote(archivo_norm)}"
+    headers = _headers_archivo_tijuana()
+    headers["Accept"] = "application/pdf,*/*;q=0.8"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=TIJUANA_ARCHIVO_DIGITAL_TIMEOUT) as resp:
+            body = resp.read()
+            content_type = resp.headers.get("Content-Type", "application/pdf")
+    except urllib.error.HTTPError as e:
+        raise HTTPException(
+            status_code=e.code,
+            detail="No se pudo obtener el PDF remoto Tijuana",
+        ) from e
+    except urllib.error.URLError as e:
+        raise HTTPException(
+            status_code=502,
+            detail="Servicio de expediente digital Tijuana no disponible",
+        ) from e
+
+    if not body:
+        raise HTTPException(status_code=404, detail="Documento remoto vacío o inexistente")
+
+    return Response(
+        content=body,
+        media_type=(content_type.split(";")[0].strip() or "application/pdf"),
+        headers={
+            "Content-Disposition": f'inline; filename="{archivo_norm}"',
+            "Cache-Control": "private, max-age=300",
+        },
+    )
+
+
+@router.get("/expediente/{clave}/adeudos-tijuana")
+def adeudos_tijuana_remoto(clave: str, usuario_actual: dict = Depends(obtener_usuario_actual)):
+    """Consulta remota de adeudos Tijuana sin guardar datos localmente."""
+    clave_norm = _normalizar_clave_expediente(clave)
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+
+    url = _url_adeudos_tijuana(clave_norm)
+    headers = _headers_archivo_tijuana()
+    headers["Accept"] = "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=TIJUANA_ARCHIVO_DIGITAL_TIMEOUT) as resp:
+            raw = resp.read()
+            charset = resp.headers.get_content_charset() or "utf-8"
+        texto_html = raw.decode(charset, errors="replace")
+    except urllib.error.HTTPError as e:
+        raise HTTPException(
+            status_code=e.code,
+            detail="No se pudo consultar adeudos remotos Tijuana",
+        ) from e
+    except urllib.error.URLError as e:
+        raise HTTPException(
+            status_code=502,
+            detail="Servicio de adeudos Tijuana no disponible",
+        ) from e
+
+    resumen = _resumen_adeudos_tijuana(texto_html)
+    return {
+        "clave_catastral": clave_norm,
+        "url_consulta": url,
+        **resumen,
+    }
 
 
 @router.get("/expediente/{clave}/documentos")

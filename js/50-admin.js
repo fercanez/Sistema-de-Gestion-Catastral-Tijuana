@@ -33,7 +33,7 @@ function obtenerCatalogoModulosAdmin() {
 function adminDetalleErrorApi(err, contexto) {
   const msg = String(err || "").trim();
   if (msg === "Not Found" || msg === "Not found") {
-    return "El servidor no tiene la ruta " + contexto + ". Suba routers/admin.py, auth/accesos_modulo.py y reinicie catastro-api.";
+    return "El servidor no tiene la ruta " + contexto + ". Suba routers/admin.py, auth/accesos_modulo.py y reinicie catastro-tijuana-api.";
   }
   return msg || "Error de consulta";
 }

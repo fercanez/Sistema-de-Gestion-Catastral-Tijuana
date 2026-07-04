@@ -699,9 +699,9 @@ function crearCapasPopupMiniMap() {
       opacity: 0.9,
       zIndex: POPUP_MINI_CAPA_ORDEN_DEF.predios,
       source: new ol.source.TileWMS({
-        url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+        url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
         params: {
-          LAYERS: "catastro_bc:predios_oficial",
+          LAYERS: "geonode:predios_tijuana",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -718,7 +718,7 @@ function crearCapasPopupMiniMap() {
       source: new ol.source.TileWMS({
         url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
         params: {
-          LAYERS: "colonias",
+          LAYERS: "geonode:colonias_tij",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",

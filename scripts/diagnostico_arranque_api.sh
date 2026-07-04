@@ -1,8 +1,8 @@
 #!/bin/bash
-# Diagnóstico rápido cuando catastro-api no arranca (503 en visor).
+# Diagnóstico rápido cuando catastro-tijuana-api no arranca (503 en visor).
 set -euo pipefail
 
-API_DIR="${1:-/opt/catastro_api}"
+API_DIR="${1:-/opt/catastro_tijuana_api}"
 PY="${API_DIR}/venv/bin/python3"
 
 echo "=== Directorio API: ${API_DIR} ==="
@@ -38,13 +38,13 @@ echo "=== 5) import main ==="
 
 echo ""
 echo "=== 6) servicio systemd ==="
-systemctl is-active catastro-api 2>/dev/null || true
-systemctl status catastro-api --no-pager -l 2>/dev/null | tail -n 15 || true
+systemctl is-active catastro-tijuana-api 2>/dev/null || true
+systemctl status catastro-tijuana-api --no-pager -l 2>/dev/null | tail -n 15 || true
 
 echo ""
 echo "=== 7) últimos logs ==="
-journalctl -u catastro-api -n 25 --no-pager 2>/dev/null || true
+journalctl -u catastro-tijuana-api -n 25 --no-pager 2>/dev/null || true
 
 echo ""
-echo "=== 8) curl local puerto 9000 ==="
-curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:9000/ || echo "sin respuesta en :9000"
+echo "=== 8) curl local puerto 9001 ==="
+curl -s -o /dev/null -w "HTTP %{http_code}\n" http://127.0.0.1:9001/ || echo "sin respuesta en :9001"

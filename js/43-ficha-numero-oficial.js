@@ -1,6 +1,6 @@
 /* Ficha de Número Oficial — vista previa e impresión */
 
-const LOGO_FICHA_NUMOF_URL = "logomxli.png";
+const LOGO_FICHA_NUMOF_URL = "logotijuana.png";
 const FICHA_NUMOF_OL_CSS = typeof OL_FICHA_CSS !== "undefined"
   ? OL_FICHA_CSS
   : "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
@@ -12,7 +12,7 @@ const FICHA_NUMOF_GEONODE_WMS = typeof POPUP_NUMOF_GEONODE_WMS !== "undefined"
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_NUMOF_CATASTRO_WMS = typeof POPUP_NUMOF_CATASTRO_WMS !== "undefined"
   ? POPUP_NUMOF_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 
 function fichaNumofEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
@@ -36,7 +36,7 @@ async function cargarDatosComplementariosFichaNumof(clave, numofActual) {
   if (!claveNorm) return { fechaAlta, numAnterior };
 
   const headers = typeof authHeaders === "function" ? authHeaders() : {};
-  const apiBase = typeof API !== "undefined" ? API : "/api/catastro";
+  const apiBase = typeof API !== "undefined" ? API : "/api/catastro-tijuana";
 
   try {
     const r = await fetch(`${apiBase}/expediente/${encodeURIComponent(claveNorm)}?_=${Date.now()}`, {
@@ -228,8 +228,8 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
     const baseGoogleRoad=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}",crossOrigin:"anonymous"})});
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
-    const capaPredios=crearWmsNumof("${FICHA_NUMOF_CATASTRO_WMS}","catastro_bc:predios_oficial",true,0.85,fichaCapaOrdenDef.prediosWms);
-    const capaColonias=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","colonias",false,0.55,fichaCapaOrdenDef.colonias);
+    const capaPredios=crearWmsNumof("${FICHA_NUMOF_CATASTRO_WMS}","geonode:predios_tijuana",true,0.85,fichaCapaOrdenDef.prediosWms);
+    const capaColonias=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","geonode:colonias_tij",false,0.55,fichaCapaOrdenDef.colonias);
     const capaCodigos=crearWmsNumof("${FICHA_NUMOF_GEONODE_WMS}","codigos_postales_bc_utm1",true,1,fichaCapaOrdenDef.codigos);
 
     const srcConsultado=new ol.source.Vector();
@@ -251,7 +251,7 @@ function buildFichaNumofMapScript(featuresJson, mapaInicialJson) {
     previewMapNumof=new ol.Map({
       target:"previewNumofMap",
       layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaPredios,capaColonias,capaMisma,capaOtra,capaConsultado,capaCodigos],
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18}),
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:18}),
       controls:(function(){
         if(ol.control&&ol.control.defaults&&ol.control.defaults.defaults){
           return ol.control.defaults.defaults({zoom:false,rotate:false,attribution:false});
@@ -772,7 +772,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
 
   <div class="contenedor">
     <header class="encabezado">
-      <div class="enc-logo"><img src="${LOGO_FICHA_NUMOF_URL}" alt="Gobierno de Mexicali"></div>
+      <div class="enc-logo"><img src="${LOGO_FICHA_NUMOF_URL}" alt="Gobierno de Tijuana"></div>
       <div class="enc-centro">
         <h1 class="titulo-numof">NÚMERO OFICIAL ${fichaNumofEsc(numofTitulo)} , <span class="cp">C.P. ${fichaNumofEsc(cp)}</span></h1>
         <p class="nombre-prop">${nombre}</p>

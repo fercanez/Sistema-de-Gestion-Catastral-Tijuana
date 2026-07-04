@@ -1,6 +1,6 @@
 /* Cédula de número oficial — vista previa con plano cartográfico e impresión */
 
-const LOGO_CEDULA_NUMOF_URL = "logomxli.png";
+const LOGO_CEDULA_NUMOF_URL = "logotijuana.png";
 
 function cedulaNumofEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
@@ -82,7 +82,7 @@ async function prepararDatosCedulaNumeroOficial(movOpt) {
   const valorFiscalTxt = valorFiscal != null
     ? ("$" + valorFiscal.toLocaleString("es-MX", { minimumFractionDigits: 2 }))
     : "—";
-  const delegacion = String(p.delegacion || "MEXICALI").trim().toUpperCase();
+  const delegacion = String(p.delegacion || "TIJUANA").trim().toUpperCase();
   const fechaEmision = new Date().toLocaleString("es-MX");
 
   if (typeof seleccionarPorClave === "function") {
@@ -320,10 +320,10 @@ body{-webkit-print-color-adjust:exact!important;print-color-adjust:exact!importa
   <div class="contenedor">
     <header class="enc-inst">
       <div style="display:flex;gap:10px;align-items:center;">
-        <div class="enc-logo"><img src="${LOGO_CEDULA_NUMOF_URL}" alt="Gobierno de Mexicali"></div>
+        <div class="enc-logo"><img src="${LOGO_CEDULA_NUMOF_URL}" alt="Gobierno de Tijuana"></div>
         <div class="enc-texto">
           <span class="titulo-sistema">Sistema de Gestión Catastral</span>
-          Dirección de Catastro · H. Ayuntamiento de Mexicali<br>
+          Dirección de Catastro · H. Ayuntamiento de Tijuana<br>
           Estado de Baja California, México
         </div>
       </div>
@@ -527,7 +527,7 @@ async function exportarCedulaNumeroOficialPdf(datos, mapaImg) {
   doc.setFontSize(14);
   doc.text("Sistema de Gestión Catastral", logoImg ? 54 : 14, 12);
   doc.setFontSize(10);
-  doc.text("Dirección de Catastro · H. Ayuntamiento de Mexicali", logoImg ? 54 : 14, 19);
+  doc.text("Dirección de Catastro · H. Ayuntamiento de Tijuana", logoImg ? 54 : 14, 19);
   doc.setFontSize(9);
   doc.text("Estado de Baja California, México", logoImg ? 54 : 14, 25);
   doc.text("Fecha: " + fechaEmision, pageW - 14, 12, { align: "right" });
@@ -592,7 +592,7 @@ async function exportarCedulaNumeroOficialPdf(datos, mapaImg) {
   marcoSeccionCedula(y, hIdent, "IDENTIFICACIÓN DEL PREDIO");
   rowCedula("Propietario", nombre, 18, pageW - 18, y + 11);
   rowCedula("Colonia", colonia, 18, midX - 2, y + 15);
-  rowCedula("Delegación", String(datos.delegacion || "MEXICALI"), midX + 2, pageW - 18, y + 15);
+  rowCedula("Delegación", String(datos.delegacion || "TIJUANA"), midX + 2, pageW - 18, y + 15);
   rowCedula("Domicilio", domicilio + (cpTxt ? ", C.P. " + cpTxt : ""), 18, pageW - 18, y + 19);
 
   y += hIdent + 3;

@@ -219,9 +219,9 @@ async function generarCroquisWMSPDF() {
     const bbox = expandirExtentPDF(extentOriginal, 3.0);
 
     const wmsUrl =
-      "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms?" +
+      "https://fcnarqnodo.hopto.org/geoserver/geonode/wms?" +
       "SERVICE=WMS&VERSION=1.1.1&REQUEST=GetMap" +
-      "&LAYERS=catastro_bc:predios_oficial" +
+      "&LAYERS=geonode:predios_tijuana" +
       "&STYLES=" +
       "&FORMAT=image/png" +
       "&TRANSPARENT=false" +
@@ -345,7 +345,7 @@ function construirIdCatastralExtendido(clave) {
 function construirDomicilioFisicoFicha(p, numof) {
   const calle = String(p.calle || "CONOCIDO").trim();
   const colonia = String(p.colonia || "").trim();
-  const delegacion = String(p.delegacion || "MEXICALI").trim();
+  const delegacion = String(p.delegacion || "TIJUANA").trim();
   const num = String(numof || p.numof || "").trim();
   let txt = calle;
   if (num) txt += ", No. " + num + "- ";
@@ -507,7 +507,7 @@ async function exportarFichaCatastralPdf(datos, imagenes = {}) {
   doc.text("FICHA CATASTRAL", logoImg ? 44 : margen, 11);
   doc.setFontSize(8);
   doc.setFont("helvetica", "normal");
-  doc.text("Consulta Catastral Mexicali", logoImg ? 44 : margen, 17);
+  doc.text("Consulta Catastral Tijuana", logoImg ? 44 : margen, 17);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9);
   doc.text("Clave Catastral: " + datos.clave, pageW - margen, 12, { align: "right" });
@@ -765,7 +765,7 @@ async function generarPDFInstitucional() {
     doc.setFontSize(15);
     doc.text("Sistema de Gestión Catastral", 14, 10);
     doc.setFontSize(10);
-    doc.text("Ficha predial institucional · Catastro Mexicali", 14, 17);
+    doc.text("Ficha predial institucional · Catastro Tijuana", 14, 17);
 
     doc.setFontSize(9);
     const fecha = new Date().toLocaleString("es-MX");

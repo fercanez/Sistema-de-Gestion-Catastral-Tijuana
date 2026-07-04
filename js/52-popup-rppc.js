@@ -135,7 +135,7 @@ function popupRppcEsc(valor) {
 
 function apiBaseRppc() {
   if (typeof API !== "undefined" && API) return String(API).replace(/\/$/, "");
-  return `${window.location.origin}/api/catastro`;
+  return `${window.location.origin}/api/catastro-tijuana`;
 }
 
 function popupRppcFolioTexto(p) {

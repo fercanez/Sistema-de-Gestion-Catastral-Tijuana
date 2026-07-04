@@ -1,4 +1,4 @@
-/* Importador de cartografía — Predios Mexicali SHP → PostGIS */
+/* Importador de cartografía — Predios Tijuana SHP → PostGIS */
 
 function importadorSetMensaje(texto, tipo) {
   const el = document.getElementById("importadorMensaje");
@@ -20,14 +20,14 @@ function importadorHeaders(extra) {
 }
 
 function importadorTablaSeleccionada() {
-  return document.getElementById("importadorTabla")?.value || "predios_mexicali_prueba";
+  return document.getElementById("importadorTabla")?.value || "predios_tijuana_prueba";
 }
 
 function importadorActualizarModo() {
   const tabla = importadorTablaSeleccionada();
   const modo = document.getElementById("importadorModo");
   const destino = document.getElementById("importadorTablaDestino");
-  if (modo) modo.innerText = tabla === "predios_mexicali" ? "Producción" : "Prueba";
+  if (modo) modo.innerText = tabla === "predios_tijuana" ? "Producción" : "Prueba";
   if (destino) destino.innerText = tabla;
 }
 
@@ -44,7 +44,7 @@ async function importadorSubirPredios() {
     return;
   }
 
-  if (tabla === "predios_mexicali" && !confirmar) {
+  if (tabla === "predios_tijuana" && !confirmar) {
     importadorSetMensaje("Para producción debe marcar la autorización de reemplazo.", "error");
     return;
   }

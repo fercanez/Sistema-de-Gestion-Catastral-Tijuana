@@ -22,6 +22,7 @@ const POPUP_MINI_CAPA_PROP = {
 let popupTitularidadSubTab = "titulares";
 let popupTitularidadCache = null;
 let popupDatosGeneralesSeq = 0;
+let popupAdeudosTijuanaCache = new Map();
 
 const POPUP_TIPOS_TENENCIA = {
   C: { codigo: "C", nombre: "Condominio", desc: "Régimen en condominio." },
@@ -362,6 +363,10 @@ function popupCampoNombre(label, valor) {
   return `<div class="popup-legacy-row popup-legacy-row-nombre"><label>${label}</label><div class="popup-legacy-val">${popupVal(valor)}</div></div>`;
 }
 
+function popupCampoHtml(label, html) {
+  return `<div class="popup-legacy-row"><label>${popupEsc(label)}</label><div class="popup-legacy-val">${html || "—"}</div></div>`;
+}
+
 function popupZonaHomogenea(p) {
   return popupVal(p?.zona_homogenea || p?.zonah);
 }
@@ -554,11 +559,12 @@ function htmlSeccionTitularidadPopup() {
   `;
 }
 
-function urlStreetViewEmbed(lat, lon) {
+function urlStreetViewEmbed(lat, lon, heading = 0) {
   if (lat == null || lon == null || Number.isNaN(lat) || Number.isNaN(lon)) return "";
   const latN = Number(lat).toFixed(7);
   const lonN = Number(lon).toFixed(7);
-  return `https://maps.google.com/maps?q=&layer=c&cbll=${latN},${lonN}&cbp=12,0,,0,0&output=svembed`;
+  const headingN = Math.round(Number(heading) || 0);
+  return `https://maps.google.com/maps?q=&layer=c&cbll=${latN},${lonN}&cbp=12,${headingN},,0,0&output=svembed`;
 }
 
 async function resolverGeometriaPredioPopup(clave) {
@@ -619,6 +625,49 @@ function obtenerCentroidePredio(clave, geometry = null) {
   } catch (e) {
     return { lat: null, lon: null, geometry: geom };
   }
+}
+
+function popupProyectarPuntoSegmento(p, a, b) {
+  const ax = a[0], ay = a[1], bx = b[0], by = b[1];
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (!len2) return [ax, ay];
+  const t = Math.max(0, Math.min(1, ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2));
+  return [ax + t * dx, ay + t * dy];
+}
+
+function popupAnillosExteriores(geom) {
+  try {
+    const tipo = geom?.getType?.();
+    if (tipo === "Polygon") return [geom.getCoordinates()[0] || []];
+    if (tipo === "MultiPolygon") return (geom.getCoordinates() || []).map(poly => poly?.[0] || []);
+  } catch (e) {}
+  return [];
+}
+
+function popupPuntoInteriorCoord(geom) {
+  try {
+    if (geom?.getType?.() === "Polygon" && typeof geom.getInteriorPoint === "function") {
+      return geom.getInteriorPoint().getCoordinates();
+    }
+    if (geom?.getType?.() === "MultiPolygon" && typeof geom.getInteriorPoints === "function") {
+      const coords = geom.getInteriorPoints().getCoordinates();
+      if (coords?.length) return coords[0];
+    }
+  } catch (e) {}
+  return ol.extent.getCenter(geom.getExtent());
+}
+
+function popupHeadingDesdeHasta(origen3857, destino3857) {
+  const dx = destino3857[0] - origen3857[0];
+  const dy = destino3857[1] - origen3857[1];
+  return (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+}
+
+function obtenerPuntoStreetViewPredio(clave, geometry = null) {
+  const punto = obtenerCentroidePredio(clave, geometry);
+  return Object.assign({ heading: 0 }, punto);
 }
 
 function enfocarMapaPrincipalPredio(clave, geometry = null) {
@@ -682,9 +731,9 @@ function crearCapasPopupMiniMap() {
       opacity: 0.9,
       zIndex: POPUP_MINI_CAPA_ORDEN_DEF.predios,
       source: new ol.source.TileWMS({
-        url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+        url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
         params: {
-          LAYERS: "catastro_bc:predios_oficial",
+          LAYERS: "geonode:predios_tijuana",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -701,7 +750,7 @@ function crearCapasPopupMiniMap() {
       source: new ol.source.TileWMS({
         url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
         params: {
-          LAYERS: "colonias",
+          LAYERS: "geonode:colonias_tij",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -857,6 +906,35 @@ function togglePopupMiniCapa(tipo) {
   popupMiniCapasManager?.toggle(tipo);
 }
 
+async function seleccionarPredioDesdePopupMiniMap(evt) {
+  if (evt?.dragging) return;
+  if (!popupMiniMap) return;
+
+  try {
+    const lonLat = ol.proj.toLonLat(evt.coordinate);
+    const qs = new URLSearchParams({
+      lon: String(lonLat[0]),
+      lat: String(lonLat[1]),
+      _: String(Date.now())
+    });
+    const r = await fetch(`${API}/predios/intersecta?${qs}`, {
+      cache: "no-store",
+      headers: typeof authHeaders === "function" ? authHeaders() : {}
+    });
+    if (!r.ok) return;
+
+    const featureGeojson = await r.json();
+    const clave = typeof extraerClavePredioProps === "function"
+      ? extraerClavePredioProps(featureGeojson.properties || featureGeojson)
+      : String(featureGeojson?.properties?.clave_catastral || "").trim().toUpperCase();
+    if (!clave || typeof seleccionarPorClave !== "function") return;
+
+    await seleccionarPorClave(clave, "popup-mini-map", { geojsonPrefetch: featureGeojson });
+  } catch (e) {
+    console.warn("No se pudo seleccionar predio desde el minimapa de la ficha:", e);
+  }
+}
+
 async function actualizarPopupMiniMap(clave, geometry = null) {
   const target = document.getElementById("popupMiniMap");
   if (!target) return;
@@ -902,6 +980,7 @@ async function actualizarPopupMiniMap(clave, geometry = null) {
         zoom: 18
       })
     });
+    popupMiniMap.on("click", seleccionarPredioDesdePopupMiniMap);
     popupMiniInicializarCapasManager();
     popupMiniMapClaveActual = claveNorm;
   }
@@ -930,11 +1009,11 @@ async function actualizarPopupMiniMap(clave, geometry = null) {
 async function actualizarPopupVistaCartografica(p) {
   const clave = String(p?.clave_catastral || claveSeleccionadaActual || "").trim().toUpperCase();
   const geom = await resolverGeometriaPredioPopup(clave);
-  const { lat, lon } = obtenerCentroidePredio(clave, geom);
+  const { lat, lon, heading } = obtenerPuntoStreetViewPredio(clave, geom);
 
   const iframe = document.getElementById("popupStreetViewFrame");
   const streetVacio = document.getElementById("popupStreetViewVacio");
-  const streetUrl = urlStreetViewEmbed(lat, lon);
+  const streetUrl = urlStreetViewEmbed(lat, lon, heading);
 
   if (iframe && streetVacio) {
     if (streetUrl) {
@@ -996,6 +1075,130 @@ function actualizarPopupNombreContribuyenteEnPanel(panel, p, titularidad) {
   if (nombreEl) nombreEl.textContent = nombreFinal;
 }
 
+function asegurarPopupAdeudosTijuana() {
+  let overlay = document.getElementById("popupAdeudosTijuanaOverlay");
+  if (overlay) return overlay;
+  overlay = document.createElement("div");
+  overlay.id = "popupAdeudosTijuanaOverlay";
+  overlay.className = "popup-adeudos-tijuana-overlay oculto";
+  overlay.innerHTML = `
+    <div class="popup-adeudos-tijuana-backdrop" onclick="cerrarPopupAdeudosTijuana()"></div>
+    <div class="popup-adeudos-tijuana-panel" role="dialog" aria-modal="true" aria-labelledby="popupAdeudosTijuanaTitulo">
+      <div class="popup-adeudos-tijuana-head">
+        <div>
+          <strong id="popupAdeudosTijuanaTitulo">Adeudos Tijuana</strong>
+          <span id="popupAdeudosTijuanaSubtitulo"></span>
+        </div>
+        <button type="button" class="popup-adeudos-tijuana-cerrar" onclick="cerrarPopupAdeudosTijuana()">Cerrar</button>
+      </div>
+      <div id="popupAdeudosTijuanaBody" class="popup-adeudos-tijuana-body"></div>
+    </div>
+  `;
+  document.body.appendChild(overlay);
+  return overlay;
+}
+
+function htmlTablaAdeudosTijuana(data) {
+  const columnas = Array.isArray(data?.columnas) ? data.columnas : [];
+  const filas = Array.isArray(data?.filas_tabla) ? data.filas_tabla : [];
+  if (!columnas.length || !filas.length) {
+    return `<div class="popup-adeudos-tijuana-vacio">${popupEsc(data?.resumen || "No se encontró tabla de adeudos.")}</div>`;
+  }
+  return `
+    <div class="popup-adeudos-tijuana-tools">
+      <a href="${popupEsc(data.url_consulta || "#")}" target="_blank" rel="noopener noreferrer">Abrir fuente</a>
+      ${data.total_adeudo ? `<span>Total: <b>${popupEsc(data.total_adeudo)}</b></span>` : ""}
+    </div>
+    <div class="popup-adeudos-tijuana-table-wrap">
+      <table class="popup-adeudos-tijuana-table">
+        <thead><tr>${columnas.map(c => `<th>${popupEsc(c)}</th>`).join("")}</tr></thead>
+        <tbody>
+          ${filas.map(row => `
+            <tr>${columnas.map((_, idx) => `<td>${popupEsc(row?.[idx] || "")}</td>`).join("")}</tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+async function abrirPopupAdeudosTijuana(claveNorm, evt) {
+  if (evt) {
+    evt.preventDefault();
+    evt.stopPropagation();
+  }
+  const clave = String(claveNorm || claveSeleccionadaActual || "").trim().toUpperCase();
+  const overlay = asegurarPopupAdeudosTijuana();
+  const subtitulo = overlay.querySelector("#popupAdeudosTijuanaSubtitulo");
+  const body = overlay.querySelector("#popupAdeudosTijuanaBody");
+  if (subtitulo) subtitulo.textContent = clave ? `Clave ${clave}` : "";
+  if (body) body.innerHTML = `<div class="popup-adeudos-tijuana-vacio">Cargando tabla de adeudos...</div>`;
+  overlay.classList.remove("oculto");
+  document.body.classList.add("popup-adeudos-tijuana-abierto");
+
+  let data = popupAdeudosTijuanaCache.get(clave);
+  if (!data && clave) {
+    try {
+      const r = await fetch(`${urlAdeudosTijuanaApi(clave)}?_=${Date.now()}`, {
+        headers: typeof authHeaders === "function" ? authHeaders() : {},
+        cache: "no-store"
+      });
+      data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.detail || "No se pudo consultar adeudos Tijuana");
+      popupAdeudosTijuanaCache.set(clave, data);
+    } catch (e) {
+      data = { resumen: e.message || "No se pudo consultar adeudos Tijuana" };
+    }
+  }
+  if (body) body.innerHTML = data ? htmlTablaAdeudosTijuana(data) : `<div class="popup-adeudos-tijuana-vacio">Consulte primero el predio.</div>`;
+}
+
+function cerrarPopupAdeudosTijuana() {
+  document.getElementById("popupAdeudosTijuanaOverlay")?.classList.add("oculto");
+  document.body.classList.remove("popup-adeudos-tijuana-abierto");
+}
+
+function engancharPopupAdeudosTijuana() {
+  if (window.__popupAdeudosTijuanaDelegado) return;
+  window.__popupAdeudosTijuanaDelegado = true;
+  document.addEventListener("click", function(e) {
+    const btn = e.target?.closest?.(".popup-adeudo-tijuana-btn");
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const clave = btn.dataset?.clave || claveSeleccionadaActual || "";
+    abrirPopupAdeudosTijuana(clave, e);
+  }, true);
+}
+
+async function cargarAdeudosTijuanaRemotos(claveNorm) {
+  const el = document.getElementById("popupAdeudoTijuanaRemoto");
+  if (!el || !claveNorm) return;
+  try {
+    const r = await fetch(`${urlAdeudosTijuanaApi(claveNorm)}?_=${Date.now()}`, {
+      headers: typeof authHeaders === "function" ? authHeaders() : {},
+      cache: "no-store"
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || "No se pudo consultar adeudos Tijuana");
+    popupAdeudosTijuanaCache.set(claveNorm, data);
+    if (data.sin_adeudos) {
+      el.innerHTML = `<span class="badge-ok">SIN ADEUDOS</span>`;
+      return;
+    }
+    const totalFilas = Array.isArray(data.filas_tabla) ? data.filas_tabla.length : 0;
+    const etiqueta = data.tiene_adeudos ? "CON ADEUDO" : "SIN DATO";
+    const resumen = data.total_adeudo || (totalFilas ? `${totalFilas} ejercicio(s)` : "Detalle disponible");
+    el.innerHTML = `
+      <span class="badge-warn">${popupEsc(etiqueta)}</span>
+      ${resumen ? `<span class="popup-adeudo-tijuana-resumen">${popupEsc(resumen)}</span>` : ""}
+      <button type="button" class="popup-adeudo-tijuana-btn" data-clave="${popupEsc(claveNorm)}">Ver tabla</button>
+    `;
+  } catch (e) {
+    el.innerHTML = `<span class="badge-warn">No disponible</span>`;
+  }
+}
+
 async function pintarPopupTabDatosGenerales(p) {
   const panel = document.getElementById("popupTabDatosGenerales");
   if (!panel) return;
@@ -1006,6 +1209,9 @@ async function pintarPopupTabDatosGenerales(p) {
   destruirPopupMiniMap();
 
   const supDoc = typeof formatoNumero === "function" ? formatoNumero(p?.sup_documental) : p?.sup_documental;
+  const supFis = typeof formatoNumero === "function" ? formatoNumero(p?.sup_fisica) : p?.sup_fisica;
+  const txtSupDoc = supDoc && supDoc !== "Sin dato" ? `${supDoc} m²` : "Sin dato";
+  const txtSupFis = supFis && supFis !== "Sin dato" ? `${supFis} m²` : "Sin dato";
   const valor = typeof formatoMoneda === "function" ? formatoMoneda(p?.valor2026) : p?.valor2026;
   const adeudo = typeof formatoMoneda === "function" ? formatoMoneda(p?.adeudo_total) : p?.adeudo_total;
   const nombreContrib = popupNombreContribuyente(p, null);
@@ -1021,9 +1227,11 @@ async function pintarPopupTabDatosGenerales(p) {
           ${popupCampo("Colonia / fraccionamiento", p?.colonia)}
           ${popupCampo("Calle", p?.calle)}
           ${popupCampo("Número oficial", p?.numof)}
-          ${popupCampo("Superficie documental", supDoc ? supDoc + " m²" : "—")}
+          ${popupCampo("Superficie documental", txtSupDoc)}
+          ${popupCampo("Superficie física", txtSupFis)}
           ${popupCampo("Valor 2026", valor)}
           ${popupCampo("Adeudo total", adeudo)}
+          ${popupCampoHtml("Adeudo Tijuana", `<span id="popupAdeudoTijuanaRemoto" class="popup-adeudo-tijuana-remoto">Consultando...</span>`)}
           ${popupCampo("Uso de suelo predial", p?.descripcion_uso)}
           ${(typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea()) ? popupCampo("Zona homogénea", popupZonaHomogenea(p)) : ""}
           ${popupCampo("Folio real", typeof textoFolioReal === "function" ? textoFolioReal(p) : (p?.folio_real || "—"))}
@@ -1058,7 +1266,8 @@ async function pintarPopupTabDatosGenerales(p) {
 
   const [titularidad] = await Promise.all([
     cargarTitularidadPredioPopup(clave, p),
-    actualizarPopupVistaCartografica(p)
+    actualizarPopupVistaCartografica(p),
+    cargarAdeudosTijuanaRemotos(clave)
   ]);
   if (seq !== popupDatosGeneralesSeq) return;
   if (!titularidadPerteneceAPredio(titularidad, clave)) return;
@@ -1081,18 +1290,38 @@ function pintarPopupTabPlaceholder(panelId, titulo, detalle) {
 }
 
 const URL_ARCHIVO_DIGITAL_EXTERNO =
-  "https://www.mexicali.gob.mx/webpub/consultacatastro/documentacion.aspx?";
+  "https://plataforma.tijuana.gob.mx/plataforma/indexProductividad.php?mod=73&sis=74#area_iframe";
 
 function urlArchivoDigitalExterno(clave) {
   const claveNorm = String(clave || "").trim().toUpperCase();
   if (!claveNorm) return "";
-  return URL_ARCHIVO_DIGITAL_EXTERNO + encodeURIComponent(claveNorm);
+  return URL_ARCHIVO_DIGITAL_EXTERNO;
 }
 
 function urlArchivoExternoApi(clave) {
   const claveNorm = String(clave || "").trim().toUpperCase();
   if (!claveNorm || typeof API === "undefined" || !API) return "";
   return `${API}/expediente/${encodeURIComponent(claveNorm)}/archivo-externo`;
+}
+
+function urlArchivoTijuanaDocumentosApi(clave) {
+  const claveNorm = String(clave || "").trim().toUpperCase();
+  if (!claveNorm || typeof API === "undefined" || !API) return "";
+  return `${API}/expediente/${encodeURIComponent(claveNorm)}/archivo-tijuana/documentos`;
+}
+
+function urlArchivoTijuanaProxy(clave, proxyUrl) {
+  const claveNorm = String(clave || "").trim().toUpperCase();
+  const rel = String(proxyUrl || "").trim();
+  if (!claveNorm || !rel || typeof API === "undefined" || !API) return "";
+  if (/^https?:\/\//i.test(rel)) return rel;
+  return `${API}${rel.startsWith("/") ? rel : "/" + rel}`;
+}
+
+function urlAdeudosTijuanaApi(clave) {
+  const claveNorm = String(clave || "").trim().toUpperCase();
+  if (!claveNorm || typeof API === "undefined" || !API) return "";
+  return `${API}/expediente/${encodeURIComponent(claveNorm)}/adeudos-tijuana`;
 }
 
 function popupEsc(valor) {
@@ -1107,6 +1336,8 @@ const POPUP_FOTOS_SLOTS = [
 ];
 
 let popupArchivoClaveActual = "";
+let popupArchivoTijuanaDocs = [];
+let popupArchivoTijuanaSeleccionado = "";
 
 function puedeGestionarFotosArchivo() {
   return typeof puedeEditarCatastro === "function" && puedeEditarCatastro();
@@ -1396,6 +1627,97 @@ async function eliminarFotoArchivo(slot) {
   }
 }
 
+function htmlArchivoTijuanaDocumentoCard(doc, idx) {
+  const id = popupEsc(doc?.nombre_archivo || `doc-${idx}`);
+  const thumb = popupEsc(doc?.thumbnail_url || "");
+  const titulo = popupEsc(doc?.descripcion || `Documento #${idx + 1}`);
+  return `
+    <button type="button" class="popup-archivo-remoto-card" data-archivo="${id}" onclick="seleccionarArchivoTijuanaRemoto(this.dataset.archivo)" title="${titulo}">
+      <span class="popup-archivo-remoto-num">${idx + 1}</span>
+      ${thumb ? `<img src="${thumb}" alt="${titulo}" loading="lazy">` : `<span class="popup-archivo-remoto-sin-thumb">PDF</span>`}
+    </button>`;
+}
+
+function pintarArchivoTijuanaLista(documentos) {
+  const cont = document.getElementById("popupArchivoTijuanaLista");
+  const resumen = document.getElementById("popupArchivoTijuanaResumen");
+  if (!cont) return;
+  popupArchivoTijuanaDocs = Array.isArray(documentos) ? documentos : [];
+  if (resumen) {
+    resumen.textContent = popupArchivoTijuanaDocs.length
+      ? `Documentos remotos Tijuana: ${popupArchivoTijuanaDocs.length}`
+      : "Sin documentos remotos Tijuana.";
+  }
+  if (!popupArchivoTijuanaDocs.length) {
+    cont.innerHTML = `<div class="popup-archivo-remoto-vacio">No se encontraron documentos remotos para esta clave.</div>`;
+    return;
+  }
+  cont.innerHTML = popupArchivoTijuanaDocs.map(htmlArchivoTijuanaDocumentoCard).join("");
+}
+
+async function seleccionarArchivoTijuanaRemoto(nombreArchivo) {
+  const claveNorm = popupArchivoClaveActual;
+  const doc = popupArchivoTijuanaDocs.find(d => String(d.nombre_archivo || "") === String(nombreArchivo || ""));
+  if (!claveNorm || !doc) return;
+  popupArchivoTijuanaSeleccionado = doc.nombre_archivo;
+  document.querySelectorAll(".popup-archivo-remoto-card").forEach(btn => {
+    btn.classList.toggle("activo", btn.dataset.archivo === doc.nombre_archivo);
+  });
+
+  const frame = document.getElementById("popupArchivoDigitalExternoFrame");
+  const estado = document.getElementById("popupArchivoEstado");
+  const btnExterno = document.getElementById("popupArchivoBtnExterno");
+  const urlProxy = urlArchivoTijuanaProxy(claveNorm, doc.proxy_url);
+  if (!urlProxy) return;
+
+  if (estado) estado.textContent = `Cargando ${doc.descripcion || doc.nombre_archivo}…`;
+  try {
+    const urlVisor = typeof resolverUrlDocumentoConMarcaAgua === "function"
+      ? await resolverUrlDocumentoConMarcaAgua(urlProxy, doc.nombre_archivo, `tij-${claveNorm}-${doc.nombre_archivo}`, {
+          tipoVisor: "archivo"
+        })
+      : urlProxy;
+    if (frame) frame.src = urlVisor;
+    if (btnExterno) {
+      btnExterno.href = urlVisor;
+      btnExterno.classList.remove("oculto");
+      btnExterno.textContent = "Abrir PDF";
+    }
+    if (estado) {
+      estado.textContent = `${doc.descripcion || doc.nombre_archivo} listo.`;
+      estado.classList.remove("popup-archivo-estado-error");
+    }
+  } catch (e) {
+    if (estado) {
+      estado.textContent = e.message || "No se pudo cargar el documento remoto Tijuana.";
+      estado.classList.add("popup-archivo-estado-error");
+    }
+  }
+}
+
+async function cargarArchivosTijuanaRemotos(claveNorm) {
+  const cont = document.getElementById("popupArchivoTijuanaLista");
+  const resumen = document.getElementById("popupArchivoTijuanaResumen");
+  if (resumen) resumen.textContent = "Consultando documentos remotos Tijuana…";
+  if (cont) cont.innerHTML = `<div class="popup-archivo-remoto-vacio">Cargando miniaturas…</div>`;
+  try {
+    const r = await fetch(`${urlArchivoTijuanaDocumentosApi(claveNorm)}?_=${Date.now()}`, {
+      headers: typeof authHeaders === "function" ? authHeaders() : {},
+      cache: "no-store"
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(data.detail || "No se pudieron consultar documentos remotos Tijuana");
+    pintarArchivoTijuanaLista(data.documentos || []);
+    if ((data.documentos || []).length) {
+      await seleccionarArchivoTijuanaRemoto(data.documentos[0].nombre_archivo);
+    }
+  } catch (e) {
+    popupArchivoTijuanaDocs = [];
+    if (resumen) resumen.textContent = "No se pudieron cargar documentos remotos Tijuana.";
+    if (cont) cont.innerHTML = `<div class="popup-archivo-remoto-vacio">${popupEsc(e.message || e)}</div>`;
+  }
+}
+
 async function pintarPopupTabArchivo(clave, p) {
   const panel = document.getElementById("popupTabArchivo");
   if (!panel) return;
@@ -1429,14 +1751,18 @@ async function pintarPopupTabArchivo(clave, p) {
     <div class="popup-archivo-layout">
       <section class="popup-archivo-panel popup-archivo-externo">
         <header class="popup-archivo-head">
-          <span>Archivo digital externo</span>
+          <span>Archivo digital Tijuana</span>
           <div class="popup-archivo-head-acciones">
             ${botonesMarca}
             <a id="popupArchivoBtnExterno" class="popup-archivo-link-externo oculto" href="#" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
-            <a class="popup-archivo-link-externo" href="${popupEsc(urlExt)}" target="_blank" rel="noopener noreferrer">Abrir en nueva pestaña</a>
+            <a class="popup-archivo-link-externo" href="${popupEsc(urlExt)}" target="_blank" rel="noopener noreferrer">Abrir portal Tijuana</a>
           </div>
         </header>
-        <p id="popupArchivoEstado" class="popup-archivo-estado">Preparando archivo digital externo…</p>
+        <p id="popupArchivoEstado" class="popup-archivo-estado">Preparando archivo digital Tijuana…</p>
+        <div class="popup-archivo-remoto">
+          <div id="popupArchivoTijuanaResumen" class="popup-archivo-remoto-resumen">Consultando documentos remotos Tijuana…</div>
+          <div id="popupArchivoTijuanaLista" class="popup-archivo-remoto-lista"></div>
+        </div>
         <div class="popup-archivo-iframe-wrap" id="popupArchivoVisorWrap">
           <iframe id="popupArchivoDigitalExternoFrame" class="popup-archivo-iframe" title="Archivo digital ${popupEsc(claveNorm)}" src="about:blank"></iframe>
           ${overlayMarca}
@@ -1456,7 +1782,9 @@ async function pintarPopupTabArchivo(clave, p) {
   if (typeof inicializarMarcaAguaArchivoExterno === "function") {
     await inicializarMarcaAguaArchivoExterno();
   }
-  if (typeof cargarArchivoExternoEnVisor === "function") {
+  if (typeof cargarArchivosTijuanaRemotos === "function") {
+    await cargarArchivosTijuanaRemotos(claveNorm);
+  } else if (typeof cargarArchivoExternoEnVisor === "function") {
     await cargarArchivoExternoEnVisor(claveNorm);
   } else if (urlVisor) {
     const frame = document.getElementById("popupArchivoDigitalExternoFrame");
@@ -1684,6 +2012,7 @@ async function navegarPopupPredio(delta) {
 
 function engancharPortalModulos() {
   engancharResizePopupPredio();
+  engancharPopupAdeudosTijuana();
   if (typeof abrirFichaFlotante === "function" && !window.__abrirFichaFlotantePortal) {
     window.__abrirFichaFlotantePortal = abrirFichaFlotante;
     abrirFichaFlotante = function() {
@@ -1695,6 +2024,13 @@ function engancharPortalModulos() {
 
 window.urlArchivoDigitalExterno = urlArchivoDigitalExterno;
 window.urlArchivoExternoApi = urlArchivoExternoApi;
+window.urlArchivoTijuanaDocumentosApi = urlArchivoTijuanaDocumentosApi;
+window.urlAdeudosTijuanaApi = urlAdeudosTijuanaApi;
+window.cargarAdeudosTijuanaRemotos = cargarAdeudosTijuanaRemotos;
+window.abrirPopupAdeudosTijuana = abrirPopupAdeudosTijuana;
+window.cerrarPopupAdeudosTijuana = cerrarPopupAdeudosTijuana;
+window.cargarArchivosTijuanaRemotos = cargarArchivosTijuanaRemotos;
+window.seleccionarArchivoTijuanaRemoto = seleccionarArchivoTijuanaRemoto;
 window.seleccionarFotoArchivo = seleccionarFotoArchivo;
 window.subirFotoArchivo = subirFotoArchivo;
 window.eliminarFotoArchivo = eliminarFotoArchivo;

@@ -5,7 +5,7 @@ Requiere que el script probado en servidor exista y sea ejecutable.
 
 Variables opcionales en .env:
   IMPORTADOR_PREDIOS_SCRIPT=/opt/sgc-web/importador_shp/importador/importar_predios.sh
-  IMPORTADOR_WORKDIR=/opt/catastro-tools/importador_uploads
+  IMPORTADOR_WORKDIR=/opt/catastro-tijuana-tools/importador_uploads
   IMPORTADOR_DB=geonode_data
   IMPORTADOR_SCHEMA=public
 """
@@ -39,11 +39,11 @@ SCRIPT_PATH = os.getenv(
     "IMPORTADOR_PREDIOS_SCRIPT",
     "/opt/sgc-web/importador_shp/importador/importar_predios.sh",
 )
-WORKDIR = Path(os.getenv("IMPORTADOR_WORKDIR", "/opt/catastro-tools/importador_uploads"))
+WORKDIR = Path(os.getenv("IMPORTADOR_WORKDIR", "/opt/catastro-tijuana-tools/importador_uploads"))
 PGDATABASE = os.getenv("IMPORTADOR_DB", "geonode_data")
 SCHEMA_NAME = os.getenv("IMPORTADOR_SCHEMA", "public")
 
-TABLAS_PERMITIDAS = {"predios_mexicali_prueba", "predios_mexicali"}
+TABLAS_PERMITIDAS = {"predios_tijuana_prueba", "predios_tijuana"}
 
 
 def _validar_tabla(tabla: str) -> str:
@@ -106,13 +106,13 @@ def importador_estado():
 @router.post("/importar-predios")
 async def importar_predios(
     files: List[UploadFile] = File(...),
-    tabla: str = Form("predios_mexicali_prueba"),
+    tabla: str = Form("predios_tijuana_prueba"),
     srid: int = Form(32611),
     confirmar_produccion: bool = Form(False),
 ):
     tabla = _validar_tabla(tabla)
 
-    if tabla == "predios_mexicali" and not confirmar_produccion:
+    if tabla == "predios_tijuana" and not confirmar_produccion:
         raise HTTPException(
             status_code=400,
             detail="Debe confirmar explícitamente el reemplazo de producción",

@@ -36,3 +36,4 @@ Thumbs.db
 # Respaldos
 *.bak
 *.bak_*
+tmp/pdfs/node_modules/.pnpm/@oai+artifact-tool@file+loc_2aa87dd61e4be88f8642749659ef3613/node_modules/@oai/artifact-tool/node_modules/@oai/walnut/wasm/System.Runtime.InteropServices.JavaScript.ptvo7oirfc.wasm

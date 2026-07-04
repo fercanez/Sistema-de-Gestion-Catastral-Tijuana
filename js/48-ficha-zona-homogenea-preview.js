@@ -1,6 +1,6 @@
 /* Ficha de zona homogénea — vista previa e impresión (mapa + gráfica evolución) */
 
-const LOGO_FICHA_ZONA_URL = "logomxli.png";
+const LOGO_FICHA_ZONA_URL = "logotijuana.png";
 const FICHA_ZONA_OL_CSS = typeof OL_FICHA_CSS !== "undefined"
   ? OL_FICHA_CSS
   : "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
@@ -12,7 +12,7 @@ const FICHA_ZONA_GEONODE_WMS = typeof POPUP_ZONA_GEONODE_WMS !== "undefined"
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_ZONA_CATASTRO_WMS = typeof POPUP_ZONA_CATASTRO_WMS !== "undefined"
   ? POPUP_ZONA_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_ZONA_WMS_LAYER = typeof POPUP_ZONA_WMS_LAYER !== "undefined"
   ? POPUP_ZONA_WMS_LAYER
   : "zonas_homogeneas";
@@ -303,7 +303,7 @@ function buildFichaZonaMapScript(featuresJson, mapaInicialJson) {
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
     const capaZonasWms=crearWmsZona("${FICHA_ZONA_GEONODE_WMS}",wmsLayer,true,0.72,6);
-    const capaPredios=crearWmsZona("${FICHA_ZONA_CATASTRO_WMS}","catastro_bc:predios_oficial",false,0.45,8);
+    const capaPredios=crearWmsZona("${FICHA_ZONA_CATASTRO_WMS}","geonode:predios_tijuana",false,0.45,8);
     const srcPredio=new ol.source.Vector();const srcZona=new ol.source.Vector();
     const format=new ol.format.GeoJSON({dataProjection:"EPSG:4326",featureProjection:"EPSG:3857"});
     (featuresZona.features||[]).forEach(function(f){
@@ -313,7 +313,7 @@ function buildFichaZonaMapScript(featuresJson, mapaInicialJson) {
     const capaPredio=new ol.layer.Vector({source:srcPredio,zIndex:38,style:estiloPredioZona()});
     const capaZona=new ol.layer.Vector({source:srcZona,zIndex:50,style:estiloZonaLimite()});
     previewMapZona=new ol.Map({target:"previewZonaMap",layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaZonasWms,capaPredios,capaZona,capaPredio],
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:16}),controls:[]});
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:16}),controls:[]});
     window.__zonaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaZonasWms,capaPredios,capaPredio,capaZona};
     window.__zonaVistaUsuario=false;
     if(typeof inicializarOrdenCapasFichaZona==="function")inicializarOrdenCapasFichaZona();
@@ -583,7 +583,7 @@ function construirHtmlFichaZonaVentana(datos, zonaData, opciones) {
   const clave = fichaZonaEsc(datos?.clave || zonaData?.clave_catastral || "—");
   const codZonah = fichaZonaEsc(cat.clave_zonah || cat.codigo_zona_homogenea || zonaData?.zonah || "—");
   const descripcion = fichaZonaEsc(cat.descripcion_col_fracc || attrs.descripcion || "—");
-  const delegacion = fichaZonaEsc(zonaData?.delegacion || datos?.p?.delegacion || "MEXICALI");
+  const delegacion = fichaZonaEsc(zonaData?.delegacion || datos?.p?.delegacion || "TIJUANA");
   const numof = String(datos?.numof || zonaData?.numof || datos?.p?.numof || "").trim();
   const domicilio = typeof construirDomicilioFisicoFicha === "function"
     ? fichaZonaEsc(construirDomicilioFisicoFicha(datos?.p || {}, numof))
@@ -709,7 +709,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
   <div class="aviso-impresion" id="zonaMapaEstado">Cargando plano cartográfico…</div>
   <div class="contenedor">
     <header class="encabezado">
-      <div class="enc-logo"><img src="${LOGO_FICHA_ZONA_URL}" alt="Gobierno de Mexicali"></div>
+      <div class="enc-logo"><img src="${LOGO_FICHA_ZONA_URL}" alt="Gobierno de Tijuana"></div>
       <div class="enc-centro">
         <h1>FICHA DE ZONA HOMOGÉNEA</h1>
         <p class="clave-zona">${clave} · ${codZonah}</p>

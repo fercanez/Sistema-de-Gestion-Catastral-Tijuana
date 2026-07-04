@@ -1,7 +1,7 @@
 ﻿
 /* --- v21: Login institucional JWT --- */
-const TOKEN_KEY_CATASTRO = "catastro_bc_token";
-const USER_KEY_CATASTRO = "catastro_bc_usuario";
+const TOKEN_KEY_CATASTRO = "catastro_tijuana_token";
+const USER_KEY_CATASTRO = "catastro_tijuana_usuario";
 const SESION_INACTIVIDAD_MIN_DEFAULT = 15;
 let sesionInactividadTimer = null;
 let sesionExpulsando = false;
@@ -530,10 +530,26 @@ function formatoMoneda(valor) {
 }
 
 function formatoNumero(valor, decimales = 2) {
-  if (valor === null || valor === undefined || valor === "" || isNaN(Number(valor))) {
+  if (valor === null || valor === undefined || valor === "") {
     return "Sin dato";
   }
-  return Number(valor).toLocaleString("es-MX", {
+  let numero = Number(valor);
+  if (!Number.isFinite(numero) && typeof valor === "string") {
+    let txt = valor.trim()
+      .replace(/\s*(m2|m²|metros cuadrados?)\s*$/i, "")
+      .replace(/\s+/g, "");
+    if (txt.includes(",") && txt.includes(".")) {
+      txt = txt.replace(/,/g, "");
+    } else if (txt.includes(",") && !txt.includes(".")) {
+      txt = txt.replace(",", ".");
+    }
+    txt = txt.replace(/[^0-9.-]/g, "");
+    numero = Number(txt);
+  }
+  if (!Number.isFinite(numero)) {
+    return "Sin dato";
+  }
+  return numero.toLocaleString("es-MX", {
     minimumFractionDigits: decimales,
     maximumFractionDigits: decimales
   });
@@ -617,7 +633,7 @@ function extraerMensajeApi(data, fallback = "Error en el servidor.") {
   return String(d);
 }
 function authHeaders() {
-  const token = (typeof obtenerTokenInstitucional === 'function') ? obtenerTokenInstitucional() : (localStorage.getItem('catastro_bc_token') || '');
+  const token = (typeof obtenerTokenInstitucional === 'function') ? obtenerTokenInstitucional() : (localStorage.getItem(TOKEN_KEY_CATASTRO) || '');
   return {
     'Content-Type': 'application/json',
     'Authorization': `Bearer ${token}`

@@ -976,7 +976,7 @@ async function actualizarMapaAnalisisZonas(reg) {
         _analisisZonasMapCapas.zonasWms,
         _analisisZonasMapCapas.zonaVector
       ],
-      view: new ol.View({ center: ol.proj.fromLonLat([-115.468, 32.624]), zoom: 12 }),
+      view: new ol.View({ center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]), zoom: 12 }),
       controls: []
     });
   }

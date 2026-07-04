@@ -69,7 +69,7 @@ window.exportarUnidadesCondominioExcel = exportarUnidadesCondominioExcel;
 async function obtenerLogoInstitucionalDataUrl() {
   if (_logoInstitucionalCache) return _logoInstitucionalCache;
   try {
-    const r = await fetch("logomxli.png?_=" + Date.now(), { cache: "no-store" });
+    const r = await fetch("logotijuana.png?_=" + Date.now(), { cache: "no-store" });
     if (!r.ok) return null;
     const blob = await r.blob();
     return await new Promise(function(resolve) {
@@ -124,7 +124,7 @@ async function imprimirCedulaZonaHomogenea() {
   doc.setFontSize(14);
   doc.text("Sistema de Gestión Catastral", logoImg ? 54 : 14, 12);
   doc.setFontSize(10);
-  doc.text("Dirección de Catastro · H. Ayuntamiento de Mexicali", logoImg ? 54 : 14, 19);
+  doc.text("Dirección de Catastro · H. Ayuntamiento de Tijuana", logoImg ? 54 : 14, 19);
   doc.setFontSize(9);
   doc.text("Estado de Baja California, México", logoImg ? 54 : 14, 25);
   doc.text(`Fecha: ${fecha}`, pageW - 14, 12, { align: "right" });
@@ -212,7 +212,7 @@ async function imprimirCedulaZonaHomogenea() {
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.setTextColor(100, 110, 125);
-  doc.text("Documento oficial generado por el Sistema de Gestión Catastral del H. Ayuntamiento de Mexicali.", 14, pageH - 16);
+  doc.text("Documento oficial generado por el Sistema de Gestión Catastral del H. Ayuntamiento de Tijuana.", 14, pageH - 16);
   doc.text("Los valores corresponden a la tabla de zonas homogéneas. Uso institucional · Sujeto a validación catastral.", 14, pageH - 11);
 
   doc.save(`cedula_zona_homogenea_${cod}.pdf`);
@@ -225,7 +225,7 @@ window.imprimirCedulaZonaHomogenea = imprimirCedulaZonaHomogenea;
 function mensajeErrorApiPropietarios(status, txt, accion) {
   if (status === 405) {
     return "El servidor no tiene activa la función de " + accion + " (HTTP 405). " +
-      "Suba routers/propietarios.py y main.py al servidor y ejecute: sudo systemctl restart catastro-api";
+      "Suba routers/propietarios.py y main.py al servidor y ejecute: sudo systemctl restart catastro-tijuana-api";
   }
   if (status === 404 && accion === "fusionar") {
     return "Endpoint /propietarios/fusionar no encontrado. Actualice propietarios.py en el servidor y reinicie la API.";

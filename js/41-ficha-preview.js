@@ -1,9 +1,9 @@
 /* Ficha Catastral — ventana de vista previa (patrón fcgeonodo / codigos.zip) */
 
-const LOGO_FICHA_URL = "logomxli.png";
+const LOGO_FICHA_URL = "logotijuana.png";
 const OL_FICHA_CDN = "https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js";
 const OL_FICHA_CSS = "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
-const GEOSERVER_CATASTRO_WMS = "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+const GEOSERVER_CATASTRO_WMS = "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const GEOSERVER_GEONODE_WMS = "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 
 function fichaVentanaEsc(valor) {
@@ -411,8 +411,8 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
 
-    capaPredios=crearCapaWMS("${GEOSERVER_CATASTRO_WMS}","catastro_bc:predios_oficial",true,1);
-    capaColonias=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","colonias",false,0.55);
+    capaPredios=crearCapaWMS("${GEOSERVER_CATASTRO_WMS}","geonode:predios_tijuana",true,1);
+    capaColonias=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","geonode:colonias_tij",false,0.55);
     capaCodigos=crearCapaWMS("${GEOSERVER_GEONODE_WMS}","codigos_postales_bc_utm1",false,1);
 
     predioSource=new ol.source.Vector({
@@ -444,7 +444,7 @@ function buildFichaVentanaMapScript(featureGeoJSONString) {
     previewMap=new ol.Map({
       target:"previewMap",
       layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaCodigos,capaColonias,capaPredios,predioLayer,capaCotasPreview],
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18})
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:18})
     });
 
     if(typeof inicializarOrdenCapasFichaGeneral==="function")inicializarOrdenCapasFichaGeneral();
@@ -1102,7 +1102,7 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
       </div>
       <div class="enc-centro">
         <h1>FICHA CATASTRAL GENERAL</h1>
-        <h2>Catastro Mexicali</h2>
+        <h2>Catastro Tijuana</h2>
       </div>
       <div class="enc-der">
         <div class="enc-id-item">Clave Catastral<b>${fichaVentanaEsc(datos.clave)}</b></div>

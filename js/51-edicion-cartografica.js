@@ -271,7 +271,7 @@ function edCartoCrearCapas() {
     source: new ol.source.TileWMS({
       url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
       params: {
-        LAYERS: "colonias",
+        LAYERS: "geonode:colonias_tij",
         TILED: true,
         VERSION: "1.1.1",
         FORMAT: "image/png",
@@ -286,9 +286,9 @@ function edCartoCrearCapas() {
     opacity: 0.85,
     zIndex: 10,
     source: new ol.source.TileWMS({
-      url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+      url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
       params: {
-        LAYERS: "catastro_bc:predios_oficial",
+        LAYERS: "geonode:predios_tijuana",
         TILED: true,
         VERSION: "1.1.1",
         FORMAT: "image/png",
@@ -1583,7 +1583,7 @@ function edCartoInitMapa(forzarReinicio) {
       return undefined;
     })(),
     view: new ol.View({
-      center: ol.proj.fromLonLat([-115.468, 32.624]),
+      center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]),
       zoom: 14
     })
   });

@@ -3,6 +3,18 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+APP_MUNICIPIO = os.getenv("APP_MUNICIPIO", "Tijuana").strip() or "Tijuana"
+APP_MUNICIPIO_MAYUS = APP_MUNICIPIO.upper()
+APP_ESTADO = os.getenv("APP_ESTADO", "Baja California").strip() or "Baja California"
+API_ROOT_PATH = (os.getenv("API_ROOT_PATH", "/api/catastro-tijuana").strip() or "/api/catastro-tijuana").rstrip("/")
+APP_DIR = os.getenv("APP_DIR", "/opt/catastro_tijuana_api").strip() or "/opt/catastro_tijuana_api"
+VISOR_DIR = os.getenv("VISOR_DIR", "/var/www/catastro_tijuana").strip() or "/var/www/catastro_tijuana"
+VISOR_LOGO_FILENAME = os.getenv("VISOR_LOGO_FILENAME", "logotijuana.png").strip() or "logotijuana.png"
+DOCUMENTOS_BASE_DIR = (
+    os.getenv("DOCUMENTOS_BASE_DIR", os.path.join(VISOR_DIR, "documentos")).strip()
+    or os.path.join(VISOR_DIR, "documentos")
+)
+
 # La SECRET_KEY DEBE venir del archivo .env. No se permite un valor por
 # defecto inseguro: si falta o conserva el valor de ejemplo, la API no arranca.
 SECRET_KEY = os.getenv("SECRET_KEY")
@@ -25,6 +37,7 @@ DB_NAME = os.getenv("DB_NAME")
 DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 GEONODE_DB_NAME = os.getenv("GEONODE_DB_NAME")
+GEONODE_PREDIOS_TABLE = os.getenv("GEONODE_PREDIOS_TABLE", "public.predios_tijuana").strip() or "public.predios_tijuana"
 
 # RPPC Baja California (enlace remoto)
 RPPC_BASE_URL = os.getenv(

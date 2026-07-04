@@ -5,9 +5,9 @@ const POPUP_COLONIA_GEONODE_WMS = typeof POPUP_NUMOF_GEONODE_WMS !== "undefined"
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const POPUP_COLONIA_CATASTRO_WMS = typeof POPUP_NUMOF_CATASTRO_WMS !== "undefined"
   ? POPUP_NUMOF_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
-const POPUP_COLONIA_WMS_LAYER = "colonias";
-const POPUP_COLONIA_WMS_LAYERS = ["colonias", "geonode:colonias"];
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
+const POPUP_COLONIA_WMS_LAYER = "geonode:colonias_tij";
+const POPUP_COLONIA_WMS_LAYERS = ["geonode:colonias_tij", "colonias_tij"];
 
 let popupColoniaMap = null;
 let popupColoniaCapas = null;
@@ -127,7 +127,7 @@ function popupColoniaCrearCapas() {
       source: new ol.source.TileWMS({
         url: POPUP_COLONIA_CATASTRO_WMS,
         params: {
-          LAYERS: "catastro_bc:predios_oficial",
+          LAYERS: "geonode:predios_tijuana",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -562,7 +562,7 @@ function popupColoniaActualizarMapa(data) {
         popupColoniaCapas.coloniaVector,
         popupColoniaCapas.predioVector
       ],
-      view: new ol.View({ center: ol.proj.fromLonLat([-115.468, 32.624]), zoom: 15 }),
+      view: new ol.View({ center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]), zoom: 15 }),
       controls: []
     });
     popupColoniaInicializarCapasManager();

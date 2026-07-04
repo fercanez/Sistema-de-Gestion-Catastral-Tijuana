@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Sistema de Gestión Catastral · Mexicali, B.C.</title>
-  <base href="/api/catastro/visor/">
+  <title>Sistema de Gestión Catastral · Tijuana, B.C.</title>
+  <base href="/api/catastro-tijuana/visor/">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css">
   <link rel="stylesheet" href="css/00-base.css?v=20260610_v125_portal">
   <link rel="stylesheet" href="css/10-mapa.css?v=20260610_v125_portal">
@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
   <link rel="stylesheet" href="css/40-modales.css?v=20260611_v158_catalogos_listbox">
   <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v152_analisis_zonas_ficha">
-  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260611_rppc_cache_comparacion">
+  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260704_adeudos_tijuana">
   <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
   <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
   <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
@@ -25,11 +25,11 @@
   <div class="login-portal">
     <header class="login-topbar">
       <div class="login-topbar-marca">
-        <img src="logomxli.png" alt="Gobierno de Mexicali" class="login-topbar-logo" width="72" height="72">
+        <img src="logotijuana.png" alt="Gobierno de Tijuana" class="login-topbar-logo" width="72" height="72">
         <div class="login-topbar-texto">
-          <div class="login-topbar-linea">Dirección de Administración Urbana</div>
-          <div class="login-topbar-linea login-topbar-linea-principal">Jefatura de Catastro</div>
-          <div class="login-topbar-linea login-topbar-linea-municipio">Mexicali, Baja California</div>
+          <div class="login-topbar-linea">Ayuntamiento de Tijuana</div>
+          <div class="login-topbar-linea login-topbar-linea-principal">Dirección de Catastro</div>
+          <div class="login-topbar-linea login-topbar-linea-municipio">Tijuana, Baja California</div>
         </div>
       </div>
     </header>
@@ -40,7 +40,7 @@
         <p class="login-info-subtitulo">Portal Institucional de Consultas y Administración Catastral Multifinalitaria</p>
         <p class="login-info-descripcion">
           Plataforma web para la consulta, integración y administración de la información predial
-          del Municipio de Mexicali. Acceso exclusivo para personal autorizado de la Jefatura de Catastro
+          del Municipio de Tijuana. Acceso exclusivo para personal autorizado de la Dirección de Catastro
           y dependencias vinculadas.
         </p>
         <ul class="login-info-lista">
@@ -72,12 +72,12 @@
       <div class="login-footer-grid">
         <div class="login-footer-col">
           <strong>Dirección</strong>
-          <span>Av. Independencia 998, Centro Cívico C.P. 21000, Mexicali, Baja California.</span>
+          <span>Tijuana, Baja California.</span>
         </div>
         <div class="login-footer-col">
           <strong>Contacto</strong>
-          <a href="mailto:contacto@mexicali.gob.mx">contacto@mexicali.gob.mx</a>
-          <span>(686) 558.1600</span>
+          <a href="mailto:contacto@tijuana.gob.mx">contacto@tijuana.gob.mx</a>
+          <span>Conmutador institucional</span>
         </div>
         <div class="login-footer-col">
           <strong>Horario</strong>
@@ -97,11 +97,11 @@
   <div class="selector-modulos-portal">
     <header class="selector-modulos-topbar">
       <div class="selector-modulos-topbar-marca">
-        <img src="logomxli.png" alt="Gobierno de Mexicali" class="selector-modulos-topbar-logo" width="64" height="64">
+        <img src="logotijuana.png" alt="Gobierno de Tijuana" class="selector-modulos-topbar-logo" width="64" height="64">
         <div class="selector-modulos-topbar-texto">
-          <div class="selector-modulos-topbar-linea">Dirección de Administración Urbana</div>
-          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-principal">Jefatura de Catastro</div>
-          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-municipio">Mexicali, Baja California</div>
+          <div class="selector-modulos-topbar-linea">Ayuntamiento de Tijuana</div>
+          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-principal">Dirección de Catastro</div>
+          <div class="selector-modulos-topbar-linea selector-modulos-topbar-linea-municipio">Tijuana, Baja California</div>
         </div>
       </div>
       <p id="selectorModulosBienvenida" class="selector-modulos-bienvenida">Bienvenido</p>
@@ -125,11 +125,11 @@
 <header id="headerInstitucional" class="header-institucional">
   <div class="header-inst-marca">
     <div class="header-inst-logo">
-      <img src="logomxli.png" alt="Gobierno de Mexicali" class="header-inst-logo-img" width="120" height="44">
+      <img src="logotijuana.png" alt="Gobierno de Tijuana" class="header-inst-logo-img" width="120" height="44">
     </div>
     <div class="header-inst-titles">
-      <div class="header-inst-titulo">Catastro Mexicali</div>
-      <div class="header-inst-subtitulo">Sistema de Gestión Catastral · Mexicali, Baja California</div>
+      <div class="header-inst-titulo">Catastro Tijuana</div>
+      <div class="header-inst-subtitulo">Sistema de Gestión Catastral · Tijuana, Baja California</div>
     </div>
   </div>
   <div class="header-inst-kpis">
@@ -615,7 +615,7 @@
 
 <footer id="footerInstitucional" class="footer-institucional">
   <span id="footerVersionInst">SGC v164 · RPPC API</span>
-  <span class="footer-inst-copy">© Municipio de Mexicali, Baja California</span>
+  <span class="footer-inst-copy">© Municipio de Tijuana, Baja California</span>
   <button type="button" class="footer-inst-ayuda" onclick="alert('Manual de usuario en preparación.')">Ayuda</button>
 </footer>
 
@@ -626,7 +626,7 @@
   <header class="edicion-carto-topbar">
     <div>
       <h2 id="edicionCartoTitulo">Módulo cartográfico</h2>
-      <p id="edicionCartoSubtitulo">Edición geométrica · alta, subdivisión, fusión y ajustes · Mexicali UTM zona 11</p>
+      <p id="edicionCartoSubtitulo">Edición geométrica · alta, subdivisión, fusión y ajustes · Tijuana UTM zona 11</p>
     </div>
     <div class="edicion-carto-topbar-actions">
       <button type="button" id="edicionCartoBtnModulos" class="edicion-carto-btn-modulos oculto" onclick="edCartoVolverModulos()">← Módulos</button>
@@ -1092,37 +1092,37 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/00-nucleo.js?v=20260620_consulta_zona_h"></script>
-<script src="js/10-mapa.js?v=20260611_v177_zoom_busqueda"></script>
-<script src="js/20-ficha.js?v=20260620_consulta_zona_h"></script>
-<script src="js/40-pdf.js?v=20260620_consulta_zona_h"></script>
-<script src="js/30-busqueda.js?v=20260620_consulta_zona_h"></script>
-<script src="js/05-modulos-portal.js?v=20260611_rppc_no_bloquea"></script>
-<script src="js/53-archivo-marca-agua.js?v=20260611_archivo_fotos_auth"></script>
-<script src="js/45-ficha-carta-urbana-preview.js?v=20260620_ficha_print_marca"></script>
-<script src="js/47-ficha-colonia-preview.js?v=20260620_ficha_print_marca"></script>
-<script src="js/48-ficha-zona-homogenea-preview.js?v=20260623_zonas_color_2023"></script>
-<script src="js/43-ficha-numero-oficial.js?v=20260620_ficha_print_marca"></script>
+<script src="js/00-nucleo.js?v=20260704_superficies"></script>
+<script src="js/10-mapa.js?v=20260704_click_predio_geonode"></script>
+<script src="js/20-ficha.js?v=20260704_ficha_superficies_fix"></script>
+<script src="js/40-pdf.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/30-busqueda.js?v=20260704_merge_superficies"></script>
+<script src="js/05-modulos-portal.js?v=20260704_adeudos_popup_click"></script>
+<script src="js/53-archivo-marca-agua.js?v=20260704_marca_tijuana"></script>
+<script src="js/45-ficha-carta-urbana-preview.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/47-ficha-colonia-preview.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/48-ficha-zona-homogenea-preview.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/43-ficha-numero-oficial.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/11-control-urbano.js?v=20260619_cu_marca_perm"></script>
 <script src="js/52-popup-rppc.js?v=20260611_rppc_no_bloquea"></script>
-<script src="js/06-construcciones-medicion.js?v=20260613_v121_capas_unif"></script>
+<script src="js/06-construcciones-medicion.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/46-ficha-mapa-capas.js?v=20260617_v168_uso_dist"></script>
-<script src="js/49-ficha-analisis-zona-homogenea-preview.js?v=20260611_print_chart_fix"></script>
-<script src="js/07-numeros-oficiales.js?v=20260613_v121_capas_unif"></script>
-<script src="js/08-carta-urbana.js?v=20260617_v170_matriz_compact"></script>
-<script src="js/09-colonias-fraccionamiento.js?v=20260613_v124_predio_fill"></script>
-<script src="js/10-zonas-homogeneas.js?v=20260613_v133_zona_datos"></script>
+<script src="js/49-ficha-analisis-zona-homogenea-preview.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/07-numeros-oficiales.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/08-carta-urbana.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/09-colonias-fraccionamiento.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/10-zonas-homogeneas.js?v=20260704_zonahom_tijuana"></script>
 <script src="js/44-cedula-numero-oficial-preview.js?v=20260620_consulta_zona_h"></script>
-<script src="js/41-ficha-preview.js?v=20260620_consulta_zona_h"></script>
-<script src="js/42-ficha-cartografia.js?v=20260620_consulta_zona_h"></script>
+<script src="js/41-ficha-preview.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/42-ficha-cartografia.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsts@2.11.0/dist/jsts.min.js"></script>
-<script src="js/51-edicion-cartografica.js?v=20260611_v150_guardar_subdiv"></script>
+<script src="js/51-edicion-cartografica.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/50-admin.js?v=20260613_v137_vigencia_matriz"></script>
 <script src="js/61-importador-cartografia.js?v=20260702_importador_predios"></script>
-<script src="js/60-propietarios.js?v=20260611_v178_popup_titularidad"></script>
+<script src="js/60-propietarios.js?v=20260704_merge_superficies"></script>
 <script src="js/72-movimientos-modulo.js?v=20260611_v159_capas_min"></script>
 <script src="js/70-movimientos.js?v=20260611_v182_catalogos_listbox"></script>
-<script src="js/80-zonas.js?v=20260611_zona_limite_negro"></script>
+<script src="js/80-zonas.js?v=20260704_zonahom_tijuana"></script>
 <script src="js/85-condominios.js?v=20260610_v125_portal"></script>
 <script src="js/90-mantenimiento.js?v=20260614_v158_folios"></script>
 <script src="js/99-init.js?v=20260610_v125_portal"></script>
@@ -1409,7 +1409,7 @@
         </div>
         <div class="admin-card">
           <div class="section-label">Otorgar acceso a módulo</div>
-          <p class="permisos-info">Define módulo, vigencia (inicio/fin) y motivo. La fecha de fin incluye todo ese día (hasta 23:59 hora de Mexicali). Sin fecha fin = acceso permanente.</p>
+          <p class="permisos-info">Define módulo, vigencia (inicio/fin) y motivo. La fecha de fin incluye todo ese día (hasta 23:59 hora de Tijuana). Sin fecha fin = acceso permanente.</p>
           <div class="admin-accesos-form">
             <label class="admin-campo-mini"><span>Usuario</span><select id="adminAccesoUsuario"></select></label>
             <label class="admin-campo-mini"><span>Módulo / permiso</span><select id="adminAccesoModulo"></select></label>
@@ -1463,7 +1463,7 @@
 
       <section class="admin-seccion oculto" data-seccion="cartografia">
         <div class="admin-kpi-row importador-kpi-row">
-          <div class="admin-kpi"><span>Tabla destino</span><b id="importadorTablaDestino">predios_mexicali</b></div>
+          <div class="admin-kpi"><span>Tabla destino</span><b id="importadorTablaDestino">predios_tijuana</b></div>
           <div class="admin-kpi"><span>Modo</span><b id="importadorModo">Prueba</b></div>
           <div class="admin-kpi"><span>Última importación</span><b id="importadorUltima">—</b></div>
         </div>
@@ -1471,8 +1471,8 @@
         <div class="admin-card importador-card">
           <div class="section-label">Importar predios a PostGIS</div>
           <p class="permisos-info">
-            Cargue los archivos del shapefile de predios de Mexicali. Primero se recomienda importar a
-            <b>predios_mexicali_prueba</b>. Cuando valide conteo, SRID y visualización, active producción.
+            Cargue los archivos del shapefile de predios de Tijuana. Primero se recomienda importar a
+            <b>predios_tijuana_prueba</b>. Cuando valide conteo, SRID y visualización, active producción.
           </p>
 
           <div class="importador-alerta">
@@ -1489,8 +1489,8 @@
             <label class="admin-campo-mini">
               <span>Tabla destino</span>
               <select id="importadorTabla">
-                <option value="predios_mexicali_prueba" selected>predios_mexicali_prueba (prueba)</option>
-                <option value="predios_mexicali">predios_mexicali (producción)</option>
+                <option value="predios_tijuana_prueba" selected>predios_tijuana_prueba (prueba)</option>
+                <option value="predios_tijuana">predios_tijuana (producción)</option>
               </select>
             </label>
 
@@ -1501,7 +1501,7 @@
 
             <label class="check-row importador-check">
               <input type="checkbox" id="importadorConfirmarProduccion">
-              <span>Autorizo reemplazar la tabla de producción si selecciono predios_mexicali</span>
+              <span>Autorizo reemplazar la tabla de producción si selecciono predios_tijuana</span>
             </label>
 
             <button type="button" class="btn-importador-principal" onclick="importadorSubirPredios()">
@@ -1517,8 +1517,8 @@
           <div class="section-label">Validación rápida</div>
           <div class="admin-toolbar">
             <button type="button" onclick="importadorConsultarEstado()">Consultar estado</button>
-            <button type="button" onclick="importadorValidarTabla('predios_mexicali_prueba')">Validar prueba</button>
-            <button type="button" onclick="importadorValidarTabla('predios_mexicali')">Validar producción</button>
+            <button type="button" onclick="importadorValidarTabla('predios_tijuana_prueba')">Validar prueba</button>
+            <button type="button" onclick="importadorValidarTabla('predios_tijuana')">Validar producción</button>
           </div>
           <div id="importadorEstadoTabla" class="admin-table-wrap">Sin consulta.</div>
         </div>

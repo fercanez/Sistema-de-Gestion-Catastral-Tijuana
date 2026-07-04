@@ -472,6 +472,15 @@ function guardarGeojsonPredioEnCache(claveNorm, geo) {
   window._cacheGeojsonPorClave[claveNorm] = geo;
 }
 
+function mezclarSinSobrescribirConVacios(base, extra) {
+  const out = Object.assign({}, base || {});
+  Object.entries(extra || {}).forEach(([k, v]) => {
+    if (v === null || v === undefined || v === "") return;
+    out[k] = v;
+  });
+  return out;
+}
+
 async function cargarFeaturePredio(claveNorm, geojsonPrefetch, seq, opciones) {
   opciones = opciones || {};
   const geoUrl = `${API}/predios/${encodeURIComponent(claveNorm)}/geojson?_=${Date.now()}`;
@@ -530,7 +539,7 @@ async function enriquecerFeatureConExpedienteEnSegundoPlano(claveNorm, feature, 
   const expNorm = normalizarFeaturePredioApi(exp, claveNorm);
   if (!expNorm) return;
 
-  feature.properties = Object.assign({}, feature.properties || {}, expNorm.properties || {});
+  feature.properties = mezclarSinSobrescribirConVacios(feature.properties || {}, expNorm.properties || {});
   if (expNorm.geometry && !feature.geometry) {
     feature.geometry = expNorm.geometry;
   }

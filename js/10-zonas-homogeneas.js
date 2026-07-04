@@ -5,9 +5,9 @@ const POPUP_ZONA_GEONODE_WMS = typeof POPUP_NUMOF_GEONODE_WMS !== "undefined"
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const POPUP_ZONA_CATASTRO_WMS = typeof POPUP_NUMOF_CATASTRO_WMS !== "undefined"
   ? POPUP_NUMOF_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
-const POPUP_ZONA_WMS_LAYER = "zonas_homogeneas";
-const POPUP_ZONA_WMS_LAYERS = ["zonas_homogeneas", "geonode:zonas_homogeneas"];
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
+const POPUP_ZONA_WMS_LAYER = "geonode:zonahom2026_tij";
+const POPUP_ZONA_WMS_LAYERS = ["geonode:zonahom2026_tij", "zonahom2026_tij"];
 
 let popupZonaMap = null;
 let popupZonaCapas = null;
@@ -143,7 +143,7 @@ function popupZonaCrearCapas() {
       source: new ol.source.TileWMS({
         url: POPUP_ZONA_CATASTRO_WMS,
         params: {
-          LAYERS: "catastro_bc:predios_oficial",
+          LAYERS: "geonode:predios_tijuana",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -757,7 +757,7 @@ function popupZonaResumenTexto(data) {
   const desc = data?.catalogo?.descripcion_col_fracc || attrs.descripcion || "";
   if (cod && desc) return cod + " · " + desc;
   if (cod) return "Zona homogénea: " + cod;
-  return data?.mensaje || "Consultando capa geonode:zonas_homogeneas…";
+  return data?.mensaje || "Consultando capa geonode:zonahom2026_tij…";
 }
 
 function popupZonaRenderLeyendaGrafica() {
@@ -903,7 +903,7 @@ function popupZonaActualizarMapa(data) {
         popupZonaCapas.zonaVector,
         popupZonaCapas.predioVector
       ],
-      view: new ol.View({ center: ol.proj.fromLonLat([-115.468, 32.624]), zoom: 15 }),
+      view: new ol.View({ center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]), zoom: 15 }),
       controls: []
     });
     popupZonaInicializarCapasManager();
@@ -1000,7 +1000,7 @@ async function pintarPopupTabZonaHomogenea(p) {
         <div class="popup-zona-mapa-head">
           <div class="popup-zona-mapa-head-text">
             <strong>Plano de ubicación en zona homogénea</strong>
-            <span id="popupZonaResumenMapa">Cargando capa geonode:zonas_homogeneas…</span>
+          <span id="popupZonaResumenMapa">Cargando capa geonode:zonahom2026_tij…</span>
           </div>
           <div class="popup-zona-mapa-head-actions">
             <button type="button" class="popup-btn-imprimir-ficha popup-btn-zona-ficha" id="popupZonaBtnImprimir" disabled onclick="popupZonaImprimirPlano()">Cargando mapa…</button>

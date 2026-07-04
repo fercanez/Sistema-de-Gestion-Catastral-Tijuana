@@ -226,7 +226,7 @@ function aplicarVisibilidadCapaWms(capa, visible) {
   } catch (e) {}
 }
 
-const API = "https://fcnarqnodo.hopto.org/api/catastro";
+const API = `${window.location.origin}/api/catastro-tijuana`;
 const COLOR_CONTORNO_SELECCION = "#0000ff";
 
 const vectorSource = new ol.source.Vector();
@@ -295,6 +295,21 @@ function estiloPredio(feature) {
 function estiloResultadoBusqueda(feature) {
   const seleccionado = feature.get("seleccionado");
   const etiqueta = feature.get("clave_catastral") || "";
+  const resaltadoManzana = feature.get("resaltado_manzana") === true;
+
+  if (resaltadoManzana) {
+    return new ol.style.Style({
+      stroke: new ol.style.Stroke({
+        color: seleccionado ? COLOR_CONTORNO_SELECCION : "#1d4ed8",
+        width: seleccionado ? 5 : 3
+      }),
+      fill: new ol.style.Fill({
+        color: seleccionado ? "rgba(0, 0, 255, 0.12)" : "rgba(250, 204, 21, 0.30)"
+      }),
+      text: estiloEtiquetaPredio(etiqueta, seleccionado)
+    });
+  }
+
   const { strokeColor, fillColor } = coloresFiscalesPredio(feature);
 
   return new ol.style.Style({
@@ -492,8 +507,10 @@ function extraerClavePredioProps(props) {
   if (!props) return "";
   return String(
     props.clave_catastral ||
+    props.cve_cat_or ||
     props.clavecatas ||
     props.CLAVE_CATASTRAL ||
+    props.CVE_CAT_OR ||
     props.ClaveCatas ||
     props.clave ||
     ""
@@ -645,9 +662,9 @@ const prediosWmsLayer = new ol.layer.Tile({
   visible: false,
   opacity: 0.85,
   source: new ol.source.TileWMS({
-    url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+    url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
     params: {
-      "LAYERS": "catastro_bc:predios_oficial",
+      "LAYERS": "geonode:predios_tijuana",
       "TILED": true,
       "VERSION": "1.1.1",
       "FORMAT": "image/png",
@@ -664,7 +681,7 @@ const coloniasWmsLayer = new ol.layer.Tile({
   source: new ol.source.TileWMS({
     url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
     params: {
-      "LAYERS": "colonias",
+      "LAYERS": "geonode:colonias_tij",
       "TILED": true,
       "VERSION": "1.1.1",
       "FORMAT": "image/png",
@@ -752,8 +769,8 @@ const map = new ol.Map({
   controls: controlesMapaSinZoom(),
   view: new ol.View({
     projection: "EPSG:3857",
-    center: ol.proj.fromLonLat([-115.4683, 32.6245]),
-    zoom: 12
+    center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]),
+    zoom: 13
   })
 });
 

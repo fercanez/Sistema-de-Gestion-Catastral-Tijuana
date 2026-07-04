@@ -8,9 +8,9 @@ Uso:
   python scripts/smoke_test_api.py
 
 Variables de entorno:
-  SMOKE_BASE_URL     Base de la API (default: http://127.0.0.1:9000)
+  SMOKE_BASE_URL     Base de la API (default: http://127.0.0.1:9001)
                      Si hay proxy con root_path, incluir prefijo:
-                     http://host/api/catastro
+                     http://host/api/catastro-tijuana
   SMOKE_CLAVE        Clave catastral de prueba (opcional; activa pruebas prediales)
   SMOKE_TIMEOUT      Segundos por peticion (default: 15)
 
@@ -222,7 +222,7 @@ class SmokeRunner:
 
 
 def main() -> None:
-    base = os.getenv("SMOKE_BASE_URL", "http://127.0.0.1:9000").strip()
+    base = os.getenv("SMOKE_BASE_URL", "http://127.0.0.1:9001").strip()
     clave = os.getenv("SMOKE_CLAVE", "").strip()
     timeout = float(os.getenv("SMOKE_TIMEOUT", "15"))
     runner = SmokeRunner(base_url=base, timeout=timeout, clave=clave)

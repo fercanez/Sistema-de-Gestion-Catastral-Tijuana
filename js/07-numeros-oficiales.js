@@ -3,7 +3,7 @@
 const POPUP_NUMOF_LIMITE_MISMA = 25;
 const POPUP_NUMOF_LIMITE_OTRAS = 10;
 const POPUP_NUMOF_GEONODE_WMS = "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
-const POPUP_NUMOF_CATASTRO_WMS = "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+const POPUP_NUMOF_CATASTRO_WMS = "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 
 let popupNumofMap = null;
 let popupNumofCapas = null;
@@ -159,9 +159,9 @@ function popupNumofCrearCapas() {
       opacity: 0.85,
       zIndex: POPUP_NUMOF_CAPA_ORDEN_DEF.predios,
       source: new ol.source.TileWMS({
-        url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+        url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
         params: {
-          LAYERS: "catastro_bc:predios_oficial",
+          LAYERS: "geonode:predios_tijuana",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -178,7 +178,7 @@ function popupNumofCrearCapas() {
       source: new ol.source.TileWMS({
         url: POPUP_NUMOF_GEONODE_WMS,
         params: {
-          LAYERS: "colonias",
+          LAYERS: "geonode:colonias_tij",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -644,7 +644,7 @@ async function cargarNumerosOficialesCercanos(clave, p) {
   } catch (e) {
     if (ultimoError && String(ultimoError.message || "").toLowerCase() === "not found") {
       throw new Error(
-        "No se pudo consultar números oficiales. Despliegue routers/padron.py y reinicie: systemctl restart catastro-api"
+        "No se pudo consultar números oficiales. Despliegue routers/padron.py y reinicie: systemctl restart catastro-tijuana-api"
       );
     }
     throw e;

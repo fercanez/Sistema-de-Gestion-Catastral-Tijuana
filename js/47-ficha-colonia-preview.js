@@ -1,6 +1,6 @@
 /* Ficha de ubicación en colonia — vista previa e impresión (formato institucional) */
 
-const LOGO_FICHA_COLONIA_URL = "logomxli.png";
+const LOGO_FICHA_COLONIA_URL = "logotijuana.png";
 const FICHA_COLONIA_OL_CSS = typeof OL_FICHA_CSS !== "undefined"
   ? OL_FICHA_CSS
   : "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
@@ -12,10 +12,10 @@ const FICHA_COLONIA_GEONODE_WMS = typeof POPUP_COLONIA_GEONODE_WMS !== "undefine
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_COLONIA_CATASTRO_WMS = typeof POPUP_COLONIA_CATASTRO_WMS !== "undefined"
   ? POPUP_COLONIA_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_COLONIA_WMS_LAYER = typeof POPUP_COLONIA_WMS_LAYER !== "undefined"
   ? POPUP_COLONIA_WMS_LAYER
-  : "colonias";
+  : "geonode:colonias_tij";
 
 function fichaColoniaEsc(valor) {
   return typeof escapeHtml === "function" ? escapeHtml(valor) : String(valor ?? "");
@@ -190,7 +190,7 @@ function buildFichaColoniaMapScript(featuresJson, mapaInicialJson) {
     const baseEsri=new ol.layer.Tile({visible:false,source:new ol.source.XYZ({url:"https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",crossOrigin:"anonymous"})});
     const baseOSM=new ol.layer.Tile({visible:false,source:new ol.source.OSM()});
     const capaColoniasWms=crearWmsColonia("${FICHA_COLONIA_GEONODE_WMS}",wmsLayer,true,0.72,6);
-    const capaPredios=crearWmsColonia("${FICHA_COLONIA_CATASTRO_WMS}","catastro_bc:predios_oficial",false,0.45,8);
+    const capaPredios=crearWmsColonia("${FICHA_COLONIA_CATASTRO_WMS}","geonode:predios_tijuana",false,0.45,8);
 
     const srcPredio=new ol.source.Vector();
     const srcColonia=new ol.source.Vector();
@@ -208,7 +208,7 @@ function buildFichaColoniaMapScript(featuresJson, mapaInicialJson) {
     previewMapColonia=new ol.Map({
       target:"previewColoniaMap",
       layers:[baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaColoniasWms,capaPredios,capaColonia,capaPredio],
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:16}),
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:16}),
       controls:[]
     });
     window.__coloniaPreviewCapas={baseGoogleHybrid,baseGoogleRoad,baseEsri,baseOSM,capaColoniasWms,capaPredios,capaPredio,capaColonia};
@@ -591,7 +591,7 @@ function construirHtmlFichaColoniaVentana(datos, coloniaData, opciones) {
   const clave = fichaColoniaEsc(datos?.clave || coloniaData?.clave_catastral || "—");
   const coloniaPadron = fichaColoniaEsc(coloniaData?.colonia || datos?.colonia || "—");
   const coloniaCarto = fichaColoniaEsc(fichaColoniaNombreCarto(coloniaData));
-  const delegacion = fichaColoniaEsc(coloniaData?.delegacion || datos?.p?.delegacion || "MEXICALI");
+  const delegacion = fichaColoniaEsc(coloniaData?.delegacion || datos?.p?.delegacion || "TIJUANA");
   const numof = String(datos?.numof || coloniaData?.numof || datos?.p?.numof || "").trim();
   const domicilio = typeof construirDomicilioFisicoFicha === "function"
     ? fichaColoniaEsc(construirDomicilioFisicoFicha(datos?.p || {}, numof))
@@ -700,7 +700,7 @@ ${typeof FICHA_MAPA_CAPAS_PANEL_CSS !== "undefined" ? FICHA_MAPA_CAPAS_PANEL_CSS
 
   <div class="contenedor">
     <header class="encabezado">
-      <div class="enc-logo"><img src="${LOGO_FICHA_COLONIA_URL}" alt="Gobierno de Mexicali"></div>
+      <div class="enc-logo"><img src="${LOGO_FICHA_COLONIA_URL}" alt="Gobierno de Tijuana"></div>
       <div class="enc-centro">
         <h1 class="titulo-colonia">FICHA DE UBICACIÓN EN COLONIA</h1>
         <p class="clave-colonia">${clave}</p>

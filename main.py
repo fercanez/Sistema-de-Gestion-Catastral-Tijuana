@@ -5,7 +5,7 @@ import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
-import config  # noqa: F401 - valida SECRET_KEY al importar
+from config import API_ROOT_PATH, APP_ESTADO, APP_MUNICIPIO, VISOR_DIR, VISOR_LOGO_FILENAME
 from database import get_conn, asegurar_tabla_predio_condominio
 from auth.sessions import ensure_sesiones_table
 from auth.routes import router as auth_router
@@ -17,17 +17,16 @@ from routers.admin import router as admin_router
 from routers.propietarios import router as propietarios_router
 from routers.catalogos import router as catalogos_router
 from routers.rppc import router as rppc_router
-from routers.importador_cartografia import router as importador_cartografia_router
+from backend.routers.importador_cartografia import router as importador_cartografia_router
 
-VISOR_DIR = "/var/www/catastro"
 VISOR_JS_DIR = os.path.join(VISOR_DIR, "js")
 VISOR_CSS_DIR = os.path.join(VISOR_DIR, "css")
 VISOR_IMG_DIR = os.path.join(VISOR_DIR, "img")
 
 app = FastAPI(
-    title="API Sistema de Gestion Catastral BC",
+    title=f"API Sistema de Gestion Catastral {APP_MUNICIPIO}",
     version="0.4.3",
-    root_path="/api/catastro",
+    root_path=API_ROOT_PATH,
 )
 
 app.include_router(auth_router)
@@ -40,7 +39,7 @@ app.include_router(propietarios_router)
 app.include_router(catalogos_router)
 app.include_router(rppc_router)
 app.include_router(importador_cartografia_router)
-logger = logging.getLogger("catastro-api")
+logger = logging.getLogger("catastro-tijuana-api")
 
 
 @app.on_event("startup")
@@ -58,9 +57,11 @@ def startup_migraciones():
 @app.get("/")
 def root():
     return {
-        "sistema": "API Sistema de Gestión Catastral BC",
+        "sistema": f"API Sistema de Gestión Catastral {APP_MUNICIPIO}, {APP_ESTADO}",
         "estado": "operando",
         "version": "0.4.4",
+        "root_path": API_ROOT_PATH,
+        "visor_dir": VISOR_DIR,
         "propietarios_fusionar": True,
         "propietarios_fusionar_padron": True,
         "propietarios_sync_padron": True,
@@ -100,7 +101,18 @@ def visor():
 
 @app.get("/visor/logomxli.png")
 def servir_logo():
-    return FileResponse(f"{VISOR_DIR}/logomxli.png", media_type="image/png")
+    # Compatibilidad temporal con HTML/JS heredado durante la transición de marca.
+    return FileResponse(os.path.join(VISOR_DIR, VISOR_LOGO_FILENAME), media_type="image/png")
+
+
+@app.get("/visor/logo.png")
+def servir_logo_institucional():
+    return FileResponse(os.path.join(VISOR_DIR, VISOR_LOGO_FILENAME), media_type="image/png")
+
+
+@app.get("/visor/logotijuana.png")
+def servir_logo_tijuana():
+    return FileResponse(os.path.join(VISOR_DIR, VISOR_LOGO_FILENAME), media_type="image/png")
 
 
 @app.get("/visor/img/{filename}")

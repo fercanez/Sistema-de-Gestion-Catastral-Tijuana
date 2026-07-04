@@ -297,6 +297,9 @@ function pintarFichaFlotante(p) {
     : `<span class="badge-ok">SIN ADEUDO</span>`;
 
   const avance = porcentajeExpediente(p);
+  const supDocTxt = formatoNumero(p.sup_documental);
+  const supFisTxt = formatoNumero(p.sup_fisica);
+  const supConstTxt = formatoNumero(p.sup_const);
 
   contenedor.innerHTML = `
     <div class="ficha-status-box">
@@ -350,9 +353,9 @@ function pintarFichaFlotante(p) {
       <div class="ficha-mini-row"><div class="label">Uso predial</div><div class="value">${val(p.descripcion_uso)}</div></div>
       <div class="ficha-mini-row"><div class="label">ID tasa</div><div class="value">${val(p.id_tasa)}</div></div>
       <div class="ficha-mini-row"><div class="label">Tasa</div><div class="value">${val(p.porcentaje_tasa)}%</div></div>
-      <div class="ficha-mini-row"><div class="label">Sup. documental</div><div class="value">${formatoNumero(p.sup_documental)} m²</div></div>
-      <div class="ficha-mini-row"><div class="label">Sup. física</div><div class="value">${formatoNumero(p.sup_fisica)} m²</div></div>
-      <div class="ficha-mini-row"><div class="label">Sup. construcción</div><div class="value">${formatoNumero(p.sup_const)} m²</div></div>
+      <div class="ficha-mini-row"><div class="label">Sup. documental</div><div class="value">${supDocTxt === "Sin dato" ? supDocTxt : supDocTxt + " m²"}</div></div>
+      <div class="ficha-mini-row"><div class="label">Sup. física</div><div class="value">${supFisTxt === "Sin dato" ? supFisTxt : supFisTxt + " m²"}</div></div>
+      <div class="ficha-mini-row"><div class="label">Sup. construcción</div><div class="value">${supConstTxt === "Sin dato" ? supConstTxt : supConstTxt + " m²"}</div></div>
       <div class="ficha-mini-row"><div class="label">Valor 2026</div><div class="value">${formatoMoneda(p.valor2026)}</div></div>
     </div>
 
@@ -381,7 +384,7 @@ function pintarFichaFlotante(p) {
       <a class="btn-expediente-externo" href="${urlExpedienteExterno(p.clave_catastral)}" target="_blank" rel="noopener noreferrer">
         📂 Abrir expediente documental externo
       </a>
-      <div class="ficha-mini-row"><div class="label">Repositorio</div><div class="value">Mexicali / Documentación</div></div>
+      <div class="ficha-mini-row"><div class="label">Repositorio</div><div class="value">Tijuana / Documentación</div></div>
       <div class="ficha-mini-row"><div class="label">Clave enviada</div><div class="value">${val(p.clave_catastral)}</div></div>
       <div class="ficha-mini-row"><div class="label">Historial</div><div class="value">Disponible en ficha institucional</div></div>
     </div>
@@ -400,6 +403,9 @@ function pintarFicha(p) {
   const adeudoBadge = adeudoTotal > 0
     ? `<span class="badge-warn">CON ADEUDO</span>`
     : `<span class="badge-ok">SIN ADEUDO</span>`;
+  const supDocTxt = formatoNumero(p.sup_documental);
+  const supFisTxt = formatoNumero(p.sup_fisica);
+  const supConstTxt = formatoNumero(p.sup_const);
 
   document.getElementById("ficha").innerHTML = `
     <div class="ficha-title" style="display:flex; justify-content:space-between; align-items:center;">
@@ -445,9 +451,9 @@ function pintarFicha(p) {
     <div class="ficha-section">
       <div class="ficha-subtitle" onclick="toggleSection('sec-superficies')" style="cursor:pointer;">Superficies y valores ▼</div>
       <div id="sec-superficies" style="display:none;">
-        <div class="ficha-row"><b>Sup. documental:</b><span>${formatoNumero(p.sup_documental)} m²</span></div>
-        <div class="ficha-row"><b>Sup. física:</b><span>${formatoNumero(p.sup_fisica)} m²</span></div>
-        <div class="ficha-row"><b>Sup. construcción:</b><span>${formatoNumero(p.sup_const)} m²</span></div>
+        <div class="ficha-row"><b>Sup. documental:</b><span>${supDocTxt === "Sin dato" ? supDocTxt : supDocTxt + " m²"}</span></div>
+        <div class="ficha-row"><b>Sup. física:</b><span>${supFisTxt === "Sin dato" ? supFisTxt : supFisTxt + " m²"}</span></div>
+        <div class="ficha-row"><b>Sup. construcción:</b><span>${supConstTxt === "Sin dato" ? supConstTxt : supConstTxt + " m²"}</span></div>
         <div class="ficha-row"><b>Valor 2026:</b><span>${formatoMoneda(p.valor2026)}</span></div>
       </div>
     </div>
@@ -594,6 +600,7 @@ async function cargarDocumentos(clave) {
 function pintarMensajeNoDibujado(p) {
   vectorSource.clear();
   limpiarContornoSeleccion();
+  const supDocTxt = formatoNumero(p.sup_documental);
   document.getElementById("ficha").innerHTML = `
     <div style="background:#fff3cd; border:2px solid #ff9800; color:#7a4a00; padding:10px; border-radius:8px; margin-bottom:10px; font-weight:bold;">
       ⚠ PREDIO NO DIBUJADO EN CARTOGRAFÍA<br>
@@ -609,7 +616,7 @@ function pintarMensajeNoDibujado(p) {
     <div class="ficha-row"><b>Número:</b><span>${val(p.numof)}</span></div>
     ${(typeof puedeVerDatosZonaHomogenea === "function" && puedeVerDatosZonaHomogenea()) ? `<div class="ficha-row"><b>Zona homogénea:</b><span>${val(p.zona_homogenea || p.zonah)}</span></div>` : ""}
     <div class="ficha-row"><b>Uso:</b><span>${val(p.descripcion_uso)}</span></div>
-    <div class="ficha-row"><b>Sup. documental:</b><span>${formatoNumero(p.sup_documental)} m²</span></div>
+    <div class="ficha-row"><b>Sup. documental:</b><span>${supDocTxt === "Sin dato" ? supDocTxt : supDocTxt + " m²"}</span></div>
     <div class="ficha-row"><b>Valor 2026:</b><span>${formatoMoneda(p.valor2026)}</span></div>
     <div class="ficha-section"><div class="ficha-row"><b>Estatus cartográfico:</b><span class="badge-warn">NO DIBUJADO</span></div></div>
   `;
@@ -800,6 +807,8 @@ function mostrarTab(tabId, boton) {
 /* --- v11: zoom automático a uno o varios resultados --- */
 let resultadosLayer = null;
 let resultadosSource = null;
+let manzanaResaltadoLayer = null;
+let manzanaResaltadoSource = null;
 
 function inicializarLayerResultadosBusqueda() {
   if (resultadosLayer) return;
@@ -815,11 +824,28 @@ function inicializarLayerResultadosBusqueda() {
   map.addLayer(resultadosLayer);
 }
 
+function inicializarLayerResaltadoManzana() {
+  if (manzanaResaltadoLayer) return;
+
+  manzanaResaltadoSource = new ol.source.Vector();
+  manzanaResaltadoLayer = new ol.layer.Vector({
+    source: manzanaResaltadoSource,
+    zIndex: 9980,
+    style: new ol.style.Style({
+      stroke: new ol.style.Stroke({
+        color: "#0057ff",
+        width: 4
+      }),
+      fill: new ol.style.Fill({
+        color: "rgba(255, 221, 0, 0.34)"
+      })
+    })
+  });
+  map.addLayer(manzanaResaltadoLayer);
+}
+
 async function obtenerGeojsonPorClaveParaZoom(clave, dibujado) {
   if (!clave) return null;
-  if (dibujado === false || dibujado === 0 || String(dibujado).toLowerCase() === "false") {
-    return null;
-  }
 
   try {
     const r = await fetch(
@@ -866,7 +892,9 @@ async function zoomAResultadosBusqueda(resultados) {
   if (!Array.isArray(resultados) || resultados.length === 0) return;
 
   inicializarLayerResultadosBusqueda();
+  inicializarLayerResaltadoManzana();
   resultadosSource.clear();
+  manzanaResaltadoSource.clear();
 
   const format = new ol.format.GeoJSON();
 
@@ -885,8 +913,8 @@ async function zoomAResultadosBusqueda(resultados) {
   }
 
   const dibujados = resultados.filter(esPredioDibujadoBusqueda);
-  const limite = Math.min(dibujados.length || resultados.length, 50);
-  const candidatos = (dibujados.length ? dibujados : resultados).slice(0, limite);
+  const limite = Math.min(resultados.length > 1 ? resultados.length : (dibujados.length || resultados.length), 100);
+  const candidatos = (resultados.length > 1 ? resultados : (dibujados.length ? dibujados : resultados)).slice(0, limite);
 
   const promesas = ejecutarEnPool(candidatos, 6, async function(p, idx) {
     const clave = p.clave_catastral;
@@ -903,12 +931,41 @@ async function zoomAResultadosBusqueda(resultados) {
     feature.set("info_fiscal", true);
     feature.set("seleccionado", false);
     feature.set("principal", idx === 0 && resultados.length === 1);
+    feature.set("resaltado_manzana", resultados.length > 1);
+    p.dibujado = true;
 
     resultadosSource.addFeature(feature);
+    if (resultados.length > 1 && manzanaResaltadoSource) {
+      const geom = feature.getGeometry();
+      if (geom) {
+        const fManzana = new ol.Feature(geom.clone ? geom.clone() : geom);
+        fManzana.set("clave_catastral", clave);
+        manzanaResaltadoSource.addFeature(fManzana);
+      }
+    }
     return feature;
   });
 
   await promesas;
+
+  const clavesConGeom = new Set(
+    resultadosSource.getFeatures()
+      .map(f => String(f.get("clave_catastral") || "").trim().toUpperCase())
+      .filter(Boolean)
+  );
+  if (clavesConGeom.size) {
+    let actualizoCartografiaGrid = false;
+    resultados.forEach(p => {
+      const clave = String(p.clave_catastral || "").trim().toUpperCase();
+      if (clavesConGeom.has(clave) && p.dibujado !== true) {
+        p.dibujado = true;
+        actualizoCartografiaGrid = true;
+      }
+    });
+    if (actualizoCartografiaGrid && typeof pintarDataGridResultados === "function") {
+      pintarDataGridResultados();
+    }
+  }
 
   const features = resultadosSource.getFeatures();
   if (features.length === 0) return;
@@ -940,6 +997,7 @@ async function zoomAResultadosBusqueda(resultados) {
 
 function limpiarResultadosZoom() {
   if (resultadosSource) resultadosSource.clear();
+  if (manzanaResaltadoSource) manzanaResaltadoSource.clear();
   limpiarContornoSeleccion();
 }
 

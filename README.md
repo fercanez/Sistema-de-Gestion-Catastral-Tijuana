@@ -111,10 +111,10 @@ Componentes principales identificados:
 
 | Componente | Ruta en servidor | Acción tras subir archivos |
 |------------|------------------|----------------------------|
-| API FastAPI | `/opt/catastro_api/` | `sudo systemctl restart catastro-api` |
-| Visor web | `/var/www/catastro/` | Recarga forzada en navegador (**Ctrl+F5**) |
+| API FastAPI | `/opt/catastro_tijuana_api/` | `sudo systemctl restart catastro-tijuana-api` |
+| Visor web | `/var/www/catastro_tijuana/` | Recarga forzada en navegador (**Ctrl+F5**) |
 
-URL del visor (base): `/api/catastro/visor/` (según `index.html`).
+URL del visor (base): `/api/catastro-tijuana/visor/` (según `index.html`).
 
 ### Cache buster actual (jun 2026)
 
@@ -146,10 +146,10 @@ Consulta al **RPPC de Baja California** (enlace remoto) desde el visor: dado un 
 
 **Prioridad de cookie:**
 
-1. Archivo runtime: `/opt/catastro_api/.runtime/rppc_cookie.txt` (renovación automática con Playwright)
+1. Archivo runtime: `/opt/catastro_tijuana_api/.runtime/rppc_cookie.txt` (renovación automática con Playwright)
 2. Respaldo manual: variable `RPPC_COOKIE` en `.env` del servidor
 
-**Script de renovación (solo servidor):** `/opt/catastro_api/rppc_renovar_cookie.py` — usa `RPPC_USUARIO` / `RPPC_PASSWORD` del enlace remoto (cuenta distinta al usuario SGC).
+**Script de renovación (solo servidor):** `/opt/catastro_tijuana_api/rppc_renovar_cookie.py` — usa `RPPC_USUARIO` / `RPPC_PASSWORD` del enlace remoto (cuenta distinta al usuario SGC).
 
 ### Variables `.env` (API — no versionar)
 
@@ -163,7 +163,7 @@ Consulta al **RPPC de Baja California** (enlace remoto) desde el visor: dado un 
 | `RPPC_RUNTIME_COOKIE_FILE` | Ruta del archivo de cookie (opcional) |
 | `RPPC_RENOVAR_COOKIE_SCRIPT` | Ruta del script Playwright (opcional) |
 
-### Endpoints API (`/api/catastro/rppc/…`, JWT requerido salvo visor PDF)
+### Endpoints API (`/api/catastro-tijuana/rppc/…`, JWT requerido salvo visor PDF)
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
@@ -185,25 +185,25 @@ Flujo interno típico: `ConsultaAvanzada/obtenerMovimientosLote` → `obtenerIns
 ```bash
 # Diagnóstico (con token SGC)
 curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://<host>/api/catastro/rppc/diagnostico" | python3 -m json.tool
+  "https://<host>/api/catastro-tijuana/rppc/diagnostico" | python3 -m json.tool
 
 # Renovar sesión RPPC
 curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://<host>/api/catastro/rppc/sesion/renovar"
+  "https://<host>/api/catastro-tijuana/rppc/sesion/renovar"
 
 # Tras desplegar backend
-sudo systemctl restart catastro-api
+sudo systemctl restart catastro-tijuana-api
 ```
 
 **Cron sugerido** (renovar cookie antes de expirar, p. ej. cada 6 h):
 
 ```cron
-0 */6 * * * cd /opt/catastro_api && ./venv/bin/python3 rppc_renovar_cookie.py
+0 */6 * * * cd /opt/catastro_tijuana_api && ./venv/bin/python3 rppc_renovar_cookie.py
 ```
 
 ### Despliegue visor
 
-Subir a `/var/www/catastro/`: `index.html`, `css/55-modulos-portal.css`, `js/05-modulos-portal.js`, `js/52-popup-rppc.js`. Recarga **Ctrl+F5**.
+Subir a `/var/www/catastro_tijuana/`: `index.html`, `css/55-modulos-portal.css`, `js/05-modulos-portal.js`, `js/52-popup-rppc.js`. Recarga **Ctrl+F5**.
 
 ### Validación rápida
 

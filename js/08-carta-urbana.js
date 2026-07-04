@@ -5,7 +5,7 @@ const POPUP_CARTA_GEONODE_WMS = typeof POPUP_NUMOF_GEONODE_WMS !== "undefined"
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const POPUP_CARTA_CATASTRO_WMS = typeof POPUP_NUMOF_CATASTRO_WMS !== "undefined"
   ? POPUP_NUMOF_CATASTRO_WMS
-  : "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const POPUP_CARTA_WMS_LAYER = (window.CARTA_URBANA_2040_CONFIG?.wmsLayer) || "usos_prop_au40";
 const POPUP_CARTA_SECTORES_LAYER = (window.CARTA_URBANA_2040_CONFIG?.sectoresLayer) || "sectores";
 const POPUP_CARTA_SECTORES_LAYERS = (window.CARTA_URBANA_2040_CONFIG?.sectoresLayers) || [
@@ -400,7 +400,7 @@ function popupCartaCrearCapas(wmsLayerName) {
       source: new ol.source.TileWMS({
         url: POPUP_CARTA_CATASTRO_WMS,
         params: {
-          LAYERS: "catastro_bc:predios_oficial",
+          LAYERS: "geonode:predios_tijuana",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -417,7 +417,7 @@ function popupCartaCrearCapas(wmsLayerName) {
       source: new ol.source.TileWMS({
         url: POPUP_CARTA_GEONODE_WMS,
         params: {
-          LAYERS: "colonias",
+          LAYERS: "geonode:colonias_tij",
           TILED: true,
           VERSION: "1.1.1",
           FORMAT: "image/png",
@@ -1192,7 +1192,7 @@ function popupCartaActualizarMapa(data) {
         popupCartaCapas.zonaVector,
         popupCartaCapas.predioVector
       ],
-      view: new ol.View({ center: ol.proj.fromLonLat([-115.468, 32.624]), zoom: 17 }),
+      view: new ol.View({ center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]), zoom: 17 }),
       controls: []
     });
     popupCartaInicializarOrdenCapas();

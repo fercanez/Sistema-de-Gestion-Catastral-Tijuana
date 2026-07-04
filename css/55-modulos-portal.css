@@ -1167,6 +1167,234 @@ body.popup-predio-abierto #map {
   border-bottom-color: #fecaca;
 }
 
+.popup-archivo-remoto {
+  border-bottom: 1px solid #e2e8f0;
+  background: #fff;
+}
+
+.popup-archivo-remoto-resumen {
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  color: #703341;
+}
+
+.popup-archivo-remoto-lista {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 10px 8px;
+  max-height: 132px;
+}
+
+.popup-archivo-remoto-card {
+  position: relative;
+  flex: 0 0 76px;
+  height: 108px;
+  border: 1px solid #cbd5e1;
+  border-radius: 5px;
+  background: #f8fafc;
+  padding: 3px;
+  cursor: pointer;
+}
+
+.popup-archivo-remoto-card.activo {
+  border-color: #703341;
+  box-shadow: 0 0 0 2px rgba(112, 51, 65, 0.18);
+}
+
+.popup-archivo-remoto-card img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 3px;
+  background: #fff;
+}
+
+.popup-archivo-remoto-num {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  z-index: 1;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #0f7f95;
+  color: #fff;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+}
+
+.popup-archivo-remoto-vacio,
+.popup-archivo-remoto-sin-thumb {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  color: #64748b;
+  font-size: 11px;
+  text-align: center;
+}
+
+.popup-adeudo-tijuana-remoto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.popup-adeudo-tijuana-resumen {
+  font-size: 10px;
+  font-weight: 800;
+  color: #5c2834;
+}
+
+.popup-predio-workspace button.popup-adeudo-tijuana-btn {
+  padding: 3px 8px !important;
+  background: #5f6872 !important;
+  color: #fff !important;
+  border: 1px solid #4b5563 !important;
+  font-size: 10px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.popup-adeudos-tijuana-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 5900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+}
+
+.popup-adeudos-tijuana-overlay.oculto {
+  display: none !important;
+}
+
+.popup-adeudos-tijuana-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .48);
+}
+
+.popup-adeudos-tijuana-panel {
+  position: relative;
+  z-index: 1;
+  width: min(980px, 96vw);
+  max-height: 88vh;
+  background: #fff;
+  border: 1px solid #5c2834;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, .35);
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-adeudos-tijuana-head {
+  background: #703341;
+  color: #fff;
+  border-bottom: 3px solid #c9a227;
+  padding: 10px 12px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.popup-adeudos-tijuana-head strong {
+  display: block;
+  font-size: 14px;
+  text-transform: uppercase;
+}
+
+.popup-adeudos-tijuana-head span {
+  display: block;
+  font-size: 11px;
+  opacity: .9;
+}
+
+.popup-adeudos-tijuana-cerrar {
+  background: #eceff3 !important;
+  color: #333 !important;
+  border: 1px solid #c8ced8 !important;
+  padding: 6px 12px !important;
+  font-size: 11px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.popup-adeudos-tijuana-body {
+  padding: 12px;
+  overflow: auto;
+}
+
+.popup-adeudos-tijuana-tools {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+
+.popup-adeudos-tijuana-tools a {
+  background: #5f6872;
+  color: #fff;
+  text-decoration: none;
+  padding: 7px 12px;
+  font-weight: 800;
+}
+
+.popup-adeudos-tijuana-table-wrap {
+  overflow: auto;
+  border: 1px solid #cfd6df;
+}
+
+.popup-adeudos-tijuana-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.popup-adeudos-tijuana-table th,
+.popup-adeudos-tijuana-table td {
+  border: 1px solid #d7dde5;
+  padding: 7px 8px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.popup-adeudos-tijuana-table th {
+  background: #fff;
+  color: #111827;
+  font-weight: 900;
+  text-align: left;
+}
+
+.popup-adeudos-tijuana-table tbody tr:nth-child(odd) {
+  background: #f1f1f1;
+}
+
+.popup-adeudos-tijuana-table tbody tr:nth-child(even) {
+  background: #fff;
+}
+
+.popup-adeudos-tijuana-table td:first-child,
+.popup-adeudos-tijuana-table th:first-child {
+  text-align: right;
+}
+
+.popup-adeudos-tijuana-vacio {
+  padding: 24px;
+  text-align: center;
+  color: #64748b;
+  font-weight: 800;
+}
+
 .popup-archivo-iframe-wrap {
   position: relative;
   flex: 1;

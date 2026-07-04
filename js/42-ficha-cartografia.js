@@ -1,9 +1,9 @@
 /* Ficha Cartografía — impresión legal (oficio) desde Construcciones/Medidas */
 
-const FICHA_CARTO_LOGO = "logomxli.png";
+const FICHA_CARTO_LOGO = "logotijuana.png";
 const FICHA_CARTO_OL_JS = "https://cdn.jsdelivr.net/npm/ol@v9.2.4/dist/ol.js";
 const FICHA_CARTO_OL_CSS = "https://cdn.jsdelivr.net/npm/ol@v9.2.4/ol.css";
-const FICHA_CARTO_WMS_CATASTRO = "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms";
+const FICHA_CARTO_WMS_CATASTRO = "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 const FICHA_CARTO_WMS_GEONODE = "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
 
 function fichaCartoEsc(valor) {
@@ -346,7 +346,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
       visible:false,opacity:0.55,zIndex:fichaCapaOrdenDef.colonias,
       source:new ol.source.TileWMS({
         url:"${FICHA_CARTO_WMS_GEONODE}",
-        params:{LAYERS:"colonias",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
+        params:{LAYERS:"geonode:colonias_tij",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
         serverType:"geoserver",crossOrigin:"anonymous"
       })
     });
@@ -355,7 +355,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
       visible:true,opacity:0.85,zIndex:fichaCapaOrdenDef.prediosWms,
       source:new ol.source.TileWMS({
         url:"${FICHA_CARTO_WMS_CATASTRO}",
-        params:{LAYERS:"catastro_bc:predios_oficial",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
+        params:{LAYERS:"geonode:predios_tijuana",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
         serverType:"geoserver",crossOrigin:"anonymous"
       })
     });
@@ -364,7 +364,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
       visible:true,opacity:0.88,zIndex:fichaCapaOrdenDef.constrWms,
       source:new ol.source.TileWMS({
         url:"${FICHA_CARTO_WMS_GEONODE}",
-        params:{LAYERS:"geonode:construccionesmxli",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
+        params:{LAYERS:"geonode:construcciones_tijuana",TILED:true,VERSION:"1.1.1",FORMAT:"image/png",TRANSPARENT:true},
         serverType:"geoserver",crossOrigin:"anonymous"
       })
     });
@@ -415,7 +415,7 @@ function buildFichaCartoMapScript(featureGeoJSONString, construccionesGeoJSONStr
     cartoMap=new ol.Map({
       target:"cartoMap",
       layers:layers,
-      view:new ol.View({center:ol.proj.fromLonLat([-115.468,32.624]),zoom:18})
+      view:new ol.View({center:ol.proj.fromLonLat([-116.97845271015251,32.49868744466041]),zoom:18})
     });
 
     if(typeof inicializarOrdenCapasFichaCarto==="function")inicializarOrdenCapasFichaCarto();
@@ -698,7 +698,7 @@ ${typeof FICHA_PREVIEW_LAYER_PANEL_CSS !== "undefined" ? FICHA_PREVIEW_LAYER_PAN
       <div class="enc-logo"><img src="${FICHA_CARTO_LOGO}" alt="Logo"></div>
       <div class="enc-centro">
         <h1>FICHA CARTOGRAFIA</h1>
-        <h2>Catastro Mexicali</h2>
+        <h2>Catastro Tijuana</h2>
       </div>
       <div class="enc-der">Clave Catastral<b>${fichaCartoEsc(datos.clave)}</b></div>
     </div>

@@ -237,7 +237,7 @@ function popupConstrCrearCapasMapa() {
     source: new ol.source.TileWMS({
       url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
       params: {
-        LAYERS: "colonias",
+        LAYERS: "geonode:colonias_tij",
         TILED: true,
         VERSION: "1.1.1",
         FORMAT: "image/png",
@@ -251,9 +251,9 @@ function popupConstrCrearCapasMapa() {
     visible: true,
     opacity: 0.88,
     source: new ol.source.TileWMS({
-      url: "https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wms",
+      url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
       params: {
-        LAYERS: "catastro_bc:predios_oficial",
+        LAYERS: "geonode:predios_tijuana",
         TILED: true,
         VERSION: "1.1.1",
         FORMAT: "image/png",
@@ -269,7 +269,7 @@ function popupConstrCrearCapasMapa() {
     source: new ol.source.TileWMS({
       url: "https://fcnarqnodo.hopto.org/geoserver/geonode/wms",
       params: {
-        LAYERS: "geonode:construccionesmxli",
+        LAYERS: "geonode:construcciones_tijuana",
         TILED: true,
         VERSION: "1.1.1",
         FORMAT: "image/png",
@@ -664,8 +664,8 @@ async function popupConstrCargarPrediosSnapCercanos() {
   const maxx = extent[2] + pad;
   const maxy = extent[3] + pad;
   const urls = [
-    `https://fcnarqnodo.hopto.org/geoserver/catastro_bc/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=catastro_bc:predios_oficial&outputFormat=application/json&srsName=EPSG:3857&count=150&bbox=${minx},${miny},${maxx},${maxy},EPSG:3857`,
-    `https://fcnarqnodo.hopto.org/geoserver/catastro_bc/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=catastro_bc:predios_oficial&outputFormat=application/json&srsName=EPSG:3857&maxFeatures=150&BBOX=${minx},${miny},${maxx},${maxy},EPSG:3857`
+    `https://fcnarqnodo.hopto.org/geoserver/geonode/ows?service=WFS&version=2.0.0&request=GetFeature&typeNames=geonode:predios_tijuana&outputFormat=application/json&srsName=EPSG:3857&count=150&bbox=${minx},${miny},${maxx},${maxy},EPSG:3857`,
+    `https://fcnarqnodo.hopto.org/geoserver/geonode/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=geonode:predios_tijuana&outputFormat=application/json&srsName=EPSG:3857&maxFeatures=150&BBOX=${minx},${miny},${maxx},${maxy},EPSG:3857`
   ];
 
   for (const url of urls) {
@@ -1164,7 +1164,7 @@ function popupConstrHtmlCapaConstrucciones(data) {
 
 async function popupConstrFetchConstruccionesWfs(clave) {
   const cql = encodeURIComponent(`clavecatas='${clave}' OR claveorig='${clave}'`);
-  const url = `https://fcnarqnodo.hopto.org/geoserver/geonode/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=geonode:construccionesmxli&outputFormat=application/json&srsName=EPSG:3857&CQL_FILTER=${cql}&maxFeatures=100`;
+  const url = `https://fcnarqnodo.hopto.org/geoserver/geonode/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=geonode:construcciones_tijuana&outputFormat=application/json&srsName=EPSG:3857&CQL_FILTER=${cql}&maxFeatures=100`;
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error("WFS construcciones no disponible");
   const geojson = await r.json();
@@ -1540,7 +1540,7 @@ function inicializarMapaConstrucciones() {
     })(),
     view: new ol.View({
       projection: "EPSG:3857",
-      center: ol.proj.fromLonLat([-115.4683, 32.6245]),
+      center: ol.proj.fromLonLat([-116.97845271015251, 32.49868744466041]),
       zoom: 12
     })
   });

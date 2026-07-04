@@ -24,6 +24,10 @@ from fastapi.responses import StreamingResponse
 
 from auth.permisos_operativos import requerir_pestana_rppc
 from config import (
+    APP_DIR,
+    APP_MUNICIPIO,
+    APP_MUNICIPIO_MAYUS,
+    DOCUMENTOS_BASE_DIR,
     RPPC_BASE_URL,
     RPPC_COOKIE,
     RPPC_DOCUMENTO_ACTION,
@@ -45,19 +49,20 @@ from database import get_conn, asegurar_columna_folio_real_padron
 
 router = APIRouter(prefix="/rppc", tags=["rppc"])
 
-RPPC_PDF_LOCAL_DIR = Path(os.getenv("RPPC_PDF_LOCAL_DIR", "/var/www/catastro/documentos/rppc"))
+RPPC_PDF_LOCAL_DIR = Path(os.getenv("RPPC_PDF_LOCAL_DIR", str(Path(DOCUMENTOS_BASE_DIR) / "rppc")))
 RPPC_HOJA_INSCRIPCION_ACTION = "ReporteVerHojaInsc"
 RPPC_HOJA_INSCRIPCION_DOC_PREFIX = "PARTIDA_"
 
-RPPC_UA = "SGC-Catastro-Mexicali/1.0 (+consulta-interna)"
+RPPC_UA = f"SGC-Catastro-{APP_MUNICIPIO}/1.0 (+consulta-interna)"
 RPPC_RUNTIME_COOKIE_FILE = os.getenv(
     "RPPC_RUNTIME_COOKIE_FILE",
-    "/opt/catastro_api/.runtime/rppc_cookie.txt",
+    str(Path(APP_DIR) / ".runtime" / "rppc_cookie.txt"),
 )
 RPPC_RENOVAR_COOKIE_SCRIPT = os.getenv(
     "RPPC_RENOVAR_COOKIE_SCRIPT",
-    "/opt/catastro_api/rppc_renovar_cookie.py",
+    str(Path(APP_DIR) / "rppc_renovar_cookie.py"),
 )
+RPPC_RENOVAR_COOKIE_CWD = os.getenv("RPPC_RENOVAR_COOKIE_CWD", APP_DIR)
 _rppc_opener: urllib.request.OpenerDirector | None = None
 _rppc_login_ok: bool | None = None
 _rppc_login_detalle: list[dict[str, Any]] = []
@@ -570,7 +575,7 @@ def _renovar_cookie_rppc_runtime() -> bool:
     try:
         resultado = subprocess.run(
             [sys.executable, RPPC_RENOVAR_COOKIE_SCRIPT],
-            cwd="/opt/catastro_api",
+            cwd=RPPC_RENOVAR_COOKIE_CWD,
             text=True,
             capture_output=True,
             timeout=120,
@@ -1573,16 +1578,19 @@ def _seleccionar_mejor_inmueble_rppc(inmuebles: list[dict[str, Any]]) -> dict[st
 
     Regla conservadora:
     1) solo vigentes;
-    2) preferir MEXICALI;
+    2) preferir el municipio configurado;
     3) elegir el FOLIO_REAL más alto, que normalmente corresponde al registro más reciente.
     """
     candidatos = [x for x in inmuebles if str(x.get("VIGENTE") or "").upper() in {"", "S", "SI", "SÍ"}]
     if not candidatos:
         candidatos = list(inmuebles)
 
-    mexicali = [x for x in candidatos if "MEXICALI" in str(x.get("MUNLOC") or x.get("MUNICIPIO") or "").upper()]
-    if mexicali:
-        candidatos = mexicali
+    candidatos_municipio = [
+        x for x in candidatos
+        if APP_MUNICIPIO_MAYUS in str(x.get("MUNLOC") or x.get("MUNICIPIO") or "").upper()
+    ]
+    if candidatos_municipio:
+        candidatos = candidatos_municipio
 
     candidatos_con_folio = []
     for item in candidatos:
@@ -3452,7 +3460,7 @@ def _registrar_pdf_local_en_padron(
 def _descargar_pdf_hoja_inscripcion_por_partida(
     partida: int,
     *,
-    municipio: str = "MEXICALI",
+    municipio: str = APP_MUNICIPIO_MAYUS,
     oficina_id: int = 1,
     _renovado: bool = False,
 ) -> bytes:
@@ -3477,7 +3485,7 @@ def _descargar_pdf_hoja_inscripcion_por_partida(
         "TITULOREP": "HOJA DE INSCRIPCIÓN",
         "OFICINA_ID": str(oficina_id),
         "PREVIEW": "S",
-        "MUNICIPIO": municipio or "MEXICALI",
+        "MUNICIPIO": municipio or APP_MUNICIPIO_MAYUS,
         "ORIENTACION": "V",
         "TIPOHOJA": "CARTA",
     }
