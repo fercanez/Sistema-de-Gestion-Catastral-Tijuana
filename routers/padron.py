@@ -84,6 +84,57 @@ def _columnas_tabla_predios_geo(cur) -> set[str]:
     return {r["column_name"] for r in cur.fetchall()}
 
 
+_CATASTRO_PREDIOS_COLS_CACHE: set[str] | None = None
+
+
+def _columnas_catastro_predios(cur) -> set[str]:
+    """Columnas de catastro.predios (cache por proceso)."""
+    global _CATASTRO_PREDIOS_COLS_CACHE
+    if _CATASTRO_PREDIOS_COLS_CACHE is not None:
+        return _CATASTRO_PREDIOS_COLS_CACHE
+    cur.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'catastro'
+          AND table_name = 'predios';
+        """
+    )
+    _CATASTRO_PREDIOS_COLS_CACHE = {r["column_name"] for r in cur.fetchall()}
+    return _CATASTRO_PREDIOS_COLS_CACHE
+
+
+def _join_cat_colonias_predios_sql(cur, alias_predio: str = "p", alias_col: str = "col") -> str:
+    """JOIN a cat_colonias solo si catastro.predios trae colonia_id (Mexicali). Tijuana no."""
+    if "colonia_id" in _columnas_catastro_predios(cur):
+        return (
+            f"LEFT JOIN catalogos.cat_colonias {alias_col} "
+            f"ON {alias_predio}.colonia_id = {alias_col}.id"
+        )
+    return ""
+
+
+def _expr_colonia_padron_o_catalogo(
+    cur,
+    *,
+    alias_pad: str = "pad",
+    alias_col: str = "col",
+) -> str:
+    """Colonia legible: padrón Tijuana (texto) o cat_colonias vía colonia_id."""
+    if "colonia_id" in _columnas_catastro_predios(cur):
+        return (
+            f"COALESCE(NULLIF(TRIM({alias_pad}.colonia), ''), {alias_col}.nombre_colonia)"
+        )
+    return f"NULLIF(TRIM({alias_pad}.colonia), '')"
+
+
+def _expr_colonia_solo_cartografia(cur, *, alias_predio: str = "p", alias_col: str = "col") -> str:
+    """Colonia cuando solo existe fila en catastro.predios (sin padrón)."""
+    if "colonia_id" in _columnas_catastro_predios(cur):
+        return f"{alias_col}.nombre_colonia"
+    return "NULL::TEXT"
+
+
 def _elegir_columna_geometria(cols: set[str]) -> str | None:
     por_lower = {c.lower(): c for c in cols}
     for cand in PREDIOS_GEO_GEOM_CANDIDATAS:
@@ -647,13 +698,15 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
         row = cur.fetchone()
 
         if not row:
-            cur.execute("""
+            join_col = _join_cat_colonias_predios_sql(cur, "p", "col")
+            expr_col = _expr_colonia_solo_cartografia(cur, alias_predio="p", alias_col="col")
+            cur.execute(f"""
                 SELECT
                     p.id AS predio_id,
                     p.clave_catastral,
                     NULL::TEXT AS nombre_completo,
                     NULL::TEXT AS delegacion,
-                    col.nombre_colonia AS colonia,
+                    {expr_col} AS colonia,
                     NULL::TEXT AS calle,
                     NULL::TEXT AS zona_homogenea,
                     NULL::INTEGER AS anio_zona,
@@ -689,8 +742,7 @@ def ficha_padron(clave: str, usuario_actual: dict = Depends(obtener_usuario_actu
                         ELSE ST_AsGeoJSON(ST_Transform(p.geom, 4326))::json
                     END AS geometry
                 FROM catastro.predios p
-                LEFT JOIN catalogos.cat_colonias col
-                    ON p.colonia_id = col.id
+                {join_col}
                 WHERE UPPER(TRIM(p.clave_catastral)) = UPPER(TRIM(%s))
                 LIMIT 1;
             """, (clave,))
@@ -975,8 +1027,10 @@ def predios_cercanos(
     try:
         conn = get_conn()
         cur = conn.cursor()
+        join_col = _join_cat_colonias_predios_sql(cur, "p", "col")
+        expr_col = _expr_colonia_padron_o_catalogo(cur, alias_pad="pad", alias_col="col")
 
-        cur.execute("""
+        cur.execute(f"""
             WITH punto AS (
                 SELECT ST_Transform(
                     ST_SetSRID(ST_Point(%s, %s), 4326),
@@ -987,7 +1041,7 @@ def predios_cercanos(
                 p.id,
                 p.clave_catastral,
                 p.estatus,
-                COALESCE(NULLIF(TRIM(pad.colonia), ''), col.nombre_colonia) AS colonia,
+                {expr_col} AS colonia,
                 p.cp,
                 TRIM(COALESCE(pad.numof, '')) AS numof,
                 TRIM(COALESCE(pad.calle, '')) AS calle,
@@ -1001,8 +1055,7 @@ def predios_cercanos(
             FROM catastro.predios p
             LEFT JOIN catalogos.padron_2026 pad
                 ON UPPER(TRIM(pad.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
-            LEFT JOIN catalogos.cat_colonias col
-                ON p.colonia_id = col.id,
+            {join_col},
                 punto pt
             WHERE p.geom IS NOT NULL
               AND ST_DWithin(p.geom, pt.geom, %s)
@@ -3869,8 +3922,10 @@ def tile_predios(z: int, x: int, y: int):
     try:
         conn = get_conn()
         cur = conn.cursor()
+        join_col = _join_cat_colonias_predios_sql(cur, "p", "col")
+        expr_col = _expr_colonia_padron_o_catalogo(cur, alias_pad="pad", alias_col="col")
 
-        cur.execute("""
+        cur.execute(f"""
             WITH
             bounds AS (
                 SELECT ST_TileEnvelope(%s, %s, %s) AS geom
@@ -3879,7 +3934,7 @@ def tile_predios(z: int, x: int, y: int):
                 SELECT
                     p.id,
                     p.clave_catastral,
-                    col.nombre_colonia AS colonia,
+                    {expr_col} AS colonia,
                     p.cp,
                     p.sup_documental AS superficie,
                     ST_AsMVTGeom(
@@ -3890,8 +3945,9 @@ def tile_predios(z: int, x: int, y: int):
                         true
                     ) AS geom
                 FROM catastro.predios p
-                LEFT JOIN catalogos.cat_colonias col
-                    ON p.colonia_id = col.id,
+                LEFT JOIN catalogos.padron_2026 pad
+                    ON UPPER(TRIM(pad.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
+                {join_col},
                     bounds
                 WHERE p.geom IS NOT NULL
                   AND ST_Transform(p.geom, 3857) && bounds.geom
