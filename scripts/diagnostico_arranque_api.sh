@@ -22,8 +22,17 @@ echo "=== 3) import config ==="
 import config
 print('config OK')
 print('RPPC_LOGIN_PATH =', repr(getattr(config, 'RPPC_LOGIN_PATH', 'NO EXISTE')))
+print('RPPC_MUNICIPIO_ID =', getattr(config, 'RPPC_MUNICIPIO_ID', 'NO EXISTE'))
+print('RPPC_LOCALIDAD_ID =', getattr(config, 'RPPC_LOCALIDAD_ID', 'NO EXISTE'))
 print('SESSION_INACTIVITY_MINUTES =', getattr(config, 'SESSION_INACTIVITY_MINUTES', 'NO EXISTE'))
 "
+
+echo ""
+echo "=== 3b) database.columnas_tabla (opcional; rppc ya no lo exige) ==="
+"${PY}" -c "
+from database import columnas_tabla
+print('columnas_tabla OK')
+" 2>/dev/null || echo "AVISO: database.py sin columnas_tabla (subir database.py si otros módulos lo usan)"
 
 echo ""
 echo "=== 4) import routers (uno por uno) ==="

@@ -83,6 +83,18 @@ TIJUANA_ARCHIVO_THUMB_RE = re.compile(
     (?P<plain>https?://[^\s"'<>]+?/archivos/DMC/[^\s"'<>]+?/thumbnails/[^\s"'<>]+?_thumb\.(?:jpg|jpeg|png|webp)(?:\?[^\s"'<>]*)?)
     """
 )
+TIJUANA_ARCHIVO_PDF_RE = re.compile(
+    r"""(?ix)
+    (?:
+        href|src
+    )\s*=\s*
+    (?P<quote>["'])
+    (?P<url>[^"']+?/archivos/DMC/[^"']+?/[^"']+?\.pdf(?:\?[^"']*)?)
+    (?P=quote)
+    |
+    (?P<plain>https?://[^\s"'<>]+?/archivos/DMC/[^\s"'<>]+?/[^\s"'<>]+?\.pdf(?:\?[^\s"'<>]*)?)
+    """
+)
 
 
 def _normalizar_clave_expediente(clave: str) -> str:
@@ -107,6 +119,119 @@ def _headers_archivo_tijuana() -> dict:
         "Referer": TIJUANA_ARCHIVO_DIGITAL_REFERER,
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
+
+
+def _headers_archivo_tijuana_binario() -> dict:
+    headers = _headers_archivo_tijuana()
+    headers["Accept"] = "image/jpeg,image/png,image/webp,*/*;q=0.8"
+    return headers
+
+
+def _normalizar_url_pdf_tijuana(url: str) -> str:
+    clean = str(url or "").strip()
+    if not clean:
+        return ""
+    parsed = urllib.parse.urlparse(clean)
+    path = parsed.path
+    if "/thumbnails/" in path and re.search(r"_thumb\.(?:jpg|jpeg|png|webp)$", path, re.I):
+        path = path.replace("/thumbnails/", "/")
+        path = re.sub(r"_thumb\.(?:jpg|jpeg|png|webp)$", ".pdf", path, flags=re.I)
+        parsed = parsed._replace(path=path, query="", fragment="")
+        return urllib.parse.urlunparse(parsed)
+    if re.search(r"\.pdf$", path, re.I):
+        parsed = parsed._replace(fragment="")
+        return urllib.parse.urlunparse(parsed)
+    return clean
+
+
+def _nombre_pdf_tijuana_desde_url(url: str) -> str:
+    parsed = urllib.parse.urlparse(str(url or "").strip())
+    nombre = os.path.basename(urllib.parse.unquote(parsed.path))
+    if not re.fullmatch(r"wd[A-Za-z0-9_-]+\.pdf", nombre, re.I):
+        return ""
+    return nombre
+
+
+def _doc_tijuana_remoto(clave_norm: str, nombre_pdf: str, thumbnail_url: str = "", pdf_url: str = "") -> dict:
+    thumb_limpia = str(thumbnail_url or "").split("?", 1)[0]
+    pdf_limpia = _normalizar_url_pdf_tijuana(pdf_url or "")
+    if not pdf_limpia and thumb_limpia:
+        try:
+            _, pdf_limpia = _thumb_tijuana_a_pdf(thumb_limpia)
+        except ValueError:
+            pdf_limpia = ""
+    if not pdf_limpia:
+        pdf_limpia = (
+            f"https://plataforma.tijuana.gob.mx/archivos/DMC/"
+            f"{urllib.parse.quote(clave_norm)}/{urllib.parse.quote(nombre_pdf)}"
+        )
+    return {
+        "nombre_archivo": nombre_pdf,
+        "thumbnail_url": thumb_limpia,
+        "thumbnail_proxy_url": (
+            f"/expediente/{urllib.parse.quote(clave_norm)}/archivo-tijuana/thumbnail/"
+            f"{urllib.parse.quote(nombre_pdf)}"
+        ),
+        "pdf_url": pdf_limpia,
+        "proxy_url": (
+            f"/expediente/{urllib.parse.quote(clave_norm)}/archivo-tijuana/pdf/"
+            f"{urllib.parse.quote(nombre_pdf)}"
+        ),
+        "origen": "TIJUANA_DIGITAL",
+    }
+
+
+def _urls_pdf_candidatas_tijuana(clave_norm: str, nombre_pdf: str, pdf_url_original: str = "") -> list[str]:
+    candidatas = []
+    if pdf_url_original:
+        parsed = urllib.parse.urlparse(str(pdf_url_original).strip())
+        limpia = urllib.parse.urlunparse(parsed._replace(fragment=""))
+        if limpia and f"/{clave_norm}/" in urllib.parse.unquote(limpia).upper():
+            candidatas.append(limpia)
+    candidatas.append(
+        f"https://plataforma.tijuana.gob.mx/archivos/DMC/"
+        f"{urllib.parse.quote(clave_norm)}/{urllib.parse.quote(nombre_pdf)}"
+    )
+    vistos = set()
+    ordenadas = []
+    for url in candidatas:
+        if url in vistos:
+            continue
+        vistos.add(url)
+        ordenadas.append(url)
+    return ordenadas
+
+
+def _urls_thumb_candidatas_tijuana(clave_norm: str, nombre_pdf: str, url_thumb_original: str = "") -> list[str]:
+    candidatas = []
+    if url_thumb_original:
+        parsed = urllib.parse.urlparse(str(url_thumb_original).strip())
+        limpia = urllib.parse.urlunparse(parsed._replace(query="", fragment=""))
+        if limpia:
+            candidatas.append(limpia)
+    stem = re.sub(r"\.pdf$", "", nombre_pdf, flags=re.I)
+    base = (
+        f"https://plataforma.tijuana.gob.mx/archivos/DMC/"
+        f"{urllib.parse.quote(clave_norm)}/thumbnails/{stem}_thumb"
+    )
+    for ext in (".jpg", ".jpeg", ".png", ".webp"):
+        candidatas.append(base + ext)
+    vistos = set()
+    ordenadas = []
+    for url in candidatas:
+        if url in vistos:
+            continue
+        vistos.add(url)
+        ordenadas.append(url)
+    return ordenadas
+
+
+def _fetch_remoto_tijuana(url: str, headers=None, timeout=None) -> tuple:
+    req = urllib.request.Request(url, headers=headers or _headers_archivo_tijuana(), method="GET")
+    with urllib.request.urlopen(req, timeout=timeout or TIJUANA_ARCHIVO_DIGITAL_TIMEOUT) as resp:
+        body = resp.read()
+        content_type = resp.headers.get("Content-Type", "application/octet-stream")
+    return body, content_type
 
 
 def _url_adeudos_tijuana(clave_norm: str) -> str:
@@ -293,10 +418,25 @@ def _thumb_tijuana_a_pdf(url_thumb: str) -> tuple[str, str]:
 
 
 def _extraer_documentos_tijuana_html(clave_norm: str, html_texto: str) -> list:
-    documentos = []
-    vistos = set()
-    for m in TIJUANA_ARCHIVO_THUMB_RE.finditer(html_texto or ""):
-        raw = (m.group("url") or m.group("plain") or "").strip()
+    por_nombre: dict[str, dict] = {}
+    orden: list[str] = []
+    texto = html_texto or ""
+
+    def _registrar(nombre_pdf: str, thumbnail_url: str = "", pdf_url: str = "") -> None:
+        if not nombre_pdf:
+            return
+        if nombre_pdf not in por_nombre:
+            por_nombre[nombre_pdf] = _doc_tijuana_remoto(clave_norm, nombre_pdf, thumbnail_url, pdf_url)
+            orden.append(nombre_pdf)
+            return
+        doc = por_nombre[nombre_pdf]
+        if thumbnail_url and not doc.get("thumbnail_url"):
+            doc["thumbnail_url"] = str(thumbnail_url).split("?", 1)[0]
+        if pdf_url:
+            doc["pdf_url"] = _normalizar_url_pdf_tijuana(pdf_url)
+
+    for m in TIJUANA_ARCHIVO_THUMB_RE.finditer(texto):
+        raw = unescape((m.group("url") or m.group("plain") or "").strip())
         if not raw:
             continue
         raw = urllib.parse.urljoin(TIJUANA_ARCHIVO_DIGITAL_LISTA_URL, raw)
@@ -308,18 +448,29 @@ def _extraer_documentos_tijuana_html(clave_norm: str, html_texto: str) -> list:
             nombre_pdf, url_pdf = _thumb_tijuana_a_pdf(raw)
         except ValueError:
             continue
-        if nombre_pdf in vistos:
+        _registrar(nombre_pdf, thumbnail_url=raw, pdf_url=url_pdf)
+
+    for m in TIJUANA_ARCHIVO_PDF_RE.finditer(texto):
+        raw = unescape((m.group("url") or m.group("plain") or "").strip())
+        if not raw:
             continue
-        vistos.add(nombre_pdf)
-        documentos.append({
-            "id": len(documentos) + 1,
-            "nombre_archivo": nombre_pdf,
-            "thumbnail_url": raw,
-            "pdf_url": url_pdf,
-            "proxy_url": f"/expediente/{urllib.parse.quote(clave_norm)}/archivo-tijuana/pdf/{urllib.parse.quote(nombre_pdf)}",
-            "descripcion": f"Documento Optistor #{len(documentos) + 1}",
-            "origen": "TIJUANA_DIGITAL",
-        })
+        raw = urllib.parse.urljoin(TIJUANA_ARCHIVO_DIGITAL_LISTA_URL, raw)
+        if raw.startswith("//"):
+            raw = "https:" + raw
+        if f"/{clave_norm}/" not in urllib.parse.unquote(raw).upper():
+            continue
+        url_pdf = _normalizar_url_pdf_tijuana(raw)
+        nombre_pdf = _nombre_pdf_tijuana_desde_url(url_pdf)
+        if not nombre_pdf:
+            continue
+        _registrar(nombre_pdf, pdf_url=url_pdf)
+
+    documentos = []
+    for idx, nombre_pdf in enumerate(orden, start=1):
+        doc = dict(por_nombre[nombre_pdf])
+        doc["id"] = idx
+        doc["descripcion"] = f"Documento Optistor #{idx}"
+        documentos.append(doc)
     return documentos
 
 
@@ -747,10 +898,59 @@ def documentos_archivo_tijuana(clave: str, usuario_actual: dict = Depends(requer
     }
 
 
+@router.get("/expediente/{clave}/archivo-tijuana/thumbnail/{archivo}")
+def proxy_archivo_tijuana_thumbnail(
+    clave: str,
+    archivo: str,
+    src: str = Query(""),
+    usuario_actual: dict = Depends(requerir_pestana_archivo),
+):
+    """Proxy de miniatura remota Tijuana con encabezados institucionales."""
+    clave_norm = _normalizar_clave_expediente(clave)
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral no válida")
+    archivo_norm = _normalizar_archivo_tijuana(archivo)
+    headers = _headers_archivo_tijuana_binario()
+    ultimo_error = None
+    for url in _urls_thumb_candidatas_tijuana(clave_norm, archivo_norm, src):
+        try:
+            body, content_type = _fetch_remoto_tijuana(url, headers=headers)
+            if not body:
+                continue
+            media_type = (content_type.split(";")[0].strip() or "image/jpeg")
+            return Response(
+                content=body,
+                media_type=media_type,
+                headers={
+                    "Cache-Control": "private, max-age=600",
+                },
+            )
+        except urllib.error.HTTPError as e:
+            ultimo_error = e
+            if e.code not in (404, 403):
+                break
+        except urllib.error.URLError as e:
+            ultimo_error = e
+            break
+
+    if isinstance(ultimo_error, urllib.error.HTTPError):
+        raise HTTPException(
+            status_code=ultimo_error.code,
+            detail="No se pudo obtener la miniatura remota Tijuana",
+        ) from ultimo_error
+    if isinstance(ultimo_error, urllib.error.URLError):
+        raise HTTPException(
+            status_code=502,
+            detail="Servicio de miniaturas Tijuana no disponible",
+        ) from ultimo_error
+    raise HTTPException(status_code=404, detail="Miniatura remota inexistente")
+
+
 @router.get("/expediente/{clave}/archivo-tijuana/pdf/{archivo}")
 def proxy_archivo_tijuana_pdf(
     clave: str,
     archivo: str,
+    pdf_url: str = Query(""),
     usuario_actual: dict = Depends(requerir_pestana_archivo),
 ):
     """Proxy de PDF remoto Tijuana. No guarda documentos en disco."""
@@ -758,36 +958,41 @@ def proxy_archivo_tijuana_pdf(
     if not clave_norm:
         raise HTTPException(status_code=400, detail="Clave catastral no válida")
     archivo_norm = _normalizar_archivo_tijuana(archivo)
-    url = f"https://plataforma.tijuana.gob.mx/archivos/DMC/{urllib.parse.quote(clave_norm)}/{urllib.parse.quote(archivo_norm)}"
     headers = _headers_archivo_tijuana()
     headers["Accept"] = "application/pdf,*/*;q=0.8"
-    req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=TIJUANA_ARCHIVO_DIGITAL_TIMEOUT) as resp:
-            body = resp.read()
-            content_type = resp.headers.get("Content-Type", "application/pdf")
-    except urllib.error.HTTPError as e:
+    ultimo_error = None
+    for url in _urls_pdf_candidatas_tijuana(clave_norm, archivo_norm, pdf_url):
+        try:
+            body, content_type = _fetch_remoto_tijuana(url, headers=headers)
+            if not body:
+                continue
+            return Response(
+                content=body,
+                media_type=(content_type.split(";")[0].strip() or "application/pdf"),
+                headers={
+                    "Content-Disposition": f'inline; filename="{archivo_norm}"',
+                    "Cache-Control": "private, max-age=300",
+                },
+            )
+        except urllib.error.HTTPError as e:
+            ultimo_error = e
+            if e.code not in (404, 403):
+                break
+        except urllib.error.URLError as e:
+            ultimo_error = e
+            break
+
+    if isinstance(ultimo_error, urllib.error.HTTPError):
         raise HTTPException(
-            status_code=e.code,
+            status_code=ultimo_error.code,
             detail="No se pudo obtener el PDF remoto Tijuana",
-        ) from e
-    except urllib.error.URLError as e:
+        ) from ultimo_error
+    if isinstance(ultimo_error, urllib.error.URLError):
         raise HTTPException(
             status_code=502,
             detail="Servicio de expediente digital Tijuana no disponible",
-        ) from e
-
-    if not body:
-        raise HTTPException(status_code=404, detail="Documento remoto vacío o inexistente")
-
-    return Response(
-        content=body,
-        media_type=(content_type.split(";")[0].strip() or "application/pdf"),
-        headers={
-            "Content-Disposition": f'inline; filename="{archivo_norm}"',
-            "Cache-Control": "private, max-age=300",
-        },
-    )
+        ) from ultimo_error
+    raise HTTPException(status_code=404, detail="Documento remoto vacío o inexistente")
 
 
 @router.get("/expediente/{clave}/adeudos-tijuana")

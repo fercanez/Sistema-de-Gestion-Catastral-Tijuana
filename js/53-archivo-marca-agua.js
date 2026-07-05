@@ -580,6 +580,51 @@ async function imprimirArchivoExternoConMarcaAgua() {
   );
 }
 
+function setPopupArchivoUrlOriginal(url) {
+  popupArchivoUrlOriginal = String(url || "");
+}
+
+async function imprimirArchivoSinMarcaAgua() {
+  const url = popupArchivoUrlOriginal;
+  if (!url) {
+    alert("El archivo digital aún no está listo para imprimir.");
+    return;
+  }
+
+  try {
+    const headers = typeof authHeaders === "function" ? authHeaders() : {};
+    const resp = await fetch(url, { cache: "no-store", headers: headers });
+    if (!resp.ok) {
+      throw new Error(`No se pudo descargar el documento (HTTP ${resp.status})`);
+    }
+    const blobUrl = URL.createObjectURL(await resp.blob());
+    const ventana = window.open(blobUrl, "_blank", "noopener,noreferrer");
+    if (!ventana) {
+      URL.revokeObjectURL(blobUrl);
+      alert("Permita ventanas emergentes para imprimir el documento sin marca de agua.");
+      return;
+    }
+    const imprimir = function() {
+      try {
+        ventana.focus();
+        ventana.print();
+      } catch (e) {}
+    };
+    ventana.addEventListener("load", function() {
+      window.setTimeout(imprimir, 700);
+    });
+    window.setTimeout(imprimir, 1400);
+  } catch (e) {
+    alert(e.message || "No se pudo imprimir el documento sin marca de agua.");
+  }
+}
+
+function htmlBotonesImpresionArchivoTijuana() {
+  return `
+    <button type="button" class="popup-marca-agua-btn popup-marca-agua-btn-imprimir" onclick="imprimirArchivoConMarcaAgua()" title="Imprimir el documento con marca de agua">Imprimir con marca</button>
+    <button type="button" class="popup-marca-agua-btn popup-marca-agua-btn-sin-marca" onclick="imprimirArchivoSinMarcaAgua()" title="Imprimir el documento sin marca de agua">Imprimir sin marca</button>`;
+}
+
 function htmlOverlayMarcaAguaDocumento(overlayId) {
   const esc = typeof escapeHtml === "function" ? escapeHtml : function(v) { return String(v ?? ""); };
   return `<div id="${esc(overlayId)}" class="popup-marca-agua-overlay activa" aria-hidden="false"></div>`;
@@ -895,6 +940,9 @@ window.imprimirUrlDocumentoConMarca = imprimirUrlDocumentoConMarca;
 window.toggleMarcaAguaArchivoExterno = toggleMarcaAguaArchivoExterno;
 window.inicializarMarcaAguaArchivoExterno = inicializarMarcaAguaArchivoExterno;
 window.imprimirArchivoConMarcaAgua = imprimirArchivoConMarcaAgua;
+window.imprimirArchivoSinMarcaAgua = imprimirArchivoSinMarcaAgua;
+window.setPopupArchivoUrlOriginal = setPopupArchivoUrlOriginal;
+window.htmlBotonesImpresionArchivoTijuana = htmlBotonesImpresionArchivoTijuana;
 window.cargarArchivoExternoEnVisor = cargarArchivoExternoEnVisor;
 window.refrescarVisorArchivoExternoConMarca = refrescarVisorArchivoExternoConMarca;
 window.toggleMarcaAguaRppc = toggleMarcaAguaRppc;

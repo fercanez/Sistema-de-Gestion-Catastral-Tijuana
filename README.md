@@ -86,6 +86,22 @@ Componentes principales identificados:
   - administración
   - **RPPC** (`routers/rppc.py`) — proxy al Registro Público de la Propiedad BC
 
+- `services/`  
+  Jobs internos de la API (sin HTTP):
+  - `rppc_backfill_masivo.py` — backfill masivo `folio_real` / partida / PDF en padrón
+
+- `scripts/`  
+  Utilidades operativas, incluyendo:
+  - `rppc_backfill_masivo_tijuana.py` — CLI del backfill (usa el venv de la API)
+  - `rppc_backfill_masivo_tijuana.sh` — wrapper al venv
+  - `install_rppc_backfill_timer.sh` — instala timer systemd (alternativa: `deploy/systemd/install.sh`)
+
+- `deploy/systemd/`  
+  Unidades para backfill automático RPPC:
+  - `catastro-rppc-backfill.service` — un lote por ejecución
+  - `catastro-rppc-backfill.timer` — 02:00, 08:00, 14:00 y 20:00 (hora local del servidor)
+  - `env.rppc-backfill.example` — plantilla de lote (`RPPC_BACKFILL_LIMITE`, etc.)
+
 - **Frontend modular (visor catastral)**  
   Interfaz en `index.html` con assets partidos en módulos:
   - `css/00-base.css` … `css/55-modulos-portal.css`
@@ -130,92 +146,160 @@ Tras cambios en JS/CSS, actualizar el parámetro `?v=` en `index.html`. Referenc
 
 ---
 
-## Integración RPPC — Documento registral (jun 2026)
+## Integración RPPC — Documento registral (jul 2026)
 
-Consulta al **RPPC de Baja California** (enlace remoto) desde el visor: dado un **folio real** o clave catastral, obtiene movimientos, partida, `DOC_TRAMITE_ID` y muestra el **PDF** en la pestaña **Documento RPPC** del popup predio.
+Consulta al **RPPC de Baja California** (enlace remoto) desde el visor: dado un **folio real** o clave catastral, obtiene movimientos, partida, `DOC_TRAMITE_ID` (o **Hoja de Inscripción por partida** en inscripciones antiguas) y muestra el **PDF** en la pestaña **Documento RPPC** del popup predio.
+
+Instancia **Tijuana**: municipio RPPC `2`, localidad `1`, cookie en `/opt/catastro_tijuana_api/.runtime/rppc_cookie.txt`, API en puerto **9001** (`catastro-tijuana-api.service`).
 
 ### Arquitectura
 
 | Capa | Rol |
 |------|-----|
 | **Visor** (`js/52-popup-rppc.js`) | Pestaña en popup; `fetch` con JWT SGC; PDF en iframe vía blob URL |
-| **API SGC** (`routers/rppc.py`) | Proxy autenticado; no expone credenciales RPPC al navegador |
+| **API SGC** (`routers/rppc.py`) | Proxy autenticado; cascada clave → unidad (XL) → folio; no expone cookie RPPC al navegador |
+| **Backfill** (`services/rppc_backfill_masivo.py`) | Job interno: recorre `padron_2026` sin `folio_real` y persiste resultados |
 | **RPPC externo** | WebAPI ASP.NET en `rppcweb.ebajacalifornia.gob.mx` |
 
-**Autenticación RPPC:** la sesión válida es la cookie ASP.NET **`.AspNet.ApplicationCookie`** (login del portal enlace remoto), **no** un login REST directo desde la API. La cookie se inyecta en cada request al RPPC.
+**Autenticación RPPC:** sesión válida = cookie ASP.NET **`.AspNet.ApplicationCookie`** (login activo en portal enlace remoto). Copiar desde F12 → Application → Cookies tras iniciar sesión en el portal.
 
 **Prioridad de cookie:**
 
-1. Archivo runtime: `/opt/catastro_tijuana_api/.runtime/rppc_cookie.txt` (renovación automática con Playwright)
-2. Respaldo manual: variable `RPPC_COOKIE` en `.env` del servidor
+1. **Recomendado:** `/opt/catastro_tijuana_api/.runtime/rppc_cookie.txt` (≥400 caracteres, incluye `.AspNet.ApplicationCookie`)
+2. Respaldo: variable `RPPC_COOKIE` en `.env`
 
-**Script de renovación (solo servidor):** `/opt/catastro_tijuana_api/rppc_renovar_cookie.py` — usa `RPPC_USUARIO` / `RPPC_PASSWORD` del enlace remoto (cuenta distinta al usuario SGC).
+**Renovación automática:** `rppc_renovar_cookie.py` (Playwright) — **no usar en producción** hasta corregirlo (generaba cookies incompletas). Renovar manualmente desde F12 y reiniciar la API.
 
 ### Variables `.env` (API — no versionar)
 
 | Variable | Uso |
 |----------|-----|
-| `RPPC_USUARIO` / `RPPC_PASSWORD` | Credenciales **enlace remoto RPPC** (Playwright) |
-| `RPPC_COOKIE` | Cookie manual de respaldo (contiene `.AspNet.ApplicationCookie=…`) |
-| `RPPC_BASE_URL` | Base del portal (default producción BC) |
-| `RPPC_SESSION_PATH` | Preflight sesión (`/rppapp/inicio?remoto=1`) |
-| `RPPC_SSL_LEGACY`, `RPPC_SSL_SECLEVEL`, `RPPC_SSL_MIN_TLS` | TLS legacy (OpenSSL 3 / Ubuntu) |
-| `RPPC_RUNTIME_COOKIE_FILE` | Ruta del archivo de cookie (opcional) |
-| `RPPC_RENOVAR_COOKIE_SCRIPT` | Ruta del script Playwright (opcional) |
+| `RPPC_USUARIO` / `RPPC_PASSWORD` | Credenciales enlace remoto (Playwright / pruebas) |
+| `RPPC_USUARIO_ID` | ID usuario RPPC para consultas (ej. Tijuana: `5526`) |
+| `RPPC_MUNICIPIO_ID` / `RPPC_LOCALIDAD_ID` | Tijuana: `2` / `1` |
+| `RPPC_COOKIE` | Cookie manual de respaldo |
+| `RPPC_RUNTIME_COOKIE_FILE` | Ruta del archivo de cookie (default `.runtime/rppc_cookie.txt`) |
+| `RPPC_BASE_URL`, `RPPC_SESSION_PATH`, `RPPC_SSL_*` | Portal y TLS legacy |
 
-### Endpoints API (`/api/catastro-tijuana/rppc/…`, JWT requerido salvo visor PDF)
+### Endpoints API (`/rppc/…`, JWT + permiso pestaña RPPC; backfill solo **admin**)
 
 | Método | Ruta | Descripción |
 |--------|------|-------------|
-| `GET` | `/diagnostico` | Prueba conexión, cookie, consulta folio de prueba |
-| `POST` | `/sesion/renovar` | Renueva cookie vía Playwright |
-| `GET` | `/resolver/folio/{folio}` | Cadena folio → partida → `doc_tramite_id` |
-| `GET` | `/resolver/clave/{clave}` | Igual por clave catastral (padrón) |
-| `GET` | `/inmuebles/clave/{clave}` | Inmuebles RPPC por clave (backfill folios) |
-| `GET` | `/movimientos/folio/{folio}` | Lista movimientos del folio |
-| `GET` | `/pdf/folio/{folio}` | PDF por folio |
-| `GET` | `/pdf/clave/{clave}` | PDF por clave |
-| `GET` | `/pdf/doc/{doc_tramite_id}` | PDF directo (JWT) |
-| `GET` | `/visor/pdf/doc/{doc_tramite_id}` | PDF para iframe del visor |
+| `GET` | `/diagnostico` | Cookie, `consultaInmuebles` rápida (`?rapido=1`) |
+| `GET` | `/inmuebles/clave/{clave}` | Cascada clave / unidad / ubicación → folio |
+| `GET` | `/inmuebles/unidad` | Búsqueda por LOCAL + manzana + colonia RPPC |
+| `GET` | `/resolver/clave/{clave}` | Folio + partida + `pdf_url` (cache en padrón) |
+| `GET` | `/resolver/folio/{folio}` | Igual por folio real |
+| `GET` | `/movimientos/folio/{folio}` | Movimientos (`obtenerMovimientosLote`) |
+| `GET` | `/pdf/clave/{clave}` · `/pdf/folio/{folio}` · `/pdf/partida/{partida}` | PDF registral |
+| `POST` | `/precalcular/clave/{clave}` | Comparación titular en segundo plano |
+| `GET` | `/backfill/resumen` | Conteos padrón (con folio / pendientes) — **admin** |
+| `POST` | `/backfill/lote` | Inicia lote en background — **admin** |
+| `GET` | `/backfill/estado` | Progreso del lote — **admin** |
+| `POST` | `/backfill/detener` | Detiene tras la clave actual — **admin** |
 
-Flujo interno típico: `ConsultaAvanzada/obtenerMovimientosLote` → `obtenerInscripcionesPart` → PDF por partida o `ObtenerDocumentoPorId`.
+Flujo típico visor: cascada inmuebles → folio → movimientos → partida → PDF (por `DOC_TRAMITE_ID` o hoja por partida).
 
-### Operación en servidor
+### Backfill masivo `folio_real` (padrón completo Tijuana)
+
+Persiste en `catalogos.padron_2026`: `folio_real`, `rppc_partida`, `rppc_doc_tramite_id`, PDF local opcional.
+
+**Resumen del padrón:**
 
 ```bash
-# Diagnóstico (con token SGC)
-curl -s -H "Authorization: Bearer $TOKEN" \
-  "https://<host>/api/catastro-tijuana/rppc/diagnostico" | python3 -m json.tool
+cd /opt/catastro_tijuana_api
+./venv/bin/python3 scripts/rppc_backfill_masivo_tijuana.py --resumen
+```
 
-# Renovar sesión RPPC
-curl -s -X POST -H "Authorization: Bearer $TOKEN" \
-  "https://<host>/api/catastro-tijuana/rppc/sesion/renovar"
+**Un lote manual (100 claves, solo folio — más rápido):**
 
-# Tras desplegar backend
+```bash
+./venv/bin/python3 scripts/rppc_backfill_masivo_tijuana.py --limite 100 --nivel folio --pausa 2
+```
+
+| `nivel` | Qué guarda |
+|---------|------------|
+| `folio` | Solo `folio_real` (recomendado fase 1) |
+| `resolver` | Folio + partida + metadatos documento |
+| `pdf` | Lo anterior + PDF en cache local |
+
+**Timer systemd (automático, 4× día, 200 claves/lote por defecto):**
+
+```bash
+cd /opt/catastro_tijuana_api
+sudo sed 's/\r$//' deploy/systemd/catastro-rppc-backfill.service | sudo tee /etc/systemd/system/catastro-rppc-backfill.service > /dev/null
+sudo sed 's/\r$//' deploy/systemd/catastro-rppc-backfill.timer   | sudo tee /etc/systemd/system/catastro-rppc-backfill.timer   > /dev/null
+sudo cp deploy/systemd/env.rppc-backfill.example .env.rppc-backfill   # opcional
+sudo systemctl daemon-reload
+sudo systemctl enable --now catastro-rppc-backfill.timer
+systemctl list-timers catastro-rppc-backfill.timer
+```
+
+Lanzar un lote **sin bloquear la terminal** (200 claves pueden tardar horas):
+
+```bash
+sudo systemctl start --no-block catastro-rppc-backfill.service
+sudo journalctl -u catastro-rppc-backfill -f
+```
+
+Bitácora: `.runtime/rppc_backfill.jsonl` · Lock: `.runtime/rppc_backfill.lock`
+
+Ajuste de lote en `.env.rppc-backfill`: `RPPC_BACKFILL_LIMITE`, `RPPC_BACKFILL_PAUSA`, `RPPC_BACKFILL_NIVEL`.
+
+### Operación en servidor (Tijuana)
+
+```bash
+# Cookie RPPC (tras login en portal, F12)
+sudo tee /opt/catastro_tijuana_api/.runtime/rppc_cookie.txt > /dev/null << 'EOF'
+...cookie completa...
+EOF
+sudo chmod 600 /opt/catastro_tijuana_api/.runtime/rppc_cookie.txt
 sudo systemctl restart catastro-tijuana-api
+
+# Diagnóstico
+TOKEN=$(curl -s -X POST http://127.0.0.1:9001/login \
+  -H "Content-Type: application/json" \
+  -d '{"usuario":"admin","password":"admin123","tipo_sesion":"servicio"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+curl -s "http://127.0.0.1:9001/rppc/diagnostico?rapido=1" \
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 ```
 
-**Cron sugerido** (renovar cookie antes de expirar, p. ej. cada 6 h):
+### Despliegue archivos RPPC / backfill
 
-```cron
-0 */6 * * * cd /opt/catastro_tijuana_api && ./venv/bin/python3 rppc_renovar_cookie.py
-```
+Subir a `/opt/catastro_tijuana_api/`:
 
-### Despliegue visor
+| Ruta | Cuándo |
+|------|--------|
+| `routers/rppc.py` | Lógica RPPC, resolver, backfill API |
+| `services/__init__.py`, `services/rppc_backfill_masivo.py` | Job backfill |
+| `scripts/rppc_backfill_masivo_tijuana.py` | CLI |
+| `deploy/systemd/*` | Timer (solo servidor) |
 
-Subir a `/var/www/catastro_tijuana/`: `index.html`, `css/55-modulos-portal.css`, `js/05-modulos-portal.js`, `js/52-popup-rppc.js`. Recarga **Ctrl+F5**.
+Visor: `js/52-popup-rppc.js`, `js/05-modulos-portal.js`, `index.html` → `/var/www/catastro_tijuana/` + **Ctrl+F5**.
 
 ### Validación rápida
 
-- `rppc_cookie_configurada: true` en `/rppc/diagnostico`
-- `post_ok: true` con folio de prueba (ej. `3454`)
-- Popup predio → pestaña **Documento RPPC** → PDF visible
+- `diagnostico?rapido=1` → `ok: true`, cookie `valida: true`
+- Clave unidad (ej. `XL701261`) → folio en pestaña RPPC + PDF
+- `scripts/rppc_backfill_masivo_tijuana.py --resumen` → `con_folio` incrementa tras lotes
 
-**Archivos clave:** `routers/rppc.py`, `config.py`, `js/52-popup-rppc.js`, `js/05-modulos-portal.js`, `css/55-modulos-portal.css`, `index.html`.
+**Archivos clave:** `routers/rppc.py`, `services/rppc_backfill_masivo.py`, `scripts/rppc_backfill_masivo_tijuana.py`, `js/52-popup-rppc.js`, `.runtime/rppc_cookie.txt`.
 
 ---
 
-## Estado actual del visor (13 jun 2026)
+## Integración RPPC — sección histórica (jun 2026)
+
+<details>
+<summary>Texto anterior (Mexicali / referencia)</summary>
+
+Consulta al RPPC desde el visor con proxy FastAPI. Endpoints legacy en puerto 9000 / `/opt/catastro_api`. Ver sección **Integración RPPC — Documento registral (jul 2026)** arriba para Tijuana.
+
+</details>
+
+---
+
+## Estado anterior visor (13 jun 2026)
 
 ### Carta Urbana 2040 — **v108–v118** (validado en producción)
 
@@ -247,11 +331,13 @@ Pestaña **Carta Urbana 2040** en popup predio (Gestión Catastral):
 - Cédula de movimiento con vista previa cartográfica (`js/44-cedula-numero-oficial-preview.js`).
 
 ### Pendiente / mejoras futuras
-- [ ] Cron systemd o timer para `rppc_renovar_cookie.py` en todos los entornos.
-- [ ] Incluir `rppc_renovar_cookie.py` en repo (sin credenciales) y `.env.example`.
-- [ ] Despliegue permanente del endpoint carta urbana en API si aún no está en todos los entornos.
-- [ ] Revisar consulta WFS construcciones (`construccionesmxli`) — timeout GeoServer en algunas claves.
-- [ ] Integrar herramientas del panel de trabajo en fichas del predio según privilegios.
+- [x] Timer systemd backfill RPPC (`deploy/systemd/catastro-rppc-backfill.timer`) — jul 2026
+- [ ] Corregir `rppc_renovar_cookie.py` (cookie completa con `.AspNet.ApplicationCookie`)
+- [ ] Cron o timer para renovación manual documentada de cookie RPPC
+- [ ] Despliegue permanente del endpoint carta urbana en API si aún no está en todos los entornos
+- [ ] Revisar consulta WFS construcciones (`construccionesmxli`) — timeout GeoServer en algunas claves
+- [ ] Integrar herramientas del panel de trabajo en fichas del predio según privilegios
+- [ ] Optimizar cascada unidad XL (tiempo de respuesta en claves condominio)
 
 ---
 
@@ -299,22 +385,19 @@ uvicorn main:app --host 0.0.0.0 --port 9000
 
 ## Despliegue observado
 
-En producción se identificó una ejecución equivalente a:
+**Tijuana (producción actual):**
+
+```text
+/opt/catastro_tijuana_api
+catastro-tijuana-api.service  →  uvicorn main:app --host 0.0.0.0 --port 9001
+/var/www/catastro_tijuana/    →  visor web
+```
+
+**Referencia histórica Mexicali:**
 
 ```bash
-/opt/catastro_api/venv/bin/python3 /opt/catastro_api/venv/bin/uvicorn main:app --host 0.0.0.0 --port 9000
-```
-
-Servicio principal observado:
-
-```text
+/opt/catastro_api/venv/bin/python3 ... uvicorn main:app --host 0.0.0.0 --port 9000
 catastro-api.service
-```
-
-Ruta operativa observada:
-
-```text
-/opt/catastro_api
 ```
 
 ---

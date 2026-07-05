@@ -1,0 +1,22 @@
+[Unit]
+Description=Backfill RPPC folio_real — un lote del padrón Tijuana
+Documentation=file:/opt/catastro_tijuana_api/scripts/rppc_backfill_masivo_tijuana.py
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/catastro_tijuana_api
+EnvironmentFile=-/opt/catastro_tijuana_api/.env.rppc-backfill
+Environment=RPPC_BACKFILL_LIMITE=200
+Environment=RPPC_BACKFILL_PAUSA=2
+Environment=RPPC_BACKFILL_NIVEL=folio
+ExecStart=/opt/catastro_tijuana_api/venv/bin/python3 /opt/catastro_tijuana_api/scripts/rppc_backfill_masivo_tijuana.py --limite ${RPPC_BACKFILL_LIMITE} --nivel ${RPPC_BACKFILL_NIVEL} --pausa ${RPPC_BACKFILL_PAUSA}
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=catastro-rppc-backfill
+# Evita solaparse con una corrida manual larga (--loop)
+TimeoutStartSec=6h
+
+[Install]
+WantedBy=multi-user.target

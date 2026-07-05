@@ -12,6 +12,9 @@ env/
 .env
 .env.*
 
+# Sesión RPPC (cookie manual, no versionar)
+.runtime/
+
 # Logs y temporales
 *.log
 *.tmp

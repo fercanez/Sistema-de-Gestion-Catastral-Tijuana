@@ -1,0 +1,13 @@
+[Unit]
+Description=Timer backfill RPPC — lotes automáticos del padrón Tijuana
+Documentation=file:/opt/catastro_tijuana_api/deploy/systemd/catastro-rppc-backfill.service
+
+[Timer]
+# 02:00, 08:00, 14:00 y 20:00 (hora local del servidor)
+OnCalendar=*-*-* 02,08,14,20:00:00
+Persistent=true
+RandomizedDelaySec=300
+Unit=catastro-rppc-backfill.service
+
+[Install]
+WantedBy=timers.target

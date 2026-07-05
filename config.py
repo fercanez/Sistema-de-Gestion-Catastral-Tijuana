@@ -75,4 +75,29 @@ RPPC_SSL_MIN_TLS = os.getenv("RPPC_SSL_MIN_TLS", "1.2" if not RPPC_SSL_LEGACY el
 # Cookie RPPC opcional para pruebas / sesión manual.
 # IMPORTANTE: no subir esta variable a GitHub; debe vivir solo en .env del servidor.
 RPPC_COOKIE = os.getenv("RPPC_COOKIE", "").strip()
+# Catálogo RPPC Consulta Avanzada (Tijuana = 2 en portal BC).
+def _env_int(name: str, default: int) -> int:
+    raw = os.getenv(name, str(default))
+    if raw is None or str(raw).strip() == "":
+        return default
+    return int(str(raw).strip())
+
+
+RPPC_MUNICIPIO_ID = _env_int("RPPC_MUNICIPIO_ID", 2)
+RPPC_LOCALIDAD_ID = _env_int("RPPC_LOCALIDAD_ID", 1)
+
+
+def _env_int_optional(name: str) -> int | None:
+    raw = os.getenv(name, "").strip()
+    if not raw:
+        return None
+    try:
+        val = int(raw)
+        return val if val > 0 else None
+    except ValueError:
+        return None
+
+
+# ID numérico del usuario enlace remoto RPPC (copiar del payload F12 → consultaInmuebles).
+RPPC_USUARIO_ID = _env_int_optional("RPPC_USUARIO_ID")
 

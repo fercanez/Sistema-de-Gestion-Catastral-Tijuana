@@ -1318,6 +1318,37 @@ function urlArchivoTijuanaProxy(clave, proxyUrl) {
   return `${API}${rel.startsWith("/") ? rel : "/" + rel}`;
 }
 
+function urlArchivoTijuanaProxyPdf(clave, doc) {
+  let url = urlArchivoTijuanaProxy(clave, doc?.proxy_url);
+  if (!url) return "";
+  const pdfRemoto = String(doc?.pdf_url || "").trim();
+  if (pdfRemoto) {
+    const sep = url.includes("?") ? "&" : "?";
+    url += `${sep}pdf_url=${encodeURIComponent(pdfRemoto)}`;
+  }
+  return url;
+}
+
+function urlArchivoTijuanaThumbProxy(clave, doc) {
+  const claveNorm = String(clave || "").trim().toUpperCase();
+  const rel = String(doc?.thumbnail_proxy_url || "").trim();
+  let url = "";
+  if (claveNorm && rel) url = urlArchivoTijuanaProxy(claveNorm, rel);
+  if (!url) return String(doc?.thumbnail_url || "").split("?")[0];
+  const src = String(doc?.thumbnail_url || "").split("?")[0];
+  if (src) url += `?src=${encodeURIComponent(src)}`;
+  return url;
+}
+
+function archivoTijuanaThumbError(img) {
+  if (!img) return;
+  img.onerror = null;
+  img.style.display = "none";
+  const card = img.closest(".popup-archivo-remoto-card");
+  const fallback = card?.querySelector(".popup-archivo-remoto-sin-thumb");
+  if (fallback) fallback.classList.remove("oculto");
+}
+
 function urlAdeudosTijuanaApi(clave) {
   const claveNorm = String(clave || "").trim().toUpperCase();
   if (!claveNorm || typeof API === "undefined" || !API) return "";
@@ -1338,6 +1369,69 @@ const POPUP_FOTOS_SLOTS = [
 let popupArchivoClaveActual = "";
 let popupArchivoTijuanaDocs = [];
 let popupArchivoTijuanaSeleccionado = "";
+let popupArchivoTijuanaCargaSeq = 0;
+const popupArchivoThumbBlobCache = new Map();
+
+function limpiarCacheThumbsArchivoTijuana() {
+  popupArchivoThumbBlobCache.forEach(function(blobUrl) {
+    try { URL.revokeObjectURL(blobUrl); } catch (_) {}
+  });
+  popupArchivoThumbBlobCache.clear();
+}
+
+async function cargarThumbArchivoTijuanaCard(doc, cardEl) {
+  if (!doc || !cardEl || !cardEl.isConnected) return;
+  const img = cardEl.querySelector("img");
+  const fallback = cardEl.querySelector(".popup-archivo-remoto-sin-thumb");
+  if (!img) return;
+
+  const cacheKey = `${popupArchivoClaveActual}|${doc.nombre_archivo || ""}`;
+  if (popupArchivoThumbBlobCache.has(cacheKey)) {
+    img.src = popupArchivoThumbBlobCache.get(cacheKey);
+    img.style.display = "";
+    if (fallback) fallback.classList.add("oculto");
+    return;
+  }
+
+  const url = urlArchivoTijuanaThumbProxy(popupArchivoClaveActual, doc);
+  if (!url) {
+    archivoTijuanaThumbError(img);
+    return;
+  }
+
+  try {
+    const headers = typeof authHeaders === "function" ? authHeaders() : {};
+    const r = await fetch(url, { headers: headers, cache: "no-store" });
+    if (!r.ok) throw new Error(String(r.status));
+    const blobUrl = URL.createObjectURL(await r.blob());
+    popupArchivoThumbBlobCache.set(cacheKey, blobUrl);
+    if (!cardEl.isConnected) return;
+    img.onerror = null;
+    img.src = blobUrl;
+    img.style.display = "";
+    if (fallback) fallback.classList.add("oculto");
+  } catch (_) {
+    if (cardEl.isConnected) archivoTijuanaThumbError(img);
+  }
+}
+
+async function cargarThumbsArchivoTijuanaLista(documentos) {
+  const cards = Array.from(document.querySelectorAll("#popupArchivoTijuanaLista .popup-archivo-remoto-card"));
+  const docs = Array.isArray(documentos) ? documentos : [];
+  let cursor = 0;
+  const workers = Math.min(4, Math.max(1, docs.length));
+
+  async function worker() {
+    while (cursor < docs.length) {
+      const idx = cursor++;
+      const doc = docs[idx];
+      const card = cards[idx];
+      if (doc && card) await cargarThumbArchivoTijuanaCard(doc, card);
+    }
+  }
+
+  await Promise.all(Array.from({ length: workers }, () => worker()));
+}
 
 function puedeGestionarFotosArchivo() {
   return typeof puedeEditarCatastro === "function" && puedeEditarCatastro();
@@ -1629,12 +1723,12 @@ async function eliminarFotoArchivo(slot) {
 
 function htmlArchivoTijuanaDocumentoCard(doc, idx) {
   const id = popupEsc(doc?.nombre_archivo || `doc-${idx}`);
-  const thumb = popupEsc(doc?.thumbnail_url || "");
   const titulo = popupEsc(doc?.descripcion || `Documento #${idx + 1}`);
   return `
     <button type="button" class="popup-archivo-remoto-card" data-archivo="${id}" onclick="seleccionarArchivoTijuanaRemoto(this.dataset.archivo)" title="${titulo}">
       <span class="popup-archivo-remoto-num">${idx + 1}</span>
-      ${thumb ? `<img src="${thumb}" alt="${titulo}" loading="lazy">` : `<span class="popup-archivo-remoto-sin-thumb">PDF</span>`}
+      <img alt="${titulo}" decoding="async" style="display:none" onerror="archivoTijuanaThumbError(this)">
+      <span class="popup-archivo-remoto-sin-thumb">PDF</span>
     </button>`;
 }
 
@@ -1642,6 +1736,7 @@ function pintarArchivoTijuanaLista(documentos) {
   const cont = document.getElementById("popupArchivoTijuanaLista");
   const resumen = document.getElementById("popupArchivoTijuanaResumen");
   if (!cont) return;
+  limpiarCacheThumbsArchivoTijuana();
   popupArchivoTijuanaDocs = Array.isArray(documentos) ? documentos : [];
   if (resumen) {
     resumen.textContent = popupArchivoTijuanaDocs.length
@@ -1653,12 +1748,15 @@ function pintarArchivoTijuanaLista(documentos) {
     return;
   }
   cont.innerHTML = popupArchivoTijuanaDocs.map(htmlArchivoTijuanaDocumentoCard).join("");
+  void cargarThumbsArchivoTijuanaLista(popupArchivoTijuanaDocs);
 }
 
 async function seleccionarArchivoTijuanaRemoto(nombreArchivo) {
   const claveNorm = popupArchivoClaveActual;
   const doc = popupArchivoTijuanaDocs.find(d => String(d.nombre_archivo || "") === String(nombreArchivo || ""));
   if (!claveNorm || !doc) return;
+
+  const seq = ++popupArchivoTijuanaCargaSeq;
   popupArchivoTijuanaSeleccionado = doc.nombre_archivo;
   document.querySelectorAll(".popup-archivo-remoto-card").forEach(btn => {
     btn.classList.toggle("activo", btn.dataset.archivo === doc.nombre_archivo);
@@ -1666,28 +1764,32 @@ async function seleccionarArchivoTijuanaRemoto(nombreArchivo) {
 
   const frame = document.getElementById("popupArchivoDigitalExternoFrame");
   const estado = document.getElementById("popupArchivoEstado");
-  const btnExterno = document.getElementById("popupArchivoBtnExterno");
-  const urlProxy = urlArchivoTijuanaProxy(claveNorm, doc.proxy_url);
+  const urlProxy = urlArchivoTijuanaProxyPdf(claveNorm, doc);
   if (!urlProxy) return;
 
-  if (estado) estado.textContent = `Cargando ${doc.descripcion || doc.nombre_archivo}…`;
+  if (typeof setPopupArchivoUrlOriginal === "function") {
+    setPopupArchivoUrlOriginal(urlProxy);
+  }
+
+  if (estado) {
+    estado.textContent = `Cargando ${doc.descripcion || doc.nombre_archivo}…`;
+    estado.classList.remove("popup-archivo-estado-error");
+  }
   try {
     const urlVisor = typeof resolverUrlDocumentoConMarcaAgua === "function"
       ? await resolverUrlDocumentoConMarcaAgua(urlProxy, doc.nombre_archivo, `tij-${claveNorm}-${doc.nombre_archivo}`, {
+          forzarMarca: true,
           tipoVisor: "archivo"
         })
       : urlProxy;
+    if (seq !== popupArchivoTijuanaCargaSeq) return;
     if (frame) frame.src = urlVisor;
-    if (btnExterno) {
-      btnExterno.href = urlVisor;
-      btnExterno.classList.remove("oculto");
-      btnExterno.textContent = "Abrir PDF";
-    }
     if (estado) {
       estado.textContent = `${doc.descripcion || doc.nombre_archivo} listo.`;
       estado.classList.remove("popup-archivo-estado-error");
     }
   } catch (e) {
+    if (seq !== popupArchivoTijuanaCargaSeq) return;
     if (estado) {
       estado.textContent = e.message || "No se pudo cargar el documento remoto Tijuana.";
       estado.classList.add("popup-archivo-estado-error");
@@ -1709,7 +1811,7 @@ async function cargarArchivosTijuanaRemotos(claveNorm) {
     if (!r.ok) throw new Error(data.detail || "No se pudieron consultar documentos remotos Tijuana");
     pintarArchivoTijuanaLista(data.documentos || []);
     if ((data.documentos || []).length) {
-      await seleccionarArchivoTijuanaRemoto(data.documentos[0].nombre_archivo);
+      void seleccionarArchivoTijuanaRemoto(data.documentos[0].nombre_archivo);
     }
   } catch (e) {
     popupArchivoTijuanaDocs = [];
@@ -1740,8 +1842,8 @@ async function pintarPopupTabArchivo(clave, p) {
     : urlExt;
   popupArchivoClaveActual = claveNorm;
 
-  const botonesMarca = typeof htmlBotonesMarcaAguaDocumento === "function"
-    ? htmlBotonesMarcaAguaDocumento("popupArchivoBtnMarcaAgua", "toggleMarcaAguaArchivoExterno()", "imprimirArchivoConMarcaAgua()")
+  const botonesMarca = typeof htmlBotonesImpresionArchivoTijuana === "function"
+    ? htmlBotonesImpresionArchivoTijuana()
     : "";
   const overlayMarca = typeof htmlOverlayMarcaAguaDocumento === "function"
     ? htmlOverlayMarcaAguaDocumento("popupArchivoMarcaAguaOverlay")
@@ -1754,20 +1856,20 @@ async function pintarPopupTabArchivo(clave, p) {
           <span>Archivo digital Tijuana</span>
           <div class="popup-archivo-head-acciones">
             ${botonesMarca}
-            <a id="popupArchivoBtnExterno" class="popup-archivo-link-externo oculto" href="#" target="_blank" rel="noopener noreferrer">Abrir PDF</a>
-            <a class="popup-archivo-link-externo" href="${popupEsc(urlExt)}" target="_blank" rel="noopener noreferrer">Abrir portal Tijuana</a>
           </div>
         </header>
         <p id="popupArchivoEstado" class="popup-archivo-estado">Preparando archivo digital Tijuana…</p>
-        <div class="popup-archivo-remoto">
-          <div id="popupArchivoTijuanaResumen" class="popup-archivo-remoto-resumen">Consultando documentos remotos Tijuana…</div>
-          <div id="popupArchivoTijuanaLista" class="popup-archivo-remoto-lista"></div>
+        <div class="popup-archivo-remoto-cuerpo">
+          <aside class="popup-archivo-remoto-sidebar">
+            <div id="popupArchivoTijuanaResumen" class="popup-archivo-remoto-resumen">Consultando documentos remotos Tijuana…</div>
+            <div id="popupArchivoTijuanaLista" class="popup-archivo-remoto-lista"></div>
+          </aside>
+          <div class="popup-archivo-iframe-wrap" id="popupArchivoVisorWrap">
+            <iframe id="popupArchivoDigitalExternoFrame" class="popup-archivo-iframe" title="Archivo digital ${popupEsc(claveNorm)}" src="about:blank"></iframe>
+            ${overlayMarca}
+          </div>
         </div>
-        <div class="popup-archivo-iframe-wrap" id="popupArchivoVisorWrap">
-          <iframe id="popupArchivoDigitalExternoFrame" class="popup-archivo-iframe" title="Archivo digital ${popupEsc(claveNorm)}" src="about:blank"></iframe>
-          ${overlayMarca}
-        </div>
-        <p class="popup-marca-agua-aviso">Los documentos se muestran con la leyenda «Documento sin validez oficial». Use «Imprimir con marca» para imprimir el PDF con la leyenda incluida.</p>
+        <p class="popup-marca-agua-aviso">Los documentos se muestran con la leyenda «Documento sin validez oficial». Use «Imprimir con marca» o «Imprimir sin marca» según corresponda.</p>
         <div class="popup-archivo-clave-ref">Clave catastral: <b>${popupEsc(claveNorm)}</b></div>
       </section>
       <section class="popup-archivo-panel popup-archivo-fotos">
@@ -2029,6 +2131,8 @@ window.urlAdeudosTijuanaApi = urlAdeudosTijuanaApi;
 window.cargarAdeudosTijuanaRemotos = cargarAdeudosTijuanaRemotos;
 window.abrirPopupAdeudosTijuana = abrirPopupAdeudosTijuana;
 window.cerrarPopupAdeudosTijuana = cerrarPopupAdeudosTijuana;
+window.archivoTijuanaThumbError = archivoTijuanaThumbError;
+window.limpiarCacheThumbsArchivoTijuana = limpiarCacheThumbsArchivoTijuana;
 window.cargarArchivosTijuanaRemotos = cargarArchivosTijuanaRemotos;
 window.seleccionarArchivoTijuanaRemoto = seleccionarArchivoTijuanaRemoto;
 window.seleccionarFotoArchivo = seleccionarFotoArchivo;

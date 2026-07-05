@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+"""DEPRECATED: use scripts/rppc_backfill_masivo_tijuana.py (Tijuana, puerto 9001)."""
 import json
 import os
 import time
