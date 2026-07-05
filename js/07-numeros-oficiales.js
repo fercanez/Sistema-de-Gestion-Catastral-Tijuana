@@ -529,11 +529,16 @@ async function cargarNumerosOficialesCercanosFallback(claveNorm, p) {
 
   let candidatos = [];
   for (const radio of [150, 250, 400, 500, 700]) {
-    const fc = await popupNumofFetchJson(
-      `${API}/predios/cercanos?lon=${lon}&lat=${lat}&radio=${radio}&_=${Date.now()}`
-    );
-    candidatos = fc?.features || [];
-    if (candidatos.length >= 80) break;
+    try {
+      const fc = await popupNumofFetchJson(
+        `${API}/predios/cercanos?lon=${lon}&lat=${lat}&radio=${radio}&_=${Date.now()}`
+      );
+      candidatos = fc?.features || [];
+      if (candidatos.length >= 80) break;
+    } catch (e) {
+      if (radio >= 500) continue;
+      throw e;
+    }
   }
 
   const pool = [];

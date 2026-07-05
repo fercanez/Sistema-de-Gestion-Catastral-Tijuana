@@ -1021,7 +1021,7 @@ def predio_por_coordenada(
 def predios_cercanos(
     lon: float = Query(...),
     lat: float = Query(...),
-    radio: float = Query(50, ge=1, le=500),
+    radio: float = Query(50, ge=1, le=1000),
     usuario_actual: dict = Depends(obtener_usuario_actual)
 ):
     try:
