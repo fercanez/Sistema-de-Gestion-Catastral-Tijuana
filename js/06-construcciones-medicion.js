@@ -1103,6 +1103,30 @@ function popupConstrFormatTipo(tipo) {
   return t.charAt(0).toUpperCase() + t.slice(1).toLowerCase();
 }
 
+function popupConstrNormalizarRespuestaConstrucciones(data) {
+  if (!data) return data;
+  const out = { ...data };
+  if (out.geojson && !out._geojson) out._geojson = out.geojson;
+  if (out._geojson && !out._geojson_crs) {
+    out._geojson_crs = out._geojson?.crs?.properties?.name || "EPSG:32611";
+  }
+  return out;
+}
+
+function popupConstrHtmlResumenCapa(data, lista) {
+  const res = data?.resumen || {};
+  const supHor = res.sup_hor_total != null ? Number(res.sup_hor_total).toFixed(3) : null;
+  const supTot = res.sup_total_acum != null ? Number(res.sup_total_acum).toFixed(3) : null;
+  if (!supHor && !supTot && lista.length <= 1) return "";
+  return `
+    <div class="popup-construcciones-capa-totales">
+      <div><span>Registros</span><b>${lista.length}</b></div>
+      ${supHor ? `<div><span>Σ sup. horizontal</span><b>${supHor} m²</b></div>` : ""}
+      ${supTot ? `<div><span>Σ sup. total</span><b>${supTot} m²</b></div>` : ""}
+    </div>
+  `;
+}
+
 function popupConstrHtmlCapaConstrucciones(data) {
   const lista = data?.construcciones || [];
   if (!lista.length) {
@@ -1115,12 +1139,15 @@ function popupConstrHtmlCapaConstrucciones(data) {
   if (lista.length === 1) {
     const c = lista[0];
     const sup = c.suphor != null ? Number(c.suphor).toFixed(3) : "—";
+    const supT = c.sup_total != null ? Number(c.sup_total).toFixed(3) : "—";
     const per = c.perimetro != null ? Number(c.perimetro).toFixed(4) : "—";
     return `
       <div class="popup-construcciones-capa-head">Construcciones de la clave (capa cartográfica)</div>
+      ${popupConstrHtmlResumenCapa(data, lista)}
       <div class="popup-construcciones-capa-resumen">
         <div><span>Niveles</span><b>${c.niveles ?? "—"}</b></div>
         <div><span>Superficie horizontal</span><b>${sup !== "—" ? sup + " m²" : "—"}</b></div>
+        <div><span>Superficie total</span><b>${supT !== "—" ? supT + " m²" : "—"}</b></div>
         <div><span>Tipo de construcción</span><b>${popupConstrFormatTipo(c.tipo)}</b></div>
         <div><span>Clave construcción</span><b>${c.claveconst ?? "—"}</b></div>
         <div><span>Perímetro</span><b>${per !== "—" ? per + " m" : "—"}</b></div>
@@ -1131,12 +1158,14 @@ function popupConstrHtmlCapaConstrucciones(data) {
 
   const filas = lista.map(c => {
     const sup = c.suphor != null ? Number(c.suphor).toFixed(3) : "—";
+    const supT = c.sup_total != null ? Number(c.sup_total).toFixed(3) : "—";
     const per = c.perimetro != null ? Number(c.perimetro).toFixed(4) : "—";
     return `
       <tr>
         <td>${c.claveconst ?? "—"}</td>
         <td>${c.niveles ?? "—"}</td>
         <td>${sup !== "—" ? sup : "—"}</td>
+        <td>${supT !== "—" ? supT : "—"}</td>
         <td>${popupConstrFormatTipo(c.tipo)}</td>
         <td>${per !== "—" ? per : "—"}</td>
       </tr>
@@ -1145,6 +1174,7 @@ function popupConstrHtmlCapaConstrucciones(data) {
 
   return `
     <div class="popup-construcciones-capa-head">Construcciones de la clave (capa cartográfica) — ${lista.length} registros</div>
+    ${popupConstrHtmlResumenCapa(data, lista)}
     <div class="popup-construcciones-capa-scroll">
       <table class="popup-construcciones-capa-tabla">
         <thead>
@@ -1152,6 +1182,7 @@ function popupConstrHtmlCapaConstrucciones(data) {
             <th>Clave const.</th>
             <th>Niveles</th>
             <th>Sup. hor. (m²)</th>
+            <th>Sup. total (m²)</th>
             <th>Tipo</th>
             <th>Perímetro (m)</th>
           </tr>
@@ -1163,7 +1194,8 @@ function popupConstrHtmlCapaConstrucciones(data) {
 }
 
 async function popupConstrFetchConstruccionesWfs(clave) {
-  const cql = encodeURIComponent(`clavecatas='${clave}' OR claveorig='${clave}'`);
+  const claveNorm = String(clave || "").trim().toUpperCase();
+  const cql = encodeURIComponent(`clavecatas='${claveNorm}' OR claveorig='${claveNorm}'`);
   const url = `https://fcnarqnodo.hopto.org/geoserver/geonode/wfs?service=WFS&version=1.1.0&request=GetFeature&typeName=geonode:construcciones_tijuana&outputFormat=application/json&srsName=EPSG:3857&CQL_FILTER=${cql}&maxFeatures=100`;
   const r = await fetch(url, { cache: "no-store" });
   if (!r.ok) throw new Error("WFS construcciones no disponible");
@@ -1176,27 +1208,35 @@ async function popupConstrFetchConstruccionesWfs(clave) {
       claveconst: p.claveconst,
       claveorig: p.claveorig,
       niveles: p.niveles,
-      suphor: p.suphor != null ? Number(p.suphor) : null,
+      suphor: p.suphor != null ? Number(p.suphor) : (p.shape_area != null ? Number(p.shape_area) : null),
+      sup_total: p.sup_total != null ? Number(p.sup_total) : (p.t_const != null ? Number(p.t_const) : null),
       colonia: p.colonia,
       perimetro: p.perimetro != null ? Number(p.perimetro) : null,
-      tipo: p.tipo
+      tipo: p.tipo != null ? p.tipo : p.tconstr
     };
   });
-  return { clave_catastral: clave, total: construcciones.length, construcciones, _geojson: geojson };
+  return popupConstrNormalizarRespuestaConstrucciones({
+    clave_catastral: claveNorm,
+    total: construcciones.length,
+    construcciones,
+    _geojson: geojson,
+    _geojson_crs: "EPSG:3857"
+  });
 }
 
 async function popupConstrFetchConstrucciones(clave) {
   if (!clave) return null;
+  const claveNorm = String(clave || "").trim().toUpperCase();
   try {
     if (typeof API !== "undefined" && typeof authHeaders === "function") {
-      const r = await fetch(`${API}/predios/${encodeURIComponent(clave)}/construcciones`, {
+      const r = await fetch(`${API}/predios/${encodeURIComponent(claveNorm)}/construcciones`, {
         headers: authHeaders(),
         cache: "no-store"
       });
-      if (r.ok) return await r.json();
+      if (r.ok) return popupConstrNormalizarRespuestaConstrucciones(await r.json());
     }
   } catch (e) {}
-  return popupConstrFetchConstruccionesWfs(clave);
+  return popupConstrFetchConstruccionesWfs(claveNorm);
 }
 
 async function popupConstrPintarVectorConstrucciones(clave, geojsonPrecargado) {
@@ -1214,8 +1254,9 @@ async function popupConstrPintarVectorConstrucciones(clave, geojsonPrecargado) {
   }
   if (!geojson?.features?.length) return;
   const fmt = new ol.format.GeoJSON();
+  const dataCrs = geojson.crs?.properties?.name || "EPSG:32611";
   const feats = fmt.readFeatures(geojson, {
-    dataProjection: "EPSG:3857",
+    dataProjection: dataCrs === "EPSG:3857" ? "EPSG:3857" : "EPSG:32611",
     featureProjection: "EPSG:3857"
   });
   src.addFeatures(feats);

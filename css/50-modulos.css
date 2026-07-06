@@ -1448,3 +1448,78 @@ body.analisis-condominios-activo {
     grid-template-columns: 1fr;
   }
 }
+
+.mant-folios-asignar-block {
+  margin: 12px 0 16px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.mant-folios-subtitulo {
+  margin: 0 0 6px;
+  font-size: 14px;
+  color: #703341;
+}
+
+.mant-folios-asignar-intro {
+  margin-bottom: 10px !important;
+}
+
+.mant-folios-asignar-filtros {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.mant-folios-input {
+  min-width: 140px;
+  flex: 1 1 160px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e1;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.mant-folios-buscar-resultados {
+  max-height: 220px;
+  overflow: auto;
+  margin-bottom: 8px;
+}
+
+.mant-folios-grid td,
+.mant-folios-grid th {
+  font-size: 11px;
+}
+
+.mant-folios-asignar-form {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed #cbd5e1;
+}
+
+.mant-folios-asignar-resumen {
+  font-size: 12px;
+  margin-bottom: 8px;
+  color: #334155;
+}
+
+.mant-folios-btn-grabar {
+  margin-top: 8px;
+}
+
+.mant-folios-separador {
+  margin: 16px 0;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+.mant-folios-vacio,
+.mant-folios-buscar-cargando {
+  font-size: 12px;
+  color: #64748b;
+  margin: 8px 0;
+}

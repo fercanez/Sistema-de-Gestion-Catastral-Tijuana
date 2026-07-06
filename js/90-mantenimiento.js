@@ -2133,6 +2133,7 @@ window.abrirMantenimientoFolios = abrirMantenimientoFolios;
 
 function cerrarMantenimientoFolios() {
   document.getElementById("modalMantenimientoFolios")?.classList.add("oculto");
+  limpiarAsignarFolioMantenimiento();
 }
 window.cerrarMantenimientoFolios = cerrarMantenimientoFolios;
 
@@ -2268,3 +2269,144 @@ async function importarFoliosMantenimiento() {
   }
 }
 window.importarFoliosMantenimiento = importarFoliosMantenimiento;
+
+let _mantFoliosClaveAsignar = "";
+
+function limpiarAsignarFolioMantenimiento() {
+  _mantFoliosClaveAsignar = "";
+  const res = document.getElementById("mantFoliosBuscarResultados");
+  const form = document.getElementById("mantFoliosAsignarForm");
+  if (res) res.innerHTML = "";
+  if (form) form.classList.add("oculto");
+}
+
+function seleccionarPredioAsignarFolio(clave) {
+  _mantFoliosClaveAsignar = String(clave || "").trim().toUpperCase();
+  const form = document.getElementById("mantFoliosAsignarForm");
+  const resumen = document.getElementById("mantFoliosAsignarResumen");
+  const inputFolio = document.getElementById("mantFoliosAsignarFolio");
+  if (!form || !resumen || !_mantFoliosClaveAsignar) return;
+
+  const fila = (window._mantFoliosBuscarFilas || []).find(function(r) {
+    return String(r.clave_catastral || "").trim().toUpperCase() === _mantFoliosClaveAsignar;
+  });
+  const folioActual = String(fila?.folio_real || "").trim();
+  const titular = String(fila?.titular_principal || fila?.nombre_completo || "").trim();
+  const colonia = String(fila?.colonia || "").trim();
+
+  resumen.innerHTML =
+    "<b>Clave:</b> " + escapeHtml(_mantFoliosClaveAsignar) +
+    (titular ? " · <b>Titular:</b> " + escapeHtml(titular) : "") +
+    (colonia ? " · <b>Colonia:</b> " + escapeHtml(colonia) : "") +
+    (folioActual && folioActual !== "0" ? " · <b>Folio actual:</b> " + escapeHtml(folioActual) : "");
+
+  if (inputFolio) {
+    inputFolio.value = folioActual && folioActual !== "0" ? folioActual : "";
+  }
+  form.classList.remove("oculto");
+}
+
+async function buscarPadronAsignarFolio() {
+  const clave = String(document.getElementById("mantFoliosBuscarClave")?.value || "").trim();
+  const nombre = String(document.getElementById("mantFoliosBuscarNombre")?.value || "").trim();
+  const colonia = String(document.getElementById("mantFoliosBuscarColonia")?.value || "").trim();
+  const cont = document.getElementById("mantFoliosBuscarResultados");
+  const form = document.getElementById("mantFoliosAsignarForm");
+
+  if (!clave && !nombre && !colonia) {
+    alert("Indique al menos clave, propietario o colonia.");
+    return;
+  }
+
+  setMantFoliosMsg("Buscando en padrón...", null);
+  if (cont) cont.innerHTML = "<p class=\"mant-folios-buscar-cargando\">Buscando...</p>";
+  if (form) form.classList.add("oculto");
+  _mantFoliosClaveAsignar = "";
+
+  try {
+    const url = typeof construirUrlBusqueda === "function"
+      ? construirUrlBusqueda(clave, nombre, colonia, "", "", "", 40)
+      : `${API}/padron/busqueda-avanzada?clave=${encodeURIComponent(clave)}&nombre=${encodeURIComponent(nombre)}&colonia=${encodeURIComponent(colonia)}&limite=40`;
+    const r = await fetch(url, { cache: "no-store", headers: typeof authHeaders === "function" ? authHeaders() : {} });
+    const data = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(data.detail || data.message || `HTTP ${r.status}`);
+
+    const filas = data.resultados || [];
+    window._mantFoliosBuscarFilas = filas;
+    if (!filas.length) {
+      if (cont) cont.innerHTML = "<p class=\"mant-folios-vacio\">Sin resultados en padrón.</p>";
+      setMantFoliosMsg("Sin resultados.", false);
+      return;
+    }
+
+    let html = "<table class=\"mant-prop-grid mant-folios-grid\"><thead><tr>" +
+      "<th>Clave</th><th>Titular</th><th>Colonia</th><th>Folio</th><th></th></tr></thead><tbody>";
+    filas.forEach(function(row) {
+      const cl = String(row.clave_catastral || "").trim().toUpperCase();
+      const folio = String(row.folio_real || "").trim();
+      const tit = String(row.titular_principal || row.nombre_completo || "—").trim();
+      const col = String(row.colonia || "—").trim();
+      html += "<tr>" +
+        "<td>" + escapeHtml(cl) + "</td>" +
+        "<td>" + escapeHtml(tit) + "</td>" +
+        "<td>" + escapeHtml(col) + "</td>" +
+        "<td>" + escapeHtml(folio && folio !== "0" ? folio : "—") + "</td>" +
+        "<td><button type=\"button\" class=\"btn-busqueda-unica\" data-clave=\"" + cl.replace(/"/g, "") + "\" onclick=\"seleccionarPredioAsignarFolio(this.dataset.clave)\">Elegir</button></td>" +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    if (cont) cont.innerHTML = html;
+    setMantFoliosMsg(filas.length + " predio(s) encontrado(s). Elija uno y grabe el folio.", true);
+  } catch (e) {
+    if (cont) cont.innerHTML = "";
+    setMantFoliosMsg(e.message || String(e), false);
+  }
+}
+window.buscarPadronAsignarFolio = buscarPadronAsignarFolio;
+
+async function grabarFolioAsignadoMantenimiento() {
+  if (typeof puedeEditarCatastro === "function" && !puedeEditarCatastro()) {
+    alert("No tiene permisos para asignar folios.");
+    return;
+  }
+  const clave = _mantFoliosClaveAsignar;
+  const folio = String(document.getElementById("mantFoliosAsignarFolio")?.value || "").trim();
+  if (!clave) {
+    alert("Seleccione un predio de la tabla.");
+    return;
+  }
+  if (!folio || folio === "0") {
+    alert("Indique el folio real (solo números).");
+    return;
+  }
+  if (!confirm("¿Grabar folio real " + folio + " en la clave " + clave + "?")) return;
+
+  setMantFoliosMsg("Guardando folio...", null);
+  try {
+    const r = await fetch(`${API}/padron/mantenimiento/folios/asignar`, {
+      method: "POST",
+      headers: Object.assign(
+        { "Content-Type": "application/json" },
+        typeof authHeaders === "function" ? authHeaders() : {}
+      ),
+      body: JSON.stringify({ clave_catastral: clave, folio_real: folio })
+    });
+    const data = await r.json().catch(function() { return {}; });
+    if (!r.ok) throw new Error(data.detail || data.message || `HTTP ${r.status}`);
+
+    setMantFoliosMsg("Folio " + folio + " asignado a " + clave + ".", true);
+    if (window._mantFoliosBuscarFilas) {
+      window._mantFoliosBuscarFilas.forEach(function(row) {
+        if (String(row.clave_catastral || "").trim().toUpperCase() === clave) {
+          row.folio_real = folio;
+        }
+      });
+    }
+    await buscarPadronAsignarFolio();
+    seleccionarPredioAsignarFolio(clave);
+  } catch (e) {
+    setMantFoliosMsg(e.message || String(e), false);
+  }
+}
+window.grabarFolioAsignadoMantenimiento = grabarFolioAsignadoMantenimiento;
+window.seleccionarPredioAsignarFolio = seleccionarPredioAsignarFolio;

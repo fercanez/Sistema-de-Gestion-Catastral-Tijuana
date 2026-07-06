@@ -49,6 +49,7 @@ ESTADOS_ERROR = (
     "RPPC_PDF_SIN_FOLIO",
     "RPPC_NO_JSON",
     "RPPC_COOKIE_EXPIRADA",
+    "RPPC_BAJA_CONFIANZA",
 )
 
 DEFAULT_LOG = os.getenv(
@@ -140,7 +141,9 @@ def clasificar_error(detalle: str) -> str:
         return "RPPC_COOKIE_EXPIRADA"
     if "doc_tramite_id" in d or "documento para esa partida" in d:
         return "RPPC_SIN_DOC"
-    if "sin folio" in d or "ninguna trae folio" in d or "folio_real válido" in d:
+    if "confianza baja" in d:
+        return "RPPC_BAJA_CONFIANZA"
+    if "sin folio" in d or "ninguna trae folio" in d or "folio_real válido" in d or "sin inmuebles" in d:
         return "RPPC_SIN_FOLIO"
     if "no json" in d or "expecting value" in d:
         return "RPPC_NO_JSON"
@@ -325,14 +328,23 @@ def procesar_clave_backfill(clave: str, nivel: str) -> dict[str, Any]:
         raise RppcBackfillError(502, "Cookie RPPC inválida. Renueve .runtime/rppc_cookie.txt")
 
     try:
-        folio = rppc._obtener_folio_por_clave(clave)
+        desc = rppc.descubrir_folio_rppc(clave, persistir=True)
     except Exception as exc:
         _relanzar_backfill(exc)
+
+    if not desc.get("ok"):
+        raise RppcBackfillError(404, desc.get("error") or "RPPC no devolvió folio")
+
+    folio = int(desc["folio_real"])
     resultado: dict[str, Any] = {
         "clave_catastral": clave,
         "folio_real": folio,
         "nivel": nivel,
         "ok": True,
+        "metodo_descubrimiento": desc.get("metodo"),
+        "confianza": desc.get("confianza"),
+        "cve_cat": desc.get("cve_cat"),
+        "total_candidatos": desc.get("total_candidatos"),
     }
 
     if nivel == "folio":

@@ -210,7 +210,11 @@ function buildUrlVisorPdfRppcDoc(docId, claveNorm) {
 function buildUrlResolverRppc(claveNorm, folioNum) {
   const base = apiBaseRppc();
   if (folioNum) {
-    return `${base}/rppc/resolver/folio/${encodeURIComponent(folioNum)}`;
+    let url = `${base}/rppc/resolver/folio/${encodeURIComponent(folioNum)}`;
+    if (claveNorm) {
+      url += `?clave_catastral=${encodeURIComponent(claveNorm)}`;
+    }
+    return url;
   }
   return `${base}/rppc/resolver/clave/${encodeURIComponent(claveNorm)}`;
 }

@@ -5,7 +5,18 @@ import os
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, RedirectResponse
 
-from config import API_ROOT_PATH, APP_ESTADO, APP_MUNICIPIO, VISOR_DIR, VISOR_LOGO_FILENAME
+from config import (
+    API_ROOT_PATH,
+    APP_ESTADO,
+    APP_MUNICIPIO,
+    APP_MUNICIPIO_MAYUS,
+    DB_NAME,
+    DOCUMENTOS_BASE_DIR,
+    GEONODE_PREDIOS_TABLE,
+    RPPC_MUNICIPIO_ID,
+    VISOR_DIR,
+    VISOR_LOGO_FILENAME,
+)
 from database import get_conn, asegurar_tabla_predio_condominio
 from auth.sessions import ensure_sesiones_table
 from auth.routes import router as auth_router
@@ -86,6 +97,14 @@ def root():
         "numeros_oficiales_cercanos": True,
         "carta_urbana_2040": True,
         "pducp_carta_urbana": True,
+        "instancia": {
+            "municipio": APP_MUNICIPIO,
+            "municipio_mayus": APP_MUNICIPIO_MAYUS,
+            "db_name": DB_NAME,
+            "rppc_municipio_id": RPPC_MUNICIPIO_ID,
+            "geonode_predios_table": GEONODE_PREDIOS_TABLE,
+            "documentos_base_dir": DOCUMENTOS_BASE_DIR,
+        },
     }
 
 

@@ -11,7 +11,7 @@
   <link rel="stylesheet" href="css/30-tablas.css?v=20260613_v102_busqueda">
   <link rel="stylesheet" href="css/40-modales.css?v=20260611_v158_catalogos_listbox">
   <link rel="stylesheet" href="css/50-modulos.css?v=20260611_v152_analisis_zonas_ficha">
-  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260704_archivo_auth_pdf">
+  <link rel="stylesheet" href="css/55-modulos-portal.css?v=20260706_constr_tijuana_api">
   <link rel="stylesheet" href="css/58-edicion-cartografica.css?v=20260611_v149_corte_manual">
   <link rel="stylesheet" href="css/59-movimientos-modulo.css?v=20260611_v159_folio_ficha">
   <link rel="stylesheet" href="css/57-admin-modulo.css?v=20260613_v140_matriz_col">
@@ -1063,6 +1063,31 @@
         Los valores <b>0</b> o vacíos se guardan como sin folio.
       </p>
 
+      <div class="mant-folios-asignar-block">
+        <h3 class="mant-folios-subtitulo">Asignar folio a un predio</h3>
+        <p class="mant-adeudos-intro mant-folios-asignar-intro">
+          Busque en el padrón y grabe el folio real (ej. <b>1055731</b> para <b>FT207007</b>)
+          para facilitar la consulta RPPC.
+        </p>
+        <div class="mant-folios-asignar-filtros">
+          <input type="text" id="mantFoliosBuscarClave" class="mant-folios-input" placeholder="Clave (FT207007)" maxlength="30">
+          <input type="text" id="mantFoliosBuscarNombre" class="mant-folios-input" placeholder="Propietario">
+          <input type="text" id="mantFoliosBuscarColonia" class="mant-folios-input" placeholder="Colonia / fraccionamiento">
+          <button type="button" class="btn-busqueda-unica" onclick="buscarPadronAsignarFolio()">🔍 Buscar padrón</button>
+        </div>
+        <div id="mantFoliosBuscarResultados" class="mant-folios-buscar-resultados"></div>
+        <div id="mantFoliosAsignarForm" class="mant-folios-asignar-form oculto">
+          <div class="mant-folios-asignar-resumen" id="mantFoliosAsignarResumen"></div>
+          <label class="input-label-mini">Folio real</label>
+          <input type="text" id="mantFoliosAsignarFolio" class="mant-folios-input" placeholder="Ej. 1055731" maxlength="32" inputmode="numeric">
+          <button type="button" class="mant-prop-btn ok mant-folios-btn-grabar" onclick="grabarFolioAsignadoMantenimiento()">💾 Grabar folio en padrón</button>
+        </div>
+      </div>
+
+      <hr class="mant-folios-separador">
+
+      <p class="mant-adeudos-intro mant-folios-importar-label"><b>Importación masiva</b></p>
+
       <div class="analisis-zonas-import-block">
         <label class="input-label-mini">Archivo Excel o CSV</label>
         <input type="file" id="mantFoliosFile" accept=".xlsx,.xls,.csv,.txt" onchange="vistaPreviaFoliosMantenimiento()">
@@ -1091,12 +1116,12 @@
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="js/00-nucleo.js?v=20260704_superficies"></script>
+<script src="js/00-nucleo.js?v=20260705_sesion_roles"></script>
 <script src="js/10-mapa.js?v=20260704_click_predio_geonode"></script>
-<script src="js/20-ficha.js?v=20260704_ficha_superficies_fix"></script>
+<script src="js/20-ficha.js?v=20260705_tijuana_archivo"></script>
 <script src="js/40-pdf.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/30-busqueda.js?v=20260704_merge_superficies"></script>
-<script src="js/05-modulos-portal.js?v=20260704_archivo_auth_pdf"></script>
+<script src="js/05-modulos-portal.js?v=20260705_tijuana_archivo"></script>
 <script src="js/53-archivo-marca-agua.js?v=20260704_archivo_print2"></script>
 <script src="js/45-ficha-carta-urbana-preview.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/47-ficha-colonia-preview.js?v=20260704_tijuana_centro_ajustado"></script>
@@ -1104,16 +1129,16 @@
 <script src="js/43-ficha-numero-oficial.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/11-control-urbano.js?v=20260619_cu_marca_perm"></script>
 <script src="js/52-popup-rppc.js?v=20260611_rppc_no_bloquea"></script>
-<script src="js/06-construcciones-medicion.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/06-construcciones-medicion.js?v=20260706_constr_tijuana_api"></script>
 <script src="js/46-ficha-mapa-capas.js?v=20260617_v168_uso_dist"></script>
 <script src="js/49-ficha-analisis-zona-homogenea-preview.js?v=20260704_tijuana_centro_ajustado"></script>
-<script src="js/07-numeros-oficiales.js?v=20260705_numof_radio_fix"></script>
+<script src="js/07-numeros-oficiales.js?v=20260705_numof_enfrente_30m"></script>
 <script src="js/08-carta-urbana.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/09-colonias-fraccionamiento.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/10-zonas-homogeneas.js?v=20260704_zonahom_tijuana"></script>
 <script src="js/44-cedula-numero-oficial-preview.js?v=20260620_consulta_zona_h"></script>
 <script src="js/41-ficha-preview.js?v=20260704_tijuana_centro_ajustado"></script>
-<script src="js/42-ficha-cartografia.js?v=20260704_tijuana_centro_ajustado"></script>
+<script src="js/42-ficha-cartografia.js?v=20260706_constr_tijuana_api"></script>
 <script src="https://cdn.jsdelivr.net/npm/jsts@2.11.0/dist/jsts.min.js"></script>
 <script src="js/51-edicion-cartografica.js?v=20260704_tijuana_centro_ajustado"></script>
 <script src="js/50-admin.js?v=20260613_v137_vigencia_matriz"></script>
@@ -1122,7 +1147,7 @@
 <script src="js/70-movimientos.js?v=20260611_v182_catalogos_listbox"></script>
 <script src="js/80-zonas.js?v=20260704_zonahom_tijuana"></script>
 <script src="js/85-condominios.js?v=20260610_v125_portal"></script>
-<script src="js/90-mantenimiento.js?v=20260614_v158_folios"></script>
+<script src="js/90-mantenimiento.js?v=20260706_folios_asignar"></script>
 <script src="js/99-init.js?v=20260610_v125_portal"></script>
 
 <!-- Modal edición / alta zona homogénea (z-index sobre módulo análisis) -->

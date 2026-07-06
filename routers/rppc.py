@@ -1679,8 +1679,17 @@ def _parsear_movimientos_rppc(body: str) -> list[dict[str, Any]]:
         except json.JSONDecodeError:
             pass
 
+    if parsed.get("IsError") is True or parsed.get("isError") is True:
+        return []
+
     if parsed.get("success") is False or parsed.get("Success") is False:
-        msg = parsed.get("Mensaje") or parsed.get("message") or parsed.get("detail") or "sin detalle"
+        msg = (
+            parsed.get("ErrMensaje")
+            or parsed.get("Mensaje")
+            or parsed.get("message")
+            or parsed.get("detail")
+            or "sin detalle"
+        )
         raise HTTPException(status_code=502, detail=f"RPPC respondió error: {msg}")
 
     if _es_item_movimiento_rppc(parsed):
@@ -2415,7 +2424,55 @@ def _buscar_rppc_colonia_id_por_nombre(colonia_nombre: str) -> int | None:
         if score > mejor_score:
             mejor_score = score
             mejor_id = _normalizar_numero(row.get("rppc_colonia_id"))
-    return mejor_id if mejor_score >= min(2, len(tokens)) else None
+    return mejor_id if mejor_score >= min(2, len(tokens)) else (
+        mejor_id if len(tokens) == 1 and len(tokens[0]) >= 5 and mejor_score >= 1 else None
+    )
+
+
+def _colonias_busqueda_rppc(datos_padron: dict[str, Any]) -> list[str]:
+    """Nombres de colonia/fraccionamiento a probar (padrón puede diferir del RPPC)."""
+    vistos: set[str] = set()
+    out: list[str] = []
+    for campo in (
+        "colonia",
+        "cat_colonia_nombre",
+        "nom_condominio",
+        "nombre_condominio",
+        "condominio",
+    ):
+        txt = str(datos_padron.get(campo) or "").strip()
+        if not txt or txt.upper() in {"C", "S", "SI", "SÍ", "CONDOMINIO"}:
+            continue
+        clave_norm = _normalizar_texto_rppc_busqueda(txt)
+        if clave_norm and clave_norm not in vistos:
+            vistos.add(clave_norm)
+            out.append(txt)
+    return out
+
+
+def _resolver_colonias_ids_rppc(datos_padron: dict[str, Any]) -> list[int]:
+    """IDs colonia RPPC probando todos los nombres conocidos del predio."""
+    ids: list[int] = []
+    vistos: set[int] = set()
+
+    def _agregar(cid: int | None) -> None:
+        if cid and cid not in vistos:
+            vistos.add(cid)
+            ids.append(int(cid))
+
+    _agregar(_resolver_rppc_colonia_id(datos_padron))
+    for nombre in _colonias_busqueda_rppc(datos_padron):
+        _agregar(_buscar_rppc_colonia_id_por_nombre(nombre))
+        _agregar(_fallback_rppc_colonia_id(nombre))
+    return ids
+
+
+def _confianza_minima_descubrimiento_rppc(metodo: str) -> int:
+    if metodo in ("clave", "ubicacion_lote"):
+        return 80
+    if metodo in ("ubicacion", "unidad"):
+        return 60
+    return 40
 
 
 def _variantes_unidad_rppc(datos_padron: dict[str, Any]) -> list[str]:
@@ -3140,6 +3197,13 @@ def _consultar_inmuebles_rppc_por_folio(
             "MUNICIPIO": RPPC_MUNICIPIO_ID,
             "LOCALIDAD": RPPC_LOCALIDAD_ID,
             "VIGENTE": "S",
+            "BUSCAR": "F",
+            "FOLIO_REAL": int(folio),
+        },
+        {
+            "MUNICIPIO": RPPC_MUNICIPIO_ID,
+            "LOCALIDAD": RPPC_LOCALIDAD_ID,
+            "VIGENTE": "S",
             "BUSCAR": "D",
             "CLASIFICACION": "U",
             "FOLIO_REAL": int(folio),
@@ -3148,7 +3212,7 @@ def _consultar_inmuebles_rppc_por_folio(
             "MUNICIPIO": RPPC_MUNICIPIO_ID,
             "LOCALIDAD": RPPC_LOCALIDAD_ID,
             "VIGENTE": "S",
-            "BUSCAR": "F",
+            "BUSCAR": "R",
             "FOLIO_REAL": int(folio),
         },
     ):
@@ -3520,6 +3584,195 @@ def _rastrear_unidad_desde_folios_terreno(
     return [], None
 
 
+def _variantes_descr_lote_rppc(lote: str) -> list[str]:
+    """Textos DESCR para RPPC según lote catastral (ej. 7 → LOTE 7, 007)."""
+    txt = str(lote or "").strip()
+    if not txt:
+        return []
+    variantes: list[str] = []
+    vistos: set[str] = set()
+
+    def _agregar(valor: str) -> None:
+        v = str(valor or "").strip()
+        if v and v not in vistos:
+            vistos.add(v)
+            variantes.append(v)
+
+    _agregar(txt)
+    if txt.isdigit():
+        n = int(txt)
+        _agregar(str(n))
+        _agregar(f"{n:03d}")
+        _agregar(f"LOTE {n}")
+        _agregar(f"LOTE {n:03d}")
+    return variantes
+
+
+def _inmueble_coincide_lote_rppc(item: dict[str, Any], lote: str) -> bool:
+    lote_txt = str(lote or "").strip()
+    if not lote_txt:
+        return True
+    lote_norm = lote_txt.lstrip("0") or lote_txt
+    blob = _normalizar_texto_rppc_busqueda(item.get("LOTE") or item.get("INMUEBLE") or item.get("DENOMINACION") or "")
+    if not blob:
+        return False
+    patrones = [lote_norm, lote_txt, f"{int(lote_norm):03d}" if lote_norm.isdigit() else lote_norm]
+    for pat in patrones:
+        if not pat:
+            continue
+        if re.search(rf"\bLOTE\s+{re.escape(pat)}\b", blob):
+            return True
+        if re.search(rf"\b{re.escape(pat)}\b", blob) and "LOTE" in blob:
+            return True
+    return False
+
+
+def _filtrar_inmuebles_por_lote_colonia_clave(
+    inmuebles: list[dict[str, Any]],
+    datos_padron: dict[str, Any],
+    segmentos: dict[str, str],
+) -> list[dict[str, Any]]:
+    if not inmuebles:
+        return []
+    pool = list(inmuebles)
+    colonias = _colonias_busqueda_rppc(datos_padron)
+    if colonias:
+        pool_col: list[dict[str, Any]] = []
+        vistos_id: set[int] = set()
+        for col in colonias:
+            for item in _filtrar_inmuebles_por_colonia_nombre(pool, col):
+                fid = id(item)
+                if fid not in vistos_id:
+                    vistos_id.add(fid)
+                    pool_col.append(item)
+        if pool_col:
+            pool = pool_col
+
+    lote = str(datos_padron.get("lote") or segmentos.get("lote") or "").strip()
+    if lote:
+        por_lote = [x for x in pool if _inmueble_coincide_lote_rppc(x, lote)]
+        if por_lote:
+            pool = por_lote
+
+    clave_ref = _normalizar_clave(datos_padron.get("clave_catastral") or "")
+    if clave_ref:
+        por_clave = [
+            x for x in pool
+            if str(x.get("CVE_CAT") or "").upper().replace("-", "") == clave_ref
+        ]
+        if por_clave:
+            pool = por_clave
+
+    validos = [x for x in pool if _es_item_inmueble_rppc(x)]
+    return validos or [x for x in pool if _es_item_inmueble_rppc(x)]
+
+
+def _consultar_inmuebles_rppc_por_manzana_lote_colonia(
+    datos_padron: dict[str, Any],
+    segmentos: dict[str, str] | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any] | None, dict[str, Any] | None]:
+    """Búsqueda RPPC por manzana + colonia + lote + clave (patrón portal BC)."""
+    segmentos = segmentos or _segmentos_clave_catastral_rppc(datos_padron.get("clave_catastral") or "")
+    manzana_base = str(datos_padron.get("manzana") or segmentos.get("manzana") or "").strip()
+    if not manzana_base:
+        return [], None, None
+
+    colonia_ids = _resolver_colonias_ids_rppc(datos_padron)
+    colonia_nombre = str(datos_padron.get("colonia") or "").strip()
+    lote = str(datos_padron.get("lote") or segmentos.get("lote") or "").strip()
+    clave = _normalizar_clave(datos_padron.get("clave_catastral") or "")
+    clave_rppc = _clave_sgc_a_rppc(clave) if clave else ""
+
+    descr_cands: list[str] = []
+    vistos_descr: set[str] = set()
+
+    def _agregar_descr(valor: str) -> None:
+        d = str(valor or "").strip()
+        if d and d not in vistos_descr:
+            vistos_descr.add(d)
+            descr_cands.append(d)
+
+    for d in _variantes_descr_lote_rppc(lote):
+        _agregar_descr(d)
+    if clave_rppc:
+        _agregar_descr(clave_rppc)
+        _agregar_descr(clave_rppc.replace("-", " "))
+    for col in _colonias_busqueda_rppc(datos_padron) or ([colonia_nombre] if colonia_nombre else []):
+        _agregar_descr(col)
+        tokens = [t for t in _normalizar_texto_rppc_busqueda(col).split() if len(t) >= 5]
+        for tok in tokens[:3]:
+            _agregar_descr(tok)
+
+    intentos: list[tuple[str, dict[str, Any]]] = []
+    vistos_payload: set[str] = set()
+
+    def _registrar_intento(etiq: str, payload: dict[str, Any]) -> None:
+        clave_json = json.dumps(payload, sort_keys=True)
+        if clave_json not in vistos_payload:
+            vistos_payload.add(clave_json)
+            intentos.append((etiq, payload))
+
+    if clave_rppc:
+        _registrar_intento("clave_c", {"BUSCAR": "C", "CVE_CAT": clave_rppc, "VIGENTE": "S"})
+
+    for manzana in _variantes_manzana_rppc(manzana_base):
+        for col_id in colonia_ids or [None]:
+            if col_id is not None:
+                _registrar_intento(
+                    f"mc_{manzana}_{col_id}",
+                    _payload_inmuebles_ubicacion_rppc(manzana, colonia_id=int(col_id)),
+                )
+                for descr in descr_cands[:8]:
+                    for buscar, clasif in (("D", "L"), ("D", "U")):
+                        _registrar_intento(
+                            f"mc_{buscar}_{manzana}_{col_id}_{descr[:10]}",
+                            _payload_inmuebles_ubicacion_rppc(
+                                manzana,
+                                colonia_id=int(col_id),
+                                descr=descr,
+                                clasificacion=clasif,
+                                buscar=buscar,
+                            ),
+                        )
+            for descr in descr_cands[:6]:
+                _registrar_intento(
+                    f"m_descr_{manzana}_{descr[:12]}",
+                    _payload_inmuebles_ubicacion_rppc(manzana, descr=descr),
+                )
+            _registrar_intento(
+                f"manzana_{manzana}",
+                _payload_inmuebles_ubicacion_rppc(manzana, colonia_id=None),
+            )
+
+    mejor_lista: list[dict[str, Any]] = []
+    mejor_elegido: dict[str, Any] | None = None
+    mejor_score = -1
+    payload_usado: dict[str, Any] | None = None
+    umbral_alto = 120
+
+    for _etiq, payload in intentos:
+        datos = _consultar_inmuebles_rppc_opcional(payload)
+        if not datos:
+            continue
+        filtrados = _filtrar_inmuebles_por_lote_colonia_clave(datos, datos_padron, segmentos)
+        candidatos = filtrados if filtrados else [x for x in datos if _es_item_inmueble_rppc(x)]
+        if not candidatos:
+            continue
+
+        elegido = _seleccionar_inmueble_ubicacion_rppc(candidatos, datos_padron, segmentos) or candidatos[0]
+        score = _puntuar_inmueble_ubicacion_rppc(elegido, datos_padron, segmentos)[0]
+        if score > mejor_score:
+            mejor_score = score
+            mejor_elegido = elegido
+            mejor_lista = candidatos
+            payload_usado = payload
+
+        if mejor_score >= umbral_alto and mejor_elegido and _extraer_folio_real_rppc(mejor_elegido):
+            break
+
+    return mejor_lista, payload_usado, mejor_elegido
+
+
 def _consultar_inmuebles_rppc_por_ubicacion(
     manzana: str,
     *,
@@ -3529,8 +3782,6 @@ def _consultar_inmuebles_rppc_por_ubicacion(
 ) -> list[dict[str, Any]]:
     if not str(manzana or "").strip():
         raise HTTPException(status_code=400, detail="Manzana requerida para búsqueda RPPC por ubicación")
-    if colonia_id is None:
-        return []
     payload = _payload_inmuebles_ubicacion_rppc(
         manzana,
         colonia_id=colonia_id,
@@ -3567,20 +3818,27 @@ def _puntuar_inmueble_ubicacion_rppc(
     segmentos: dict[str, str],
 ) -> tuple[int, int]:
     score = 0
-    lote_txt = _normalizar_texto_rppc_busqueda(item.get("LOTE") or item.get("INMUEBLE") or "")
+    lote_txt_item = _normalizar_texto_rppc_busqueda(item.get("LOTE") or item.get("INMUEBLE") or "")
+    lote_ref = str(datos_padron.get("lote") or segmentos.get("lote") or "").strip()
     for candidato in (
-        str(datos_padron.get("lote") or "").strip(),
-        str(segmentos.get("lote") or "").strip(),
+        lote_ref,
+        lote_ref.lstrip("0") or lote_ref,
         str(segmentos.get("lote_padded") or "").strip().lstrip("0"),
+        str(segmentos.get("lote_padded") or "").strip(),
     ):
         if not candidato:
             continue
-        if re.search(rf"\bLOTE\s+{re.escape(candidato.lstrip('0') or candidato)}\b", lote_txt):
+        if re.search(rf"\bLOTE\s+{re.escape(candidato.lstrip('0') or candidato)}\b", lote_txt_item):
+            score += 40
+            break
+        if re.search(rf"\bLOTE\s+{re.escape(candidato)}\b", lote_txt_item):
             score += 40
             break
 
     colonia_ref = _normalizar_texto_rppc_busqueda(datos_padron.get("colonia") or "")
-    colonia_item = _normalizar_texto_rppc_busqueda(item.get("COLONIA") or "")
+    colonia_item = _normalizar_texto_rppc_busqueda(
+        item.get("COLONIA") or item.get("FRACCIONAMIENTO") or ""
+    )
     if colonia_ref and colonia_item and colonia_ref[:12] in colonia_item:
         score += 25
 
@@ -3592,6 +3850,33 @@ def _puntuar_inmueble_ubicacion_rppc(
     clave_ref = _normalizar_clave(datos_padron.get("clave_catastral") or "")
     if cve and clave_ref and cve == clave_ref:
         score += 100
+
+    titular_padron = _normalizar_texto_rppc_busqueda(
+        " ".join(
+            x for x in (
+                datos_padron.get("pnombre"),
+                datos_padron.get("paterno"),
+                datos_padron.get("materno"),
+                datos_padron.get("nombre_completo"),
+                datos_padron.get("razon_social"),
+            )
+            if str(x or "").strip()
+        )
+    )
+    if titular_padron:
+        blob_item = _normalizar_texto_rppc_busqueda(
+            " ".join(
+                str(item.get(k) or "")
+                for k in ("PROPIETARIO", "TITULAR", "NOMBRE", "DENOMINACION", "LOTE")
+            )
+        )
+        tokens_tit = [t for t in titular_padron.split() if len(t) >= 4]
+        if tokens_tit:
+            coincidencias = sum(1 for tok in tokens_tit if tok in blob_item)
+            if coincidencias >= min(2, len(tokens_tit)):
+                score += 20
+            elif coincidencias == 1 and len(tokens_tit) == 1:
+                score += 10
 
     folio = _normalizar_numero(item.get("FOLIO_REAL")) or 0
     if str(item.get("VIGENTE") or "").upper() in {"", "S", "SI", "SÍ"}:
@@ -3656,18 +3941,7 @@ def _consultar_inmuebles_rppc_por_clave_cascada(clave_catastral: str) -> dict[st
                 "inmuebles": por_clave,
                 "inmueble_elegido": elegido_clave,
                 "datos_padron": datos_padron,
-            }
-        if not _debe_priorizar_busqueda_unidad_rppc(datos_padron):
-            return {
-                "metodo": "clave",
-                "payload": {
-                    "BUSCAR": "C",
-                    "CVE_CAT": _clave_sgc_a_rppc(clave),
-                    "VIGENTE": "S",
-                },
-                "inmuebles": por_clave,
-                "inmueble_elegido": elegido_clave,
-                "datos_padron": datos_padron,
+                "confianza": 150,
             }
 
     manzana = str(datos_padron.get("manzana") or segmentos.get("manzana") or "").strip()
@@ -3741,6 +4015,18 @@ def _consultar_inmuebles_rppc_por_clave_cascada(clave_catastral: str) -> dict[st
                 }
 
     if buscar_unidad:
+        por_ml, payload_ml, elegido_ml = _consultar_inmuebles_rppc_por_manzana_lote_colonia(datos_padron, segmentos)
+        if por_ml and elegido_ml and _extraer_folio_real_rppc(elegido_ml):
+            conf = _puntuar_inmueble_ubicacion_rppc(elegido_ml, datos_padron, segmentos)[0]
+            return {
+                "metodo": "ubicacion_lote",
+                "payload": payload_ml,
+                "variantes_unidad": variantes_unidad,
+                "inmuebles": por_ml,
+                "inmueble_elegido": elegido_ml,
+                "datos_padron": datos_padron,
+                "confianza": conf,
+            }
         return {
             "metodo": "sin_resultados",
             "payload": payload_unidad if buscar_unidad else None,
@@ -3763,11 +4049,17 @@ def _consultar_inmuebles_rppc_por_clave_cascada(clave_catastral: str) -> dict[st
             ),
         }
 
-    por_ubicacion = _consultar_inmuebles_rppc_por_ubicacion(
-        manzana,
-        colonia_id=colonia_id_int,
+    por_ubicacion, payload_ubic, elegido_ubic = _consultar_inmuebles_rppc_por_manzana_lote_colonia(datos_padron, segmentos)
+    if not por_ubicacion and colonia_id_int is not None:
+        por_ubicacion = _consultar_inmuebles_rppc_por_ubicacion(
+            manzana,
+            colonia_id=colonia_id_int,
+        )
+    elegido_lote = elegido_ubic or _seleccionar_inmueble_ubicacion_rppc(por_ubicacion, datos_padron, segmentos)
+    conf_ubic = (
+        _puntuar_inmueble_ubicacion_rppc(elegido_lote, datos_padron, segmentos)[0]
+        if elegido_lote else 0
     )
-    elegido_lote = _seleccionar_inmueble_ubicacion_rppc(por_ubicacion, datos_padron, segmentos)
 
     if variantes_unidad and not elegido_lote:
         por_unidad, payload_unidad = _consultar_inmuebles_rppc_por_unidad_local(
@@ -3789,23 +4081,28 @@ def _consultar_inmuebles_rppc_por_clave_cascada(clave_catastral: str) -> dict[st
             }
 
     if por_clave and not por_ubicacion:
+        elegido_clave_fb = _seleccionar_mejor_inmueble_rppc(por_clave)
         return {
             "metodo": "clave",
             "payload": {"BUSCAR": "C", "CVE_CAT": _clave_sgc_a_rppc(clave), "VIGENTE": "S"},
             "inmuebles": por_clave,
-            "inmueble_elegido": _seleccionar_mejor_inmueble_rppc(por_clave),
+            "inmueble_elegido": elegido_clave_fb,
             "datos_padron": datos_padron,
+            "confianza": _puntuar_inmueble_ubicacion_rppc(
+                elegido_clave_fb or {}, datos_padron, segmentos
+            )[0] if elegido_clave_fb else 0,
         }
 
     return {
-        "metodo": "ubicacion",
-        "payload": _payload_inmuebles_ubicacion_rppc(
+        "metodo": "ubicacion_lote" if payload_ubic else "ubicacion",
+        "payload": payload_ubic or _payload_inmuebles_ubicacion_rppc(
             manzana,
             colonia_id=colonia_id_int,
         ),
         "inmuebles": por_ubicacion,
         "inmueble_elegido": elegido_lote,
         "datos_padron": datos_padron,
+        "confianza": conf_ubic,
     }
 
 
@@ -4037,13 +4334,33 @@ def _guardar_cache_rppc_en_padron(
             conn.commit()
 
 
-def _payloads_movimientos_folio_rppc(folio_real: int) -> list[dict[str, Any]]:
+def _payloads_movimientos_folio_rppc(
+    folio_real: int,
+    *,
+    lote_id: int | None = None,
+) -> list[dict[str, Any]]:
     folio = int(folio_real)
+    ctx = {
+        "MUNICIPIO": RPPC_MUNICIPIO_ID,
+        "LOCALIDAD": RPPC_LOCALIDAD_ID,
+        "VIGENTE": "S",
+    }
     bases: list[dict[str, Any]] = [
+        {**ctx, "FOLIO_REAL": folio, "infoHistorica": 0},
+        {**ctx, "FOLIO_REAL": folio},
         {"FOLIO_REAL": folio, "infoHistorica": 0},
         {"FOLIO_REAL": folio},
         {"folioReal": folio, "infoHistorica": 0},
     ]
+    if lote_id:
+        lid = int(lote_id)
+        bases = [
+            {**ctx, "FOLIO_REAL": folio, "LOTE_ID": lid, "infoHistorica": 0},
+            {**ctx, "LOTE_ID": lid, "FOLIO_REAL": folio},
+            {**ctx, "LOTE_ID": lid},
+            {"LOTE_ID": lid, "FOLIO_REAL": folio, "infoHistorica": 0},
+            {"LOTE_ID": lid, "FOLIO_REAL": folio},
+        ] + bases
     uid = _rppc_usuario_id or RPPC_USUARIO_ID or _rppc_usuario_id_runtime()
     if uid:
         uid_int = int(uid)
@@ -4051,7 +4368,11 @@ def _payloads_movimientos_folio_rppc(folio_real: int) -> list[dict[str, Any]]:
     return bases
 
 
-def _consultar_movimientos_folio_directo(folio_real: int) -> list[dict[str, Any]]:
+def _consultar_movimientos_folio_directo(
+    folio_real: int,
+    *,
+    lote_id: int | None = None,
+) -> list[dict[str, Any]]:
     """Consulta rápida obtenerMovimientosLote — misma sesión preflight que consultaInmuebles."""
     if not _cookie_rppc_valida(_cookie_rppc_actual()):
         raise HTTPException(
@@ -4070,7 +4391,7 @@ def _consultar_movimientos_folio_directo(folio_real: int) -> list[dict[str, Any]
     )
     ultimo_http: int | None = None
     ultimo_preview = ""
-    for payload in _payloads_movimientos_folio_rppc(folio_real):
+    for payload in _payloads_movimientos_folio_rppc(folio_real, lote_id=lote_id):
         http, body = _ejecutar_post_rppc_json(opener, url, payload)
         ultimo_http = http
         ultimo_preview = body[:280]
@@ -4118,10 +4439,169 @@ def _obtener_doc_id_por_partida_directo(partida: int) -> tuple[int, dict[str, An
     return doc_id, datos[0]
 
 
-def _obtener_folio_por_clave(clave_catastral: str) -> int:
+def _partida_doc_desde_doc_ref(doc_ref: str) -> tuple[int | None, int | None]:
+    ref = str(doc_ref or "").strip().lower()
+    if ref.startswith("doc:"):
+        return None, _normalizar_numero(ref[4:])
+    if ref.startswith("partida:"):
+        return _normalizar_numero(ref[8:]), None
+    return None, None
+
+
+def _leer_cache_rppc_extendido(clave_catastral: str) -> dict[str, Any] | None:
     clave = _normalizar_clave(clave_catastral)
     if not clave:
-        raise HTTPException(status_code=400, detail="Clave catastral inválida")
+        return None
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            _asegurar_columnas_rppc_cache(cur, conn)
+            cur.execute(
+                """
+                SELECT
+                    clave_catastral,
+                    NULLIF(NULLIF(TRIM(folio_real::text), ''), '0') AS folio_real,
+                    NULLIF(NULLIF(TRIM(rppc_partida::text), ''), '0') AS rppc_partida,
+                    NULLIF(NULLIF(TRIM(rppc_doc_tramite_id::text), ''), '0') AS rppc_doc_tramite_id,
+                    NULLIF(TRIM(rppc_titular_doc_ref::text), '') AS rppc_titular_doc_ref,
+                    NULLIF(TRIM(rppc_pdf_local::text), '') AS rppc_pdf_local
+                FROM catalogos.padron_2026
+                WHERE UPPER(TRIM(clave_catastral)) = %s
+                LIMIT 1;
+                """,
+                (clave,),
+            )
+            row = cur.fetchone()
+    return row if row else None
+
+
+def _recuperar_folio_cache_o_pdf(
+    clave_catastral: str,
+    cache: dict[str, Any] | None = None,
+) -> int | None:
+    """Recupera folio_real borrado del padrón usando caché RPPC o PDF local previo."""
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        return None
+
+    cache = cache or _leer_cache_rppc_extendido(clave) or _cache_rppc_por_clave_o_folio(
+        clave_catastral=clave
+    )
+    if cache:
+        folio = _normalizar_numero(cache.get("folio_real"))
+        if folio:
+            return folio
+
+        partida = _normalizar_numero(cache.get("rppc_partida"))
+        doc_id = _normalizar_numero(cache.get("rppc_doc_tramite_id"))
+        ref_partida, ref_doc = _partida_doc_desde_doc_ref(str(cache.get("rppc_titular_doc_ref") or ""))
+        partida = partida or ref_partida
+        doc_id = doc_id or ref_doc
+
+        refs_pdf: list[int | str] = []
+        if doc_id:
+            refs_pdf.append(doc_id)
+        if partida:
+            refs_pdf.append(f"{RPPC_HOJA_INSCRIPCION_DOC_PREFIX}{partida}")
+
+        for doc_ref in refs_pdf:
+            content = _leer_pdf_local_any(doc_ref, clave)
+            if not content:
+                continue
+            folio = _extraer_folio_real_desde_pdf(content)
+            if folio:
+                return folio
+
+        ruta_local = str(cache.get("rppc_pdf_local") or "").strip()
+        if ruta_local:
+            try:
+                path = Path(ruta_local)
+                if path.is_file():
+                    content = path.read_bytes()
+                    if content.startswith(b"%PDF"):
+                        folio = _extraer_folio_real_desde_pdf(content)
+                        if folio:
+                            return folio
+            except Exception:
+                pass
+
+    try:
+        carpeta = RPPC_PDF_LOCAL_DIR / clave
+        if carpeta.is_dir():
+            pdfs = sorted(
+                carpeta.glob("rppc_*.pdf"),
+                key=lambda p: p.stat().st_mtime,
+                reverse=True,
+            )
+            for pdf in pdfs[:6]:
+                try:
+                    content = pdf.read_bytes()
+                except Exception:
+                    continue
+                if not content.startswith(b"%PDF"):
+                    continue
+                folio = _extraer_folio_real_desde_pdf(content)
+                if folio:
+                    return folio
+    except Exception:
+        pass
+
+    return None
+
+
+def _persistir_folio_recuperado(clave: str, folio: int, fuente: str = "RPPC_CACHE_RECUPERO") -> None:
+    if not clave or not folio:
+        return
+    try:
+        _guardar_cache_rppc_en_padron(
+            clave_catastral=clave,
+            folio_real=folio,
+            fuente=fuente,
+        )
+    except Exception:
+        try:
+            _guardar_folio_real_en_padron(clave, folio, fuente=fuente)
+        except Exception:
+            pass
+
+
+def _resolver_documento_desde_cache_rppc(clave: str) -> dict[str, Any] | None:
+    """Resuelve PDF RPPC usando partida/doc cacheados aunque folio_real esté vacío."""
+    cache = _leer_cache_rppc_extendido(clave)
+    if not cache:
+        return None
+
+    partida = _normalizar_numero(cache.get("rppc_partida"))
+    doc_id = _normalizar_numero(cache.get("rppc_doc_tramite_id"))
+    ref_partida, ref_doc = _partida_doc_desde_doc_ref(str(cache.get("rppc_titular_doc_ref") or ""))
+    partida = partida or ref_partida
+    doc_id = doc_id or ref_doc
+
+    if not partida and not doc_id:
+        return None
+
+    folio = (
+        _normalizar_numero(cache.get("folio_real"))
+        or _recuperar_folio_cache_o_pdf(clave, cache)
+        or 1
+    )
+    data = _resolver_documento_por_folio(folio, clave_catastral=clave)
+    if folio and folio > 1:
+        data["folio_real"] = folio
+        if not _normalizar_numero(cache.get("folio_real")):
+            _persistir_folio_recuperado(clave, folio)
+    return data
+
+
+def descubrir_folio_rppc(
+    clave_catastral: str,
+    *,
+    persistir: bool = True,
+    confianza_minima: int | None = None,
+) -> dict[str, Any]:
+    """Descubre folio real en RPPC sin lanzar HTTPException (backfill / diagnóstico)."""
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        return {"ok": False, "clave_catastral": "", "error": "Clave catastral inválida"}
 
     with get_conn() as conn:
         with conn.cursor() as cur:
@@ -4140,79 +4620,336 @@ def _obtener_folio_por_clave(clave_catastral: str) -> int:
     if row and row.get("folio_real"):
         folio = _normalizar_numero(row["folio_real"])
         if folio:
-            return folio
+            return {
+                "ok": True,
+                "clave_catastral": clave,
+                "folio_real": folio,
+                "metodo": "padron",
+                "confianza": 200,
+                "persistido": False,
+            }
 
-    # Si el padrón no trae folio_real, buscamos en RPPC (clave y luego ubicación Tijuana).
-    cascada = _consultar_inmuebles_rppc_por_clave_cascada(clave)
-    inmuebles = [
-        x for x in (cascada.get("inmuebles") or [])
-        if _es_item_inmueble_rppc(x)
-    ]
-    metodo = cascada.get("metodo") or "clave"
+    folio_recuperado = _recuperar_folio_cache_o_pdf(clave)
+    if folio_recuperado:
+        if persistir:
+            _persistir_folio_recuperado(clave, folio_recuperado)
+        return {
+            "ok": True,
+            "clave_catastral": clave,
+            "folio_real": folio_recuperado,
+            "metodo": "cache_pdf",
+            "confianza": 180,
+            "persistido": persistir,
+        }
+
+    try:
+        cascada = _consultar_inmuebles_rppc_por_clave_cascada(clave)
+    except HTTPException as exc:
+        return {
+            "ok": False,
+            "clave_catastral": clave,
+            "error": str(exc.detail),
+            "metodo": "error",
+        }
+    except Exception as exc:
+        return {
+            "ok": False,
+            "clave_catastral": clave,
+            "error": str(exc),
+            "metodo": "error",
+        }
+
+    inmuebles = [x for x in (cascada.get("inmuebles") or []) if _es_item_inmueble_rppc(x)]
+    metodo = str(cascada.get("metodo") or "clave")
+    datos_padron = cascada.get("datos_padron") or _datos_padron_busqueda_rppc(clave)
+    segmentos = _segmentos_clave_catastral_rppc(clave)
+
     if not inmuebles:
-        datos_padron = cascada.get("datos_padron") or _datos_padron_busqueda_rppc(clave)
         pistas: list[str] = []
-        if not (datos_padron.get("variantes_unidad") or []):
+        if _debe_priorizar_busqueda_unidad_rppc(datos_padron) and not (datos_padron.get("variantes_unidad") or []):
             pistas.append("falta unidad en padrón (campo numint, ej. C-41)")
-        if not _resolver_rppc_colonia_id(datos_padron):
-            pistas.append("falta rppc_colonia_id (ver docs/sql/rppc-colonia-id-tijuana.sql)")
+        if not _resolver_colonias_ids_rppc(datos_padron):
+            pistas.append(
+                "sin rppc_colonia_id en cat_colonias (docs/sql/rppc-colonia-id-tijuana.sql o asignación manual)"
+            )
+        if not str(datos_padron.get("manzana") or segmentos.get("manzana") or "").strip():
+            pistas.append("no se pudo derivar manzana de la clave")
         detalle = cascada.get("detalle") or f"clave {_clave_sgc_a_rppc(clave)} y ubicación"
         if pistas:
             detalle = f"{detalle}; {'; '.join(pistas)}"
-        raise HTTPException(
-            status_code=404,
-            detail=f"RPPC no encontró inmuebles para la clave {_clave_sgc_a_rppc(clave)} ({detalle})",
-        )
+        return {
+            "ok": False,
+            "clave_catastral": clave,
+            "metodo": metodo,
+            "error": f"RPPC sin inmuebles ({detalle})",
+            "datos_padron": {
+                k: datos_padron.get(k)
+                for k in ("colonia", "manzana", "lote", "clave_catastral")
+                if datos_padron.get(k)
+            },
+        }
 
     if metodo == "unidad":
-        elegido = cascada.get("inmueble_elegido") or _seleccionar_inmueble_unidad_rppc(
-            inmuebles,
-            cascada.get("datos_padron") or _datos_padron_busqueda_rppc(clave),
-        )
+        elegido = cascada.get("inmueble_elegido") or _seleccionar_inmueble_unidad_rppc(inmuebles, datos_padron)
         fuente_folio = "RPPC_UNIDAD"
     elif metodo == "folio":
-        elegido = cascada.get("inmueble_elegido") or _seleccionar_inmueble_unidad_rppc(
-            inmuebles,
-            cascada.get("datos_padron") or _datos_padron_busqueda_rppc(clave),
-        ) or _seleccionar_mejor_inmueble_rppc(inmuebles)
+        elegido = (
+            cascada.get("inmueble_elegido")
+            or _seleccionar_inmueble_unidad_rppc(inmuebles, datos_padron)
+            or _seleccionar_mejor_inmueble_rppc(inmuebles)
+        )
         fuente_folio = "RPPC_FOLIO"
-    elif metodo == "ubicacion":
+    elif metodo in ("ubicacion", "ubicacion_lote"):
         elegido = cascada.get("inmueble_elegido") or _seleccionar_inmueble_ubicacion_rppc(
-            inmuebles,
-            cascada.get("datos_padron") or _datos_padron_busqueda_rppc(clave),
+            inmuebles, datos_padron, segmentos
         )
         fuente_folio = "RPPC_UBICACION"
     else:
         elegido = cascada.get("inmueble_elegido") or _seleccionar_mejor_inmueble_rppc(inmuebles)
         fuente_folio = "RPPC_CLAVE"
 
+    confianza = int(cascada.get("confianza") or 0)
+    if elegido and confianza <= 0:
+        confianza = _puntuar_inmueble_ubicacion_rppc(elegido, datos_padron, segmentos)[0]
+
     if not elegido:
-        raise HTTPException(
-            status_code=404,
-            detail=f"RPPC encontró coincidencias para {_clave_sgc_a_rppc(clave)}, pero ninguna trae FOLIO_REAL válido",
-        )
+        return {
+            "ok": False,
+            "clave_catastral": clave,
+            "metodo": metodo,
+            "error": "Coincidencias RPPC sin FOLIO_REAL válido",
+            "total_candidatos": len(inmuebles),
+        }
 
-    folio = _normalizar_numero(elegido.get("FOLIO_REAL"))
+    folio = _extraer_folio_real_rppc(elegido)
     if not folio:
-        raise HTTPException(status_code=404, detail="Folio real inválido devuelto por RPPC")
+        return {
+            "ok": False,
+            "clave_catastral": clave,
+            "metodo": metodo,
+            "error": "Folio real inválido en respuesta RPPC",
+        }
 
-    _guardar_folio_real_en_padron(clave, folio, fuente=fuente_folio)
-    return folio
+    min_conf = confianza_minima if confianza_minima is not None else _confianza_minima_descubrimiento_rppc(metodo)
+    cve = str(elegido.get("CVE_CAT") or "").upper().replace("-", "")
+    if cve and cve != clave and confianza < min_conf:
+        return {
+            "ok": False,
+            "clave_catastral": clave,
+            "metodo": metodo,
+            "folio_real": folio,
+            "confianza": confianza,
+            "error": (
+                f"Confianza baja ({confianza}<{min_conf}): CVE_CAT {elegido.get('CVE_CAT')} "
+                f"no coincide con {clave}"
+            ),
+        }
+
+    if persistir:
+        _guardar_folio_real_en_padron(clave, folio, fuente=fuente_folio)
+
+    return {
+        "ok": True,
+        "clave_catastral": clave,
+        "folio_real": folio,
+        "metodo": metodo,
+        "confianza": confianza,
+        "fuente": fuente_folio,
+        "cve_cat": elegido.get("CVE_CAT"),
+        "persistido": persistir,
+        "total_candidatos": len(inmuebles),
+    }
 
 
-def _obtener_partida_por_folio(folio_real: int):
-    datos = _consultar_movimientos_folio(folio_real)
+def _obtener_folio_por_clave(clave_catastral: str) -> int:
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        raise HTTPException(status_code=400, detail="Clave catastral inválida")
+
+    resultado = descubrir_folio_rppc(clave, persistir=True)
+    if resultado.get("ok") and resultado.get("folio_real"):
+        return int(resultado["folio_real"])
+
+    raise HTTPException(
+        status_code=404,
+        detail=resultado.get("error")
+        or f"RPPC no encontró folio para la clave {_clave_sgc_a_rppc(clave)}",
+    )
+
+
+def _extraer_movimientos_de_estructura_rppc(data: Any) -> list[dict[str, Any]]:
+    """Extrae filas con PARTIDA/ACTO de cualquier nivel del JSON RPPC."""
+    out: list[dict[str, Any]] = []
+    vistos: set[int] = set()
+
+    def _visitar(nodo: Any) -> None:
+        if isinstance(nodo, dict):
+            if _es_item_movimiento_rppc(nodo):
+                partida = _normalizar_numero(nodo.get("PARTIDA") or nodo.get("partida"))
+                if partida and partida not in vistos:
+                    vistos.add(partida)
+                    out.append(nodo)
+            for val in nodo.values():
+                _visitar(val)
+        elif isinstance(nodo, list):
+            for item in nodo:
+                _visitar(item)
+
+    _visitar(data)
+    return out
+
+
+def _extraer_lote_id_inmueble_rppc(item: dict[str, Any]) -> int | None:
+    for key in ("LOTE_ID", "lote_id", "LoteId", "loteId", "ID_LOTE", "id_lote"):
+        lid = _normalizar_numero(item.get(key))
+        if lid and lid > 0:
+            return lid
+    return None
+
+
+def _consultar_inscripciones_lote_rppc(
+    folio_real: int,
+    *,
+    lote_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """ObtenerInscripLote — inscripciones/partidas asociadas al lote."""
+    _asegurar_rppc_listo(folio_prueba=folio_real)
+    api = _buscar_api_por_fragmento(_rppc_apis_cache, "obtenerinscriplote")
+    rutas: list[str] = []
+    if api:
+        rutas.append(api["route"])
+    rutas.extend([
+        "Servicios/ConsultaAvanzada/ObtenerInscripLote",
+        "Servicios/Reportes/ObtenerInscripLote",
+    ])
+    uid = _rppc_usuario_id or RPPC_USUARIO_ID or _rppc_usuario_id_runtime()
+    payloads: list[dict[str, Any]] = []
+    base = {
+        "MUNICIPIO": RPPC_MUNICIPIO_ID,
+        "LOCALIDAD": RPPC_LOCALIDAD_ID,
+        "VIGENTE": "S",
+        "FOLIO_REAL": int(folio_real),
+    }
+    if lote_id:
+        payloads.append({**base, "LOTE_ID": int(lote_id)})
+    payloads.extend([
+        base,
+        {"FOLIO_REAL": int(folio_real), "infoHistorica": 0},
+        {"folioReal": int(folio_real)},
+    ])
+    if uid:
+        uid_int = int(uid)
+        payloads = [{**pl, "USUARIO_ID": uid_int} for pl in payloads] + payloads
+
+    for ruta in rutas:
+        url = _url_api_desde_ruta(RPPC_BASE_URL, ruta, solo_base=True)
+        for payload in payloads:
+            try:
+                _, body = _request_rppc(
+                    "POST",
+                    url,
+                    data=json.dumps(payload).encode("utf-8"),
+                    content_type="application/json",
+                    timeout=RPPC_TIMEOUT_POST,
+                )
+                datos = _parsear_movimientos_rppc(body)
+                if datos:
+                    return datos
+            except HTTPException:
+                continue
+    return []
+
+
+def _intentar_movimientos_folio_rppc(
+    folio_real: int,
+    *,
+    lote_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Movimientos del folio probando folio directo y, si hace falta, LOTE_ID del inmueble."""
+    for lid in ([int(lote_id)] if lote_id else [None]):
+        try:
+            datos = _consultar_movimientos_folio_directo(folio_real, lote_id=lid)
+            if datos:
+                return datos
+        except HTTPException:
+            pass
+        try:
+            datos = _consultar_movimientos_folio(folio_real)
+            if datos:
+                return datos
+        except HTTPException:
+            pass
+    return []
+
+
+def _obtener_partida_por_folio(
+    folio_real: int,
+    *,
+    clave_catastral: str | None = None,
+):
+    cache = _cache_rppc_por_clave_o_folio(
+        clave_catastral=clave_catastral,
+        folio_real=folio_real,
+    )
+    partida_cache = _normalizar_numero((cache or {}).get("rppc_partida"))
+    if partida_cache:
+        mov = {"PARTIDA": partida_cache, "FUENTE": "PADRON_CACHE"}
+        return partida_cache, mov, []
+
+    lote_id: int | None = None
+    datos = _intentar_movimientos_folio_rppc(folio_real)
 
     if not datos:
-        raise HTTPException(status_code=404, detail="No se encontraron movimientos para ese folio real")
+        inmuebles, _ = _consultar_inmuebles_rppc_por_folio(folio_real)
+        if inmuebles:
+            inm = inmuebles[0]
+            partida_inm = _normalizar_numero(inm.get("PARTIDA") or inm.get("partida"))
+            if partida_inm:
+                return partida_inm, inm, []
+            lote_id = _extraer_lote_id_inmueble_rppc(inm)
+            if lote_id:
+                datos = _intentar_movimientos_folio_rppc(folio_real, lote_id=lote_id)
+
+    if not datos:
+        for consulta in (
+            lambda: _consultar_lote_rppc_por_folio(folio_real),
+            lambda: _consultar_lotes_memoria_rppc(folio_real),
+        ):
+            try:
+                estructura = consulta()
+            except Exception:
+                estructura = None
+            if not estructura:
+                continue
+            datos = _extraer_movimientos_de_estructura_rppc(estructura)
+            if datos:
+                break
+            if lote_id is None and isinstance(estructura, dict):
+                lote_id = _extraer_lote_id_inmueble_rppc(estructura)
+                if lote_id:
+                    datos = _intentar_movimientos_folio_rppc(folio_real, lote_id=lote_id)
+                    if datos:
+                        break
+
+    if not datos:
+        datos = _consultar_inscripciones_lote_rppc(folio_real, lote_id=lote_id)
+
+    if not datos:
+        raise HTTPException(
+            status_code=404,
+            detail=(
+                f"No se encontraron movimientos ni partida RPPC para folio {folio_real}. "
+                "El folio está en padrón; pruebe renovar la cookie RPPC o asigne rppc_partida manualmente."
+            ),
+        )
 
     datos_ordenados = sorted(
         datos,
-        key=lambda x: x.get("FECHA_REGISTRO") or "",
+        key=lambda x: x.get("FECHA_REGISTRO") or x.get("FECHA_INSCRIPCION") or "",
         reverse=True,
     )
 
-    partida = _normalizar_numero(datos_ordenados[0].get("PARTIDA"))
+    partida = _normalizar_numero(datos_ordenados[0].get("PARTIDA") or datos_ordenados[0].get("partida"))
     if not partida:
         raise HTTPException(status_code=404, detail="No se encontró partida RPPC")
 
@@ -5491,6 +6228,11 @@ def _comparar_titular_clave_recalcular(
     doc_tramite_id = _normalizar_numero((cache_padron or {}).get("rppc_doc_tramite_id"))
 
     if not folio_real:
+        folio_real = _recuperar_folio_cache_o_pdf(clave, cache_padron)
+        if folio_real:
+            _persistir_folio_recuperado(clave, folio_real)
+
+    if not folio_real and not (partida or doc_tramite_id):
         folio_real = _obtener_folio_por_clave(clave)
 
     doc_ref = _doc_ref_comparacion_titular(partida=partida, doc_tramite_id=doc_tramite_id)
@@ -6028,7 +6770,10 @@ def _resolver_documento_por_folio(folio_real: int, clave_catastral: str | None =
                 folio_cache,
             )
 
-    partida, movimiento, movimientos = _obtener_partida_por_folio(folio_real)
+    partida, movimiento, movimientos = _obtener_partida_por_folio(
+        folio_real,
+        clave_catastral=clave_catastral,
+    )
     try:
         doc_id, inscripcion = _obtener_doc_id_por_partida(partida)
         tipo_documento = "doc_tramite_id"
@@ -6422,9 +7167,31 @@ def movimientos_por_folio(
 @router.get("/resolver/folio/{folio_real}")
 def resolver_por_folio(
     folio_real: int,
+    clave_catastral: str | None = Query(None, description="Clave catastral para caché padrón y PDF local"),
     usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
-    return _resolver_documento_por_folio(folio_real)
+    clave = _normalizar_clave(clave_catastral or "") or None
+    data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
+    if clave:
+        data["clave_catastral"] = clave
+        data["clave_rppc"] = _clave_sgc_a_rppc(clave)
+        if not data.get("doc_tramite_id") and data.get("pdf_url") and data.get("partida"):
+            sep = "&" if "?" in str(data["pdf_url"]) else "?"
+            data["pdf_url"] = f"{data['pdf_url']}{sep}clave_catastral={urllib.parse.quote(clave)}"
+    return data
+
+
+@router.get("/descubrir/clave/{clave_catastral}")
+def descubrir_folio_por_clave(
+    clave_catastral: str,
+    persistir: bool = Query(False, description="Si true, guarda folio_real en padrón al encontrarlo"),
+    usuario_actual: dict = Depends(requerir_pestana_rppc),
+):
+    """Descubre folio real (cascada completa) con metodo y confianza — útil para diagnóstico y backfill."""
+    clave = _normalizar_clave(clave_catastral)
+    if not clave:
+        raise HTTPException(status_code=400, detail="Clave catastral inválida")
+    return descubrir_folio_rppc(clave, persistir=persistir)
 
 
 @router.get("/inmuebles/clave/{clave_catastral}")
@@ -6463,7 +7230,7 @@ def inmuebles_por_clave(
         elegido = cascada.get("inmueble_elegido") or _seleccionar_inmueble_unidad_rppc(
             inmuebles, datos_padron
         ) or _seleccionar_mejor_inmueble_rppc(inmuebles)
-    elif metodo == "ubicacion":
+    elif metodo in ("ubicacion", "ubicacion_lote"):
         elegido = cascada.get("inmueble_elegido") or _seleccionar_inmueble_ubicacion_rppc(
             inmuebles, datos_padron
         )
@@ -6608,8 +7375,14 @@ def resolver_por_clave(
     usuario_actual: dict = Depends(requerir_pestana_rppc),
 ):
     clave = _normalizar_clave(clave_catastral)
-    folio_real = _obtener_folio_por_clave(clave)
-    data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
+
+    data = _resolver_documento_desde_cache_rppc(clave)
+    if not data:
+        cache = _cache_rppc_por_clave_o_folio(clave_catastral=clave)
+        folio_padron = _normalizar_numero((cache or {}).get("folio_real"))
+        folio_real = folio_padron if folio_padron else _obtener_folio_por_clave(clave)
+        data = _resolver_documento_por_folio(folio_real, clave_catastral=clave)
+
     data["clave_catastral"] = clave
     data["clave_rppc"] = _clave_sgc_a_rppc(clave)
 

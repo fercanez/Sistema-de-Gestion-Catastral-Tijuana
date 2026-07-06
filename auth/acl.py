@@ -55,7 +55,14 @@ ACL_BACKEND = {
 
 
 def normalizar_rol(rol):
-    return (rol or "consulta").strip().lower()
+    base = (rol or "consulta").strip().lower()
+    alias = {
+        "administrador": "admin",
+        "administrator": "admin",
+        "admin tijuana": "admin",
+        "administrador tijuana": "admin",
+    }
+    return alias.get(base, base)
 
 
 def _permisos_fallback(rol):

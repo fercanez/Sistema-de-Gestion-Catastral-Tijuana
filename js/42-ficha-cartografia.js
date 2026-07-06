@@ -81,12 +81,14 @@ function htmlConstruccionesCarto(lista) {
   }
   const filas = lista.map(c => {
     const sup = c.suphor != null ? Number(c.suphor).toFixed(3) : "—";
+    const supT = c.sup_total != null ? Number(c.sup_total).toFixed(3) : "—";
     const per = c.perimetro != null ? Number(c.perimetro).toFixed(4) : "—";
     return `
       <tr>
         <td>${fichaCartoEsc(c.claveconst ?? "—")}</td>
         <td>${fichaCartoEsc(c.niveles ?? "—")}</td>
         <td>${sup !== "—" ? sup : "—"}</td>
+        <td>${supT !== "—" ? supT : "—"}</td>
         <td>${fichaCartoEsc(fichaCartoFormatTipo(c.tipo))}</td>
         <td>${per !== "—" ? per : "—"}</td>
       </tr>
@@ -99,6 +101,7 @@ function htmlConstruccionesCarto(lista) {
           <th>Clave const.</th>
           <th>Niveles</th>
           <th>Sup. hor. (m²)</th>
+          <th>Sup. total (m²)</th>
           <th>Tipo</th>
           <th>Perímetro (m)</th>
         </tr>

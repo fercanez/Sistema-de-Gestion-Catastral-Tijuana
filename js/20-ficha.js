@@ -660,8 +660,12 @@ function toggleAdeudosFiscal() {
   });
 }
 
+const URL_EXPEDIENTE_EXTERNO_TIJUANA =
+  "https://plataforma.tijuana.gob.mx/plataforma/indexProductividad.php?mod=73&sis=74#area_iframe";
+
 function urlExpedienteExterno(clave) {
-  return `https://www.mexicali.gob.mx/webpub/consultacatastro/documentacion.aspx?${encodeURIComponent(String(clave || "").trim().toUpperCase())}`;
+  void clave;
+  return URL_EXPEDIENTE_EXTERNO_TIJUANA;
 }
 
 function abrirExpedienteExterno(clave) {

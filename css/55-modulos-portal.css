@@ -2643,6 +2643,34 @@ body.popup-cu-lightbox-abierto {
   gap: 6px;
 }
 
+.popup-construcciones-capa-totales {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.popup-construcciones-capa-totales div {
+  background: #f8f4f5;
+  border: 1px solid #d8c4c9;
+  padding: 5px 6px;
+  font-size: 10px;
+}
+
+.popup-construcciones-capa-totales span {
+  display: block;
+  color: #703341;
+  font-weight: 800;
+  text-transform: uppercase;
+  font-size: 9px;
+  margin-bottom: 2px;
+}
+
+.popup-construcciones-capa-totales b {
+  font-size: 11px;
+  color: #222;
+}
+
 .popup-construcciones-capa-resumen div {
   background: #fff;
   border: 1px solid #ccc;
@@ -2964,6 +2992,16 @@ body.popup-cu-lightbox-abierto {
   font-size: 0.68rem;
   font-weight: 600;
   white-space: nowrap;
+}
+
+.popup-numof-badge-enfrente {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.popup-numof-badge-colindante {
+  background: #dbeafe;
+  color: #1e40af;
 }
 
 .popup-numof-badge-misma {

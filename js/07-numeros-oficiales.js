@@ -43,11 +43,164 @@ function popupNumofSufijoValido(valor) {
 
 function popupNumofEtiqueta(props) {
   const num = String(props?.numof ?? "").trim();
-  if (!num) return "";
-  const letra = popupNumofSufijoValido(props?.letra);
   const numint = popupNumofSufijoValido(props?.numint);
-  const sufijo = letra || numint;
-  return sufijo ? `${num}-${sufijo}` : num;
+  const letra = popupNumofSufijoValido(props?.letra);
+
+  if (!num) {
+    if (numint && letra) return `${numint}-${letra}`;
+    return numint || letra || "";
+  }
+
+  const partes = [num];
+  if (numint) partes.push(numint);
+  if (letra) partes.push(letra);
+  return partes.length > 1 ? partes.join("-") : num;
+}
+
+function popupNumofNormalizarCalle(calle) {
+  return String(calle || "")
+    .trim()
+    .toUpperCase()
+    .replace(/^(CALLE|CLL|CL|AV|AVENIDA|BLVD|BOULEVARD|BLVRD|PROL|PROLONGACION)\.?\s+/i, "");
+}
+
+function popupNumofCalleToken(calle) {
+  return popupNumofNormalizarCalle(calle)
+    .replace(/^(DE LA(S)?|DEL|LA|LAS|EL|LOS)\s+/i, "")
+    .trim();
+}
+
+function popupNumofCalleCoincide(calleA, calleB) {
+  const a = popupNumofNormalizarCalle(calleA);
+  const b = popupNumofNormalizarCalle(calleB);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  const ta = popupNumofCalleToken(calleA);
+  const tb = popupNumofCalleToken(calleB);
+  if (ta && tb && ta === tb) return true;
+  if (ta && (a.includes(ta) || b.includes(ta))) return true;
+  if (tb && (a.includes(tb) || b.includes(tb))) return true;
+  return false;
+}
+
+function popupNumofEsBloqueCondominio(item, claveNorm) {
+  const a = String(claveNorm || "").trim().toUpperCase();
+  const b = String(item?.clave_catastral || "").trim().toUpperCase();
+  if (!a || !b || a === b) return false;
+  const prefLen = a.length >= 7 ? 7 : 6;
+  return a.slice(0, prefLen) === b.slice(0, prefLen);
+}
+
+function popupNumofEsMismoNumofEnCalle(item, consultado) {
+  const numofRef = String(consultado?.numof || "").trim();
+  const mismoNumof = numofRef && String(item?.numof || "").trim() === numofRef;
+  return !!(mismoNumof && popupNumofCalleCoincide(item?.calle, consultado?.calle));
+}
+
+function popupNumofFiltrarResultadosNumof(cercanos, consultado, claveNorm) {
+  return (cercanos || []).filter(function(it) {
+    if (popupNumofEsMismoNumofEnCalle(it, consultado)) return false;
+    if (claveNorm && popupNumofEsBloqueCondominio(it, claveNorm) && !it.es_colindante) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function popupNumofReconstruirFeatures(data) {
+  if (!data) return data;
+  const prev = data.features || [];
+  const consultadoFeat = prev.find(f => f.properties?.es_consultado);
+  const byClave = new Map();
+  prev.forEach(function(f) {
+    const cl = String(f.properties?.clave_catastral || "").trim().toUpperCase();
+    if (cl) byClave.set(cl, f);
+  });
+
+  const features = [];
+  if (consultadoFeat) features.push(consultadoFeat);
+
+  (data.cercanos || []).forEach(function(item) {
+    const cl = String(item.clave_catastral || "").trim().toUpperCase();
+    const prevFeat = byClave.get(cl);
+    const geometry = item.geometry || prevFeat?.geometry || null;
+    if (!geometry) return;
+    features.push({
+      type: "Feature",
+      geometry,
+      properties: {
+        clave_catastral: item.clave_catastral,
+        numof: item.numof || "",
+        numint: item.numint || "",
+        letra: item.letra || "",
+        cp: item.cp || "",
+        calle: item.calle || "",
+        colonia: item.colonia || "",
+        distancia_m: item.distancia_m,
+        misma_calle: !!item.misma_calle,
+        es_colindante: !!item.es_colindante,
+        es_enfrente: !!item.es_enfrente,
+        es_consultado: false
+      }
+    });
+  });
+
+  data.features = features;
+  return data;
+}
+
+async function popupNumofEnriquecerEtiquetasCercanos(data) {
+  if (!data) return data;
+  if (String(data.origen || "").startsWith("lote_secuencial")) {
+    const consultado = data.consultado || {};
+    data.cercanos = popupNumofFiltrarResultadosNumof(
+      data.cercanos || [],
+      consultado,
+      String(data.clave_catastral || consultado.clave_catastral || "").trim().toUpperCase()
+    );
+    data.total = data.cercanos.length;
+    data.total_misma_calle = data.cercanos.filter(c => c.misma_calle).length;
+    data.total_otras_calles = data.cercanos.length - data.total_misma_calle;
+    return popupNumofReconstruirFeatures(data);
+  }
+  const consultado = data.consultado || {};
+  const claveNorm = String(data.clave_catastral || consultado.clave_catastral || "").trim().toUpperCase();
+  const pendientes = (data.cercanos || []).slice(0, POPUP_NUMOF_FICHA_MAX);
+
+  for (let i = 0; i < pendientes.length; i += POPUP_NUMOF_FICHA_LOTE) {
+    const lote = pendientes.slice(i, i + POPUP_NUMOF_FICHA_LOTE);
+    await Promise.all(lote.map(async function(item) {
+      const enriquecido = await popupNumofEnriquecerDesdeFicha(item.clave_catastral, item);
+      Object.assign(item, enriquecido);
+      popupNumofCompletarNumofCondominio(item, consultado, claveNorm);
+    }));
+  }
+
+  data.cercanos = popupNumofFiltrarResultadosNumof(data.cercanos, consultado, claveNorm);
+  data.cercanos.sort(function(a, b) {
+    const pa = a.es_colindante ? 0 : (a.es_enfrente ? 1 : 2);
+    const pb = b.es_colindante ? 0 : (b.es_enfrente ? 1 : 2);
+    if (pa !== pb) return pa - pb;
+    return (a.distancia_m || 0) - (b.distancia_m || 0);
+  });
+  data.total = data.cercanos.length;
+  data.total_misma_calle = data.cercanos.filter(c => c.misma_calle).length;
+  data.total_otras_calles = data.cercanos.length - data.total_misma_calle;
+  return popupNumofReconstruirFeatures(data);
+}
+
+function popupNumofPropsFicha(ficha) {
+  if (!ficha || typeof ficha !== "object") return {};
+  if (ficha.properties && typeof ficha.properties === "object") return ficha.properties;
+  return ficha;
+}
+
+function popupNumofTieneIdentificador(props) {
+  return !!(
+    String(props?.numof || "").trim()
+    || popupNumofSufijoValido(props?.numint)
+    || popupNumofSufijoValido(props?.letra)
+  );
 }
 
 function popupNumofEsc(texto) {
@@ -442,44 +595,12 @@ function popupNumofQueryLimites() {
   return `limite_misma_calle=${POPUP_NUMOF_LIMITE_MISMA}&limite_otras_calles=${POPUP_NUMOF_LIMITE_OTRAS}`;
 }
 
-function popupNumofAplicarLimitesCercanos(items, calleRef) {
-  const calleNorm = String(calleRef || "").trim().toUpperCase();
-  const pool = (items || []).map(it => ({
-    ...it,
-    misma_calle: calleNorm !== "" && String(it.calle || "").trim().toUpperCase() === calleNorm
-  }));
-  pool.sort((a, b) => (a.distancia_m || 0) - (b.distancia_m || 0));
-
-  const misma = pool.filter(i => i.misma_calle).slice(0, POPUP_NUMOF_LIMITE_MISMA);
-  const clavesMisma = new Set(misma.map(i => i.clave_catastral));
-  const otras = pool
-    .filter(i => !i.misma_calle && !clavesMisma.has(i.clave_catastral))
-    .slice(0, POPUP_NUMOF_LIMITE_OTRAS);
-
-  return [...misma, ...otras].sort((a, b) => (a.distancia_m || 0) - (b.distancia_m || 0));
-}
-
-function popupNumofArmarRespuesta(claveNorm, consultado, cercanos, features, origen) {
-  const totalMisma = cercanos.filter(c => c.misma_calle).length;
-  const totalOtras = cercanos.length - totalMisma;
-  return {
-    clave_catastral: claveNorm,
-    limite_misma_calle: POPUP_NUMOF_LIMITE_MISMA,
-    limite_otras_calles: POPUP_NUMOF_LIMITE_OTRAS,
-    total_misma_calle: totalMisma,
-    total_otras_calles: totalOtras,
-    total: cercanos.length,
-    consultado,
-    cercanos,
-    type: "FeatureCollection",
-    features,
-    origen: origen || null
-  };
-}
-
 async function popupNumofFetchJson(url) {
+  if (typeof fetchAutenticadoJson === "function") {
+    return fetchAutenticadoJson(url);
+  }
   const r = await fetch(url, {
-    headers: typeof authHeaders === "function" ? authHeaders() : {},
+    headers: typeof authJsonHeaders === "function" ? authJsonHeaders() : (typeof authHeaders === "function" ? authHeaders() : {}),
     cache: "no-store"
   });
   if (!r.ok) {
@@ -496,133 +617,40 @@ async function popupNumofFetchJson(url) {
   return r.json();
 }
 
-async function cargarNumerosOficialesCercanosFallback(claveNorm, p) {
-  const featureConsultado = await popupNumofFetchJson(
-    `${API}/predios/${encodeURIComponent(claveNorm)}/geojson?_=${Date.now()}`
-  );
-  if (!featureConsultado?.geometry) {
-    throw new Error("Predio sin geometría cartográfica");
+const POPUP_NUMOF_FICHA_MAX = 80;
+const POPUP_NUMOF_FICHA_LOTE = 6;
+
+async function popupNumofEnriquecerDesdeFicha(cl, datos) {
+  try {
+    const ficha = popupNumofPropsFicha(await popupNumofFetchJson(
+      `${API}/padron/${encodeURIComponent(cl)}/ficha?_=${Date.now()}`
+    ));
+    return {
+      numof: datos.numof || String(ficha.numof || "").trim(),
+      calle: datos.calle || String(ficha.calle || "").trim(),
+      colonia: datos.colonia || String(ficha.colonia || "").trim(),
+      numint: datos.numint || String(ficha.numint || "").trim(),
+      letra: datos.letra || String(ficha.letra || "").trim(),
+      cp: datos.cp || String(ficha.cp || "").trim()
+    };
+  } catch (e) {
+    return datos;
   }
+}
 
-  const format = new ol.format.GeoJSON({
-    dataProjection: "EPSG:4326",
-    featureProjection: "EPSG:3857"
-  });
-  const geomConsultado = format.readFeature(featureConsultado).getGeometry();
-  if (!geomConsultado) throw new Error("No se pudo leer la geometría del predio");
-
-  const center3857 = ol.extent.getCenter(geomConsultado.getExtent());
-  const [lon, lat] = ol.proj.toLonLat(center3857);
-  const calleRef = String(p?.calle || "").trim();
-
-  const consultado = {
-    clave_catastral: claveNorm,
-    numof: String(p?.numof || "").trim(),
-    numint: String(p?.numint || "").trim(),
-    letra: String(p?.letra || "").trim(),
-    cp: String(p?.cp || "").trim(),
-    calle: calleRef,
-    colonia: String(p?.colonia || "").trim(),
-    distancia_m: 0,
-    misma_calle: true
-  };
-
-  let candidatos = [];
-  for (const radio of [150, 250, 400, 500, 700]) {
-    try {
-      const fc = await popupNumofFetchJson(
-        `${API}/predios/cercanos?lon=${lon}&lat=${lat}&radio=${radio}&_=${Date.now()}`
-      );
-      candidatos = fc?.features || [];
-      if (candidatos.length >= 80) break;
-    } catch (e) {
-      if (radio >= 500) continue;
-      throw e;
-    }
+function popupNumofCompletarNumofCondominio(item, consultado, claveNorm) {
+  if (!item) return item;
+  if (!popupNumofEsBloqueCondominio(item, claveNorm)) return item;
+  const calleRef = popupNumofNormalizarCalle(consultado?.calle);
+  if (!String(item.calle || "").trim() && consultado?.calle) {
+    item.calle = String(consultado.calle).trim();
   }
-
-  const pool = [];
-  for (const f of candidatos) {
-    const props = f.properties || {};
-    const cl = String(props.clave_catastral || "").trim().toUpperCase();
-    if (!cl || cl === claveNorm) continue;
-
-    let numof = String(props.numof || "").trim();
-    let calle = String(props.calle || "").trim();
-    let colonia = String(props.colonia || "").trim();
-    let numint = String(props.numint || "").trim();
-    let letra = String(props.letra || "").trim();
-    let cp = String(props.cp || "").trim();
-
-    if (!numof) {
-      try {
-        const ficha = await popupNumofFetchJson(
-          `${API}/padron/${encodeURIComponent(cl)}/ficha?_=${Date.now()}`
-        );
-        numof = String(ficha.numof || "").trim();
-        calle = calle || String(ficha.calle || "").trim();
-        colonia = colonia || String(ficha.colonia || "").trim();
-        numint = numint || String(ficha.numint || "").trim();
-        letra = letra || String(ficha.letra || "").trim();
-        cp = cp || String(ficha.cp || "").trim();
-      } catch (e) {
-        continue;
-      }
-    }
-    if (!numof) continue;
-
-    let distancia_m = Number(props.distancia_m);
-    if (!Number.isFinite(distancia_m) && f.geometry) {
-      try {
-        const g2 = format.readFeature({ type: "Feature", geometry: f.geometry }).getGeometry();
-        const c2 = ol.extent.getCenter(g2.getExtent());
-        distancia_m = Math.round(ol.coordinate.dist(center3857, c2));
-      } catch (e) {
-        distancia_m = 0;
-      }
-    }
-
-    pool.push({
-      clave_catastral: cl,
-      numof,
-      numint,
-      letra,
-      cp,
-      calle,
-      colonia,
-      distancia_m,
-      geometry: f.geometry || null
-    });
-  }
-
-  const cercanos = popupNumofAplicarLimitesCercanos(pool, calleRef);
-  const features = [{
-    type: "Feature",
-    geometry: featureConsultado.geometry,
-    properties: { ...consultado, es_consultado: true }
-  }];
-
-  cercanos.forEach(item => {
-    if (!item.geometry) return;
-    features.push({
-      type: "Feature",
-      geometry: item.geometry,
-      properties: {
-        clave_catastral: item.clave_catastral,
-        numof: item.numof,
-        numint: item.numint,
-        letra: item.letra,
-        cp: item.cp,
-        calle: item.calle,
-        colonia: item.colonia,
-        distancia_m: item.distancia_m,
-        misma_calle: item.misma_calle,
-        es_consultado: false
-      }
-    });
-  });
-
-  return popupNumofArmarRespuesta(claveNorm, consultado, cercanos, features, "fallback");
+  if (String(item.numof || "").trim()) return item;
+  const numint = popupNumofSufijoValido(item.numint);
+  const letra = popupNumofSufijoValido(item.letra);
+  if (!numint && !letra) return item;
+  if (!calleRef || !popupNumofCalleCoincide(item.calle, consultado?.calle)) return item;
+  return item;
 }
 
 async function cargarNumerosOficialesCercanos(clave, p) {
@@ -630,30 +658,8 @@ async function cargarNumerosOficialesCercanos(clave, p) {
   if (!claveNorm) return null;
 
   const qs = popupNumofQueryLimites();
-  const urls = [
-    `${API}/padron/${encodeURIComponent(claveNorm)}/numeros-oficiales-cercanos?${qs}`,
-    `${API}/predios/${encodeURIComponent(claveNorm)}/numeros-oficiales-cercanos?${qs}`
-  ];
-
-  let ultimoError = null;
-  for (const baseUrl of urls) {
-    try {
-      return await popupNumofFetchJson(`${baseUrl}&_=${Date.now()}`);
-    } catch (e) {
-      ultimoError = e;
-    }
-  }
-
-  try {
-    return await cargarNumerosOficialesCercanosFallback(claveNorm, p);
-  } catch (e) {
-    if (ultimoError && String(ultimoError.message || "").toLowerCase() === "not found") {
-      throw new Error(
-        "No se pudo consultar números oficiales. Despliegue routers/padron.py y reinicie: systemctl restart catastro-tijuana-api"
-      );
-    }
-    throw e;
-  }
+  const url = `${API}/padron/${encodeURIComponent(claveNorm)}/numeros-oficiales-cercanos?${qs}&_=${Date.now()}`;
+  return popupNumofFetchJson(url);
 }
 
 function popupNumofHtmlTabla(cercanos) {
@@ -666,7 +672,11 @@ function popupNumofHtmlTabla(cercanos) {
     const calle = popupNumofEsc(item.calle || "—");
     const colonia = popupNumofEsc(item.colonia || "—");
     const dist = popupNumofEsc(popupNumofFormatDistancia(item.distancia_m));
-    const tipo = item.misma_calle
+    const tipo = item.es_colindante
+      ? `<span class="popup-numof-badge popup-numof-badge-colindante">Colindante</span>`
+      : item.es_enfrente
+      ? `<span class="popup-numof-badge popup-numof-badge-enfrente">Enfrente</span>`
+      : item.misma_calle
       ? `<span class="popup-numof-badge popup-numof-badge-misma">Misma calle</span>`
       : `<span class="popup-numof-badge popup-numof-badge-otra">Otra calle</span>`;
     return `
@@ -899,9 +909,19 @@ async function pintarPopupTabNumerosOficiales(p) {
     let data = await cargarNumerosOficialesCercanos(claveNorm, p);
     if (popupNumofClaveActual !== claveNorm) return;
 
+    data = await popupNumofEnriquecerEtiquetasCercanos(data);
+    if (popupNumofClaveActual !== claveNorm) return;
+
     popupNumofActualizarMapa(data);
-    data = await popupNumofCompletarCodigoPostal(data, p);
     popupNumofDatos = data;
+    void popupNumofCompletarCodigoPostal(data, p).then(function(dataCp) {
+      if (popupNumofClaveActual !== claveNorm || !dataCp) return;
+      popupNumofDatos = dataCp;
+      const datosWrapCp = panel.querySelector(".popup-numof-datos");
+      if (datosWrapCp && dataCp.consultado) {
+        datosWrapCp.outerHTML = popupNumofHtmlDatosConsultado(p, dataCp.consultado);
+      }
+    });
 
     const tbody = document.getElementById("popupNumofTablaBody");
     const resumen = document.getElementById("popupNumofResumen");
@@ -914,15 +934,18 @@ async function pintarPopupTabNumerosOficiales(p) {
     if (resumen) resumen.textContent = popupNumofResumenTexto(data);
   } catch (e) {
     if (popupNumofClaveActual !== claveNorm) return;
+    const msg = e.status === 401
+      ? (e.message || "Sesión expirada. Use «Cerrar sesión» e inicie de nuevo.")
+      : (e.message || "No se pudieron cargar los números oficiales.");
     const tbody = document.getElementById("popupNumofTablaBody");
     const resumen = document.getElementById("popupNumofResumen");
     const mapEl = document.getElementById("popupNumofMap");
     if (tbody) {
-      tbody.innerHTML = `<tr><td colspan="6" class="popup-numof-vacio">${popupNumofEsc(e.message || "No se pudieron cargar los números oficiales.")}</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="6" class="popup-numof-vacio">${popupNumofEsc(msg)}</td></tr>`;
     }
-    if (resumen) resumen.textContent = "Error al consultar";
+    if (resumen) resumen.textContent = e.status === 401 ? "Sesión expirada" : "Error al consultar";
     if (mapEl) {
-      mapEl.innerHTML = `<div class="popup-mini-map-vacio">${popupNumofEsc(e.message || "Sin datos cartográficos.")}</div>`;
+      mapEl.innerHTML = `<div class="popup-mini-map-vacio">${popupNumofEsc(msg)}</div>`;
     }
   }
 }

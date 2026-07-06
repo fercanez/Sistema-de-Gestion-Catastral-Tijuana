@@ -1098,12 +1098,12 @@ function pintarPopupTabPlaceholder(panelId, titulo, detalle) {
 }
 
 const URL_ARCHIVO_DIGITAL_EXTERNO =
-  "https://www.mexicali.gob.mx/webpub/consultacatastro/documentacion.aspx?";
+  "https://plataforma.tijuana.gob.mx/plataforma/indexProductividad.php?mod=73&sis=74#area_iframe";
 
 function urlArchivoDigitalExterno(clave) {
   const claveNorm = String(clave || "").trim().toUpperCase();
   if (!claveNorm) return "";
-  return URL_ARCHIVO_DIGITAL_EXTERNO + encodeURIComponent(claveNorm);
+  return URL_ARCHIVO_DIGITAL_EXTERNO;
 }
 
 function urlArchivoExternoApi(clave) {

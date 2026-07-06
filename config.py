@@ -38,6 +38,10 @@ DB_USER = os.getenv("DB_USER")
 DB_PASSWORD = os.getenv("DB_PASSWORD")
 GEONODE_DB_NAME = os.getenv("GEONODE_DB_NAME")
 GEONODE_PREDIOS_TABLE = os.getenv("GEONODE_PREDIOS_TABLE", "public.predios_tijuana").strip() or "public.predios_tijuana"
+GEONODE_CONSTRUCCIONES_TABLE = (
+    os.getenv("GEONODE_CONSTRUCCIONES_TABLE", "public.construcciones_tijuana").strip()
+    or "public.construcciones_tijuana"
+)
 
 # RPPC Baja California (enlace remoto)
 RPPC_BASE_URL = os.getenv(

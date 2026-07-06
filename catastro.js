@@ -1752,7 +1752,8 @@ function toggleAdeudosFiscal() {
 }
 
 function urlExpedienteExterno(clave) {
-  return `https://www.mexicali.gob.mx/webpub/consultacatastro/Documentacion.aspx?${encodeURIComponent(clave || "")}`;
+  void clave;
+  return "https://plataforma.tijuana.gob.mx/plataforma/indexProductividad.php?mod=73&sis=74#area_iframe";
 }
 
 function abrirExpedienteExterno(clave) {

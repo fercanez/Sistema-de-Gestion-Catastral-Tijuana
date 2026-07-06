@@ -1834,9 +1834,11 @@ async function pintarPopupTabArchivo(clave, p) {
     return;
   }
 
-  const urlExt = typeof urlExpedienteExterno === "function"
-    ? urlExpedienteExterno(claveNorm)
-    : urlArchivoDigitalExterno(claveNorm);
+  const urlExt = typeof urlArchivoDigitalExterno === "function"
+    ? urlArchivoDigitalExterno(claveNorm)
+    : (typeof urlExpedienteExterno === "function"
+      ? urlExpedienteExterno(claveNorm)
+      : "");
   const urlVisor = typeof urlArchivoExternoApi === "function"
     ? urlArchivoExternoApi(claveNorm)
     : urlExt;
@@ -2025,12 +2027,20 @@ function aplicarVisibilidadPestanasPopupPredio() {
     btn.disabled = !permitido;
   });
   const activa = typeof popupPredioTabActiva !== "undefined" ? popupPredioTabActiva : "";
-  if (activa && typeof puedeVerPestanaPopupPredio === "function" && !puedeVerPestanaPopupPredio(activa)) {
+  if (!activa || activa === "datos-generales") return;
+  const btnActivo = document.querySelector(`.popup-predio-tab[data-tab="${activa}"]`);
+  const tabOculta = btnActivo && btnActivo.style.display === "none";
+  const permitidoActiva = typeof puedeVerPestanaPopupPredio === "function"
+    ? puedeVerPestanaPopupPredio(activa)
+    : true;
+  if (!permitidoActiva || tabOculta) {
     popupPredioTabActiva = "datos-generales";
-    const p = window.predioSeleccionado || {};
-    if (document.body.classList.contains("popup-predio-abierto")) {
-      pintarPopupPredioTab("datos-generales", p);
-    }
+    document.querySelectorAll(".popup-predio-tab").forEach(function(btn) {
+      btn.classList.toggle("active", btn.dataset.tab === "datos-generales");
+    });
+    document.querySelectorAll(".popup-tab-panel").forEach(function(panel) {
+      panel.classList.toggle("active", panel.dataset.tab === "datos-generales");
+    });
   }
 }
 

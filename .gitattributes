@@ -1,2 +1,2 @@
+# Scripts de shell siempre con LF (evita "bad interpreter: /bin/bash^M" en Linux)
 *.sh text eol=lf
-deploy/systemd/* text eol=lf

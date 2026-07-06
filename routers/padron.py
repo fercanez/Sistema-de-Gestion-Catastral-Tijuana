@@ -15,7 +15,7 @@ from psycopg2.extras import execute_values
 
 from auth.dependencies import obtener_usuario_actual, registrar_auditoria, requerir_permiso, requerir_roles
 from auth.permisos_operativos import requerir_pestana_zona_homogenea
-from config import GEONODE_PREDIOS_TABLE
+from config import GEONODE_CONSTRUCCIONES_TABLE, GEONODE_PREDIOS_TABLE
 from database import get_conn, asegurar_tabla_predio_condominio, asegurar_columna_folio_real_padron
 try:
     from routers.pducp_consulta import consultar_pducp_predio
@@ -39,6 +39,7 @@ def _tabla_sql_segura(nombre: str) -> str:
 
 
 PREDIOS_GEO_TABLE_SQL = _tabla_sql_segura(GEONODE_PREDIOS_TABLE)
+CONSTRUCCIONES_GEO_TABLE_SQL = _tabla_sql_segura(GEONODE_CONSTRUCCIONES_TABLE)
 PREDIOS_GEO_CLAVE_CANDIDATAS = (
     "cve_cat_or",
     "clavecatas",
@@ -85,6 +86,49 @@ def _columnas_tabla_predios_geo(cur) -> set[str]:
 
 
 _CATASTRO_PREDIOS_COLS_CACHE: set[str] | None = None
+_PADRON_2026_COLS_CACHE: set[str] | None = None
+_CP_PADRON_COLUMNAS = ("cp", "codigo_postal", "d_codigo", "d_cp", "codpost")
+
+
+def _columnas_padron_2026(cur) -> set[str]:
+    """Columnas de catalogos.padron_2026 (cache por proceso)."""
+    global _PADRON_2026_COLS_CACHE
+    if _PADRON_2026_COLS_CACHE is not None:
+        return _PADRON_2026_COLS_CACHE
+    cur.execute(
+        """
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'catalogos'
+          AND table_name = 'padron_2026';
+        """
+    )
+    _PADRON_2026_COLS_CACHE = {r["column_name"] for r in cur.fetchall()}
+    return _PADRON_2026_COLS_CACHE
+
+
+def _columna_cp_padron(cur) -> str | None:
+    cols = _columnas_padron_2026(cur)
+    for cand in _CP_PADRON_COLUMNAS:
+        if cand in cols:
+            return cand
+    return None
+
+
+def _expr_cp_padron_sql(cur, alias: str = "pad") -> str:
+    col = _columna_cp_padron(cur)
+    if col:
+        col_sql = _identificador_sql(col)
+        return f"TRIM(COALESCE({alias}.{col_sql}::text, ''))"
+    return "''"
+
+
+def _expr_cp_padron_null_sql(cur, alias: str = "pad") -> str:
+    col = _columna_cp_padron(cur)
+    if col:
+        col_sql = _identificador_sql(col)
+        return f"NULLIF(TRIM(COALESCE({alias}.{col_sql}::text, '')), '')"
+    return "NULL"
 
 
 def _columnas_catastro_predios(cur) -> set[str]:
@@ -880,22 +924,42 @@ def actualizar_geometria_predio(
         raise HTTPException(status_code=500, detail=str(e))
 
 
+def _construcciones_geo_a_feature(row: dict) -> dict | None:
+    geom = row.pop("geom_json", None)
+    if geom is None:
+        return None
+    if isinstance(geom, str):
+        try:
+            geom = json.loads(geom)
+        except json.JSONDecodeError:
+            return None
+    if not geom:
+        return None
+    props = {k: v for k, v in row.items() if v is not None}
+    return {"type": "Feature", "geometry": geom, "properties": props}
+
+
 @router.get("/predios/{clave}/construcciones")
 def construcciones_predio(
     clave: str,
+    incluir_geom: bool = Query(True, description="Incluir GeoJSON para mapa/vector"),
     usuario_actual: dict = Depends(obtener_usuario_actual),
 ):
-    """Construcciones cartográficas del predio (capa construccionesmxli en geonode_data)."""
+    """Construcciones cartográficas del predio (capa construcciones_tijuana en geonode_data)."""
     if get_geonode_conn is None:
         raise HTTPException(
             status_code=503,
             detail="Conexion geonode no configurada en el servidor (database.get_geonode_conn).",
         )
-    clave_norm = clave.upper().strip()
+    clave_norm = re.sub(r"[^A-Za-z0-9]", "", str(clave or "")).upper()
+    if not clave_norm:
+        raise HTTPException(status_code=400, detail="Clave catastral inválida")
+    geom_sql = ", ST_AsGeoJSON(geom)::json AS geom_json" if incluir_geom else ""
     try:
         conn = get_geonode_conn()
         cur = conn.cursor()
-        cur.execute("""
+        cur.execute(
+            f"""
             SELECT
                 fid,
                 clavecatas,
@@ -903,36 +967,66 @@ def construcciones_predio(
                 claveorig,
                 niveles,
                 suphor,
+                sup_total,
                 colonia,
                 perimetro,
                 tipo
-            FROM construccionesmxli
-            WHERE UPPER(TRIM(clavecatas)) = %s
-               OR UPPER(TRIM(claveorig)) = %s
+                {geom_sql}
+            FROM {CONSTRUCCIONES_GEO_TABLE_SQL}
+            WHERE UPPER(REGEXP_REPLACE(TRIM(clavecatas), '[^A-Za-z0-9]', '', 'g')) = %s
+               OR UPPER(REGEXP_REPLACE(TRIM(claveorig), '[^A-Za-z0-9]', '', 'g')) = %s
             ORDER BY claveconst NULLS LAST, fid;
-        """, (clave_norm, clave_norm))
+            """,
+            (clave_norm, clave_norm),
+        )
         rows = cur.fetchall()
         cur.close()
         conn.close()
 
         construcciones = []
+        features = []
+        sup_hor_sum = 0.0
+        sup_total_sum = 0.0
         for r in rows:
-            construcciones.append({
+            item = {
                 "fid": r.get("fid"),
                 "clavecatas": r.get("clavecatas"),
                 "claveconst": r.get("claveconst"),
                 "claveorig": r.get("claveorig"),
                 "niveles": r.get("niveles"),
                 "suphor": float(r["suphor"]) if r.get("suphor") is not None else None,
+                "sup_total": float(r["sup_total"]) if r.get("sup_total") is not None else None,
                 "colonia": r.get("colonia"),
                 "perimetro": float(r["perimetro"]) if r.get("perimetro") is not None else None,
                 "tipo": r.get("tipo"),
-            })
+            }
+            if item["suphor"] is not None:
+                sup_hor_sum += item["suphor"]
+            if item["sup_total"] is not None:
+                sup_total_sum += item["sup_total"]
+            construcciones.append(item)
+            if incluir_geom:
+                row_feat = dict(r)
+                feat = _construcciones_geo_a_feature(row_feat)
+                if feat:
+                    features.append(feat)
+
+        geojson = (
+            {"type": "FeatureCollection", "features": features, "crs": {"type": "name", "properties": {"name": "EPSG:32611"}}}
+            if features
+            else None
+        )
 
         return {
             "clave_catastral": clave_norm,
             "total": len(construcciones),
             "construcciones": construcciones,
+            "resumen": {
+                "sup_hor_total": round(sup_hor_sum, 4) if sup_hor_sum else None,
+                "sup_total_acum": round(sup_total_sum, 4) if sup_total_sum else None,
+            },
+            "geojson": geojson,
+            "fuente": CONSTRUCCIONES_GEO_TABLE_SQL,
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -1066,6 +1160,11 @@ def predios_cercanos(
         rows = cur.fetchall()
         cur.close()
         conn.close()
+
+        if len(rows) < 3 and get_geonode_conn is not None:
+            geo_rows = _predios_cercanos_geonode(lon, lat, radio)
+            if len(geo_rows) > len(rows):
+                rows = geo_rows
 
         features = []
         for row in rows:
@@ -2344,169 +2443,660 @@ def zona_homogenea_predio(
     return _zona_homogenea_payload(clave)
 
 
+def _expr_clave_predio_geo_sql(alias: str, clave_cols: list[str]) -> str:
+    partes = [
+        f"NULLIF(TRIM({alias}.{_identificador_sql(col)}::text), '')"
+        for col in clave_cols
+    ]
+    return f"UPPER(TRIM(COALESCE({', '.join(partes)})))"
+
+
+def _srid_predios_geo_tabla(cur, geom_sql: str) -> int:
+    cur.execute(
+        f"""
+        SELECT COALESCE(NULLIF(ST_SRID(g.{geom_sql}), 0), 32611) AS srid
+        FROM {PREDIOS_GEO_TABLE_SQL} g
+        WHERE g.{geom_sql} IS NOT NULL
+        LIMIT 1;
+        """
+    )
+    row = cur.fetchone()
+    return int(row.get("srid") or 32611) if row else 32611
+
+
+_NUMOF_CALLE_PREFIJO_RE = re.compile(
+    r"^(CALLE|CLL|CL|AV|AVENIDA|BLVD|BOULEVARD|BLVRD|PROL|PROLONGACION)\.?\s+",
+    re.I,
+)
+_NUMOF_CALLE_ARTICULO_RE = re.compile(r"^(DE LA(S)?|DEL|LA|LAS|EL|LOS)\s+", re.I)
+
+
+def _normalizar_calle_numof(calle: str) -> str:
+    s = str(calle or "").strip().upper()
+    return _NUMOF_CALLE_PREFIJO_RE.sub("", s).strip()
+
+
+def _calle_token_numof(calle: str) -> str:
+    return _NUMOF_CALLE_ARTICULO_RE.sub("", _normalizar_calle_numof(calle)).strip()
+
+
+def _calle_coincide_numof(calle_a: str, calle_b: str) -> bool:
+    a = _normalizar_calle_numof(calle_a)
+    b = _normalizar_calle_numof(calle_b)
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    ta = _calle_token_numof(calle_a)
+    tb = _calle_token_numof(calle_b)
+    if ta and tb and ta == tb:
+        return True
+    if ta and (ta in a or ta in b):
+        return True
+    if tb and (tb in a or tb in b):
+        return True
+    return False
+
+
+def _numof_entero(val: str) -> int | None:
+    digits = re.sub(r"[^0-9]", "", str(val or ""))
+    return int(digits) if digits else None
+
+
+def _padron_campos_numof(row: dict | None) -> dict:
+    row = row or {}
+    return {
+        "numof": str(row.get("numof") or "").strip(),
+        "numint": str(row.get("numint") or "").strip(),
+        "letra": str(row.get("letra") or "").strip(),
+        "cp": str(row.get("cp") or "").strip(),
+        "calle": str(row.get("calle") or "").strip(),
+        "colonia": str(row.get("colonia") or "").strip(),
+    }
+
+
+def _padron_filas_por_claves(cur, claves: list[str]) -> dict[str, dict]:
+    claves_norm = sorted({str(c).strip().upper() for c in claves if str(c or "").strip()})
+    if not claves_norm:
+        return {}
+    expr_cp = _expr_cp_padron_sql(cur)
+    cur.execute(
+        f"""
+        SELECT
+            UPPER(TRIM(clave_catastral)) AS clave_catastral,
+            TRIM(COALESCE(calle::text, '')) AS calle,
+            TRIM(COALESCE(colonia::text, '')) AS colonia,
+            TRIM(COALESCE(numof::text, '')) AS numof,
+            TRIM(COALESCE(numint::text, '')) AS numint,
+            TRIM(COALESCE(letra::text, '')) AS letra,
+            {expr_cp} AS cp
+        FROM catalogos.padron_2026
+        WHERE UPPER(TRIM(clave_catastral)) = ANY(%s);
+        """,
+        (claves_norm,),
+    )
+    return {str(r["clave_catastral"]).upper(): r for r in cur.fetchall()}
+
+
+def _claves_lote_secuenciales(
+    clave_norm: str,
+    *,
+    antes: int = 6,
+    despues: int = 5,
+) -> list[str]:
+    """Vecinos de manzana por lote consecutivo (ej. XL701261 → 260..266)."""
+    clave = re.sub(r"[^A-Z0-9]", "", str(clave_norm or "")).upper()
+    m = re.match(r"^([A-Z]{2,3})(\d{3})(\d{3})$", clave)
+    if not m:
+        return []
+    prefijo, manzana, lote_s = m.groups()
+    try:
+        lote_n = int(lote_s)
+    except ValueError:
+        return []
+    base = f"{prefijo}{manzana}"
+    claves: list[str] = []
+    for delta in range(-antes, despues + 1):
+        if delta == 0:
+            continue
+        nl = lote_n + delta
+        if nl < 1 or nl > 999:
+            continue
+        claves.append(f"{base}{nl:03d}")
+    return claves
+
+
+def _cartografia_geonode_por_claves(claves: list[str]) -> dict[str, dict]:
+    claves_norm = sorted({str(c).strip().upper() for c in claves if str(c or "").strip()})
+    if not claves_norm or get_geonode_conn is None:
+        return {}
+    conn = None
+    cur = None
+    try:
+        conn = get_geonode_conn()
+        cur = conn.cursor()
+        geom_col, clave_cols = _resolver_columnas_predios_geo(cur, get_geonode_conn)
+        if not geom_col or not clave_cols:
+            return {}
+        geom_sql = _identificador_sql(geom_col)
+        clave_sql = _expr_clave_predio_geo_sql("g", clave_cols)
+        cur.execute(
+            f"""
+            SELECT
+                {clave_sql} AS clave_catastral,
+                ST_AsGeoJSON(ST_Transform(g.{geom_sql}, 4326))::json AS geometry
+            FROM {PREDIOS_GEO_TABLE_SQL} g
+            WHERE g.{geom_sql} IS NOT NULL
+              AND {clave_sql} = ANY(%s);
+            """,
+            (claves_norm,),
+        )
+        return {
+            str(r["clave_catastral"]).upper(): dict(r)
+            for r in cur.fetchall()
+            if r.get("clave_catastral")
+        }
+    except Exception:
+        return {}
+    finally:
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+
+def _lote_numero_clave(clave_norm: str) -> int | None:
+    clave = re.sub(r"[^A-Z0-9]", "", str(clave_norm or "")).upper()
+    m = re.match(r"^[A-Z]{2,3}\d{3}(\d{3})$", clave)
+    if not m:
+        return None
+    try:
+        return int(m.group(1))
+    except ValueError:
+        return None
+
+
+def _distancia_lote_estimada_m(clave_ref: str, clave_vecina: str) -> float:
+    lote_ref = _lote_numero_clave(clave_ref)
+    lote_vec = _lote_numero_clave(clave_vecina)
+    if lote_ref is None or lote_vec is None:
+        return 0.0
+    return float(abs(lote_ref - lote_vec) * 8)
+
+
+def _padron_fila_consultada(cur, clave_norm: str) -> dict | None:
+    expr_cp = _expr_cp_padron_sql(cur)
+    cur.execute(
+        f"""
+        SELECT
+            UPPER(TRIM(clave_catastral)) AS clave_catastral,
+            TRIM(COALESCE(calle::text, '')) AS calle,
+            TRIM(COALESCE(colonia::text, '')) AS colonia,
+            TRIM(COALESCE(numof::text, '')) AS numof,
+            TRIM(COALESCE(numint::text, '')) AS numint,
+            TRIM(COALESCE(letra::text, '')) AS letra,
+            {expr_cp} AS cp
+        FROM catalogos.padron_2026
+        WHERE UPPER(TRIM(clave_catastral)) = %s
+        LIMIT 1;
+        """,
+        (clave_norm,),
+    )
+    row = cur.fetchone()
+    return dict(row) if row else None
+
+
+def _candidatos_vecinos_lote_secuencial(
+    clave_norm: str,
+    ref_campos: dict,
+    ref_geom,
+    *,
+    antes: int = 6,
+    despues: int = 5,
+) -> list[dict]:
+    """Predios contiguos por lote consecutivo en la misma manzana (solo padrón + geom opcional)."""
+    claves_seq = _claves_lote_secuenciales(clave_norm, antes=antes, despues=despues)
+    if not claves_seq:
+        return []
+
+    conn = get_conn()
+    cur = conn.cursor()
+    try:
+        padron_map = _padron_filas_por_claves(cur, claves_seq)
+    finally:
+        cur.close()
+        conn.close()
+
+    geo_map = _cartografia_geonode_por_claves(claves_seq)
+
+    ref_numof = ref_campos.get("numof") or ""
+    ref_calle = ref_campos.get("calle") or ""
+    candidatos: list[dict] = []
+
+    for cl in claves_seq:
+        pad = _padron_campos_numof(padron_map.get(cl))
+        numof = pad["numof"]
+        numint = pad["numint"]
+        letra = pad["letra"]
+        if not (numof or numint or letra):
+            continue
+
+        calle = pad["calle"] or ref_calle
+        colonia = pad["colonia"] or ref_campos.get("colonia") or ""
+        cp = pad["cp"] or ref_campos.get("cp") or ""
+
+        if ref_numof and numof and numof == ref_numof and _calle_coincide_numof(calle, ref_calle):
+            continue
+
+        misma_calle = _calle_coincide_numof(calle, ref_calle) if ref_calle else True
+        geo = geo_map.get(cl) or {}
+
+        candidatos.append({
+            "clave_catastral": cl,
+            "numof": numof,
+            "numint": numint,
+            "letra": letra,
+            "cp": cp,
+            "calle": calle,
+            "colonia": colonia,
+            "distancia_m": _distancia_lote_estimada_m(clave_norm, cl),
+            "misma_calle": misma_calle,
+            "es_colindante": True,
+            "es_enfrente": False,
+            "geometry": geo.get("geometry"),
+            "_prioridad": -1,
+        })
+
+    candidatos.sort(key=lambda it: it.get("distancia_m") or 0)
+    return candidatos
+
+
+def _candidatos_enfrente_radio_geonode(
+    clave_norm: str,
+    ref_campos: dict,
+    ref_geom,
+    excluir_claves: set[str],
+    *,
+    radio_m: float = 30.0,
+    limite: int = 20,
+) -> list[dict]:
+    """Predios al otro lado de la calle (misma vía) dentro de radio_m metros vía cartografía."""
+    if get_geonode_conn is None:
+        return []
+    if not ref_geom:
+        ref_geom = _buscar_geometria_predio_por_clave(clave_norm)
+    if not ref_geom:
+        return []
+
+    clave_norm = str(clave_norm or "").strip().upper()
+    excluir = {clave_norm, *(str(c).strip().upper() for c in excluir_claves if c)}
+    ref_calle = ref_campos.get("calle") or ""
+    ref_numof = ref_campos.get("numof") or ""
+    geom_ref = json.dumps(ref_geom)
+
+    conn = None
+    cur = None
+    rows: list[dict] = []
+    try:
+        conn = get_geonode_conn()
+        cur = conn.cursor()
+        geom_col, clave_cols = _resolver_columnas_predios_geo(cur, get_geonode_conn)
+        if not geom_col or not clave_cols:
+            return []
+        geom_sql = _identificador_sql(geom_col)
+        clave_sql = _expr_clave_predio_geo_sql("g", clave_cols)
+        srid = _srid_predios_geo_tabla(cur, geom_sql)
+        cur.execute(
+            f"""
+            WITH ref AS (
+                SELECT
+                    ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), {srid}) AS geom,
+                    ST_PointOnSurface(
+                        ST_Transform(ST_SetSRID(ST_GeomFromGeoJSON(%s), 4326), {srid})
+                    ) AS centro
+            )
+            SELECT
+                {clave_sql} AS clave_catastral,
+                ROUND(
+                    ST_Distance(ST_PointOnSurface(g.{geom_sql}), ref.centro)::numeric,
+                    1
+                )::float AS distancia_m,
+                ST_AsGeoJSON(ST_Transform(g.{geom_sql}, 4326))::json AS geometry
+            FROM {PREDIOS_GEO_TABLE_SQL} g
+            CROSS JOIN ref
+            WHERE g.{geom_sql} IS NOT NULL
+              AND {clave_sql} <> ''
+              AND {clave_sql} <> %s
+              AND ST_DWithin(ST_PointOnSurface(g.{geom_sql}), ref.centro, %s)
+              AND NOT ST_Touches(g.{geom_sql}, ref.geom)
+              AND NOT ST_DWithin(g.{geom_sql}, ref.geom, 2.5)
+            ORDER BY distancia_m
+            LIMIT %s;
+            """,
+            (geom_ref, geom_ref, clave_norm, radio_m, limite * 4),
+        )
+        rows = [dict(r) for r in cur.fetchall() if r.get("clave_catastral")]
+    except Exception:
+        return []
+    finally:
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+    if not rows:
+        return []
+
+    claves_geo = [
+        str(r["clave_catastral"]).strip().upper()
+        for r in rows
+        if str(r.get("clave_catastral") or "").strip().upper() not in excluir
+    ]
+    if not claves_geo:
+        return []
+
+    conn_pad = get_conn()
+    cur_pad = conn_pad.cursor()
+    try:
+        padron_map = _padron_filas_por_claves(cur_pad, claves_geo)
+    finally:
+        cur_pad.close()
+        conn_pad.close()
+
+    candidatos: list[dict] = []
+    for row in rows:
+        cl = str(row.get("clave_catastral") or "").strip().upper()
+        if not cl or cl in excluir:
+            continue
+
+        distancia_m = float(row.get("distancia_m") or 0)
+        if distancia_m > radio_m:
+            continue
+
+        pad = _padron_campos_numof(padron_map.get(cl))
+        numof = pad["numof"]
+        numint = pad["numint"]
+        letra = pad["letra"]
+        if not (numof or numint or letra):
+            continue
+
+        calle = pad["calle"] or ref_calle
+        if ref_calle and not _calle_coincide_numof(calle, ref_calle):
+            continue
+
+        if ref_numof and numof and numof == ref_numof and _calle_coincide_numof(calle, ref_calle):
+            continue
+
+        candidatos.append({
+            "clave_catastral": cl,
+            "numof": numof,
+            "numint": numint,
+            "letra": letra,
+            "cp": pad["cp"] or ref_campos.get("cp") or "",
+            "calle": calle,
+            "colonia": pad["colonia"] or ref_campos.get("colonia") or "",
+            "distancia_m": distancia_m,
+            "misma_calle": True,
+            "es_colindante": False,
+            "es_enfrente": True,
+            "geometry": row.get("geometry"),
+            "_prioridad": 1,
+        })
+        if len(candidatos) >= limite:
+            break
+
+    candidatos.sort(key=lambda it: it.get("distancia_m") or 0)
+    return candidatos
+
+
+def _combinar_cercanos_numof(
+    colindantes: list[dict],
+    enfrente: list[dict],
+    limite_misma_calle: int,
+    limite_otras_calles: int,
+) -> list[dict]:
+    """Colindantes primero; enfrente en huecos del límite de misma calle."""
+    vistos: set[str] = set()
+    resultado: list[dict] = []
+
+    for item in colindantes:
+        cl = str(item.get("clave_catastral") or "").strip().upper()
+        if not cl or cl in vistos:
+            continue
+        resultado.append(item)
+        vistos.add(cl)
+
+    misma_actuales = sum(1 for it in resultado if it.get("misma_calle"))
+    slots_misma = max(0, limite_misma_calle - misma_actuales)
+    for item in enfrente:
+        if not item.get("misma_calle"):
+            continue
+        cl = str(item.get("clave_catastral") or "").strip().upper()
+        if not cl or cl in vistos:
+            continue
+        if slots_misma <= 0:
+            break
+        resultado.append(item)
+        vistos.add(cl)
+        slots_misma -= 1
+
+    slots_otras = limite_otras_calles
+    for item in sorted(
+        (it for it in enfrente if not it.get("misma_calle")),
+        key=lambda it: it.get("distancia_m") or 0,
+    ):
+        cl = str(item.get("clave_catastral") or "").strip().upper()
+        if not cl or cl in vistos:
+            continue
+        if slots_otras <= 0:
+            break
+        resultado.append(item)
+        vistos.add(cl)
+        slots_otras -= 1
+
+    for it in resultado:
+        it.pop("_prioridad", None)
+    return resultado
+
+
+def _construir_respuesta_numeros_oficiales(
+    clave_norm: str,
+    consultado: dict,
+    cercanos: list[dict],
+    limite_misma_calle: int,
+    limite_otras_calles: int,
+    *,
+    origen: str = "lote_secuencial",
+) -> dict:
+    features = []
+    consultado_geom = consultado.get("geometry")
+    consultado_props = {k: v for k, v in consultado.items() if k != "geometry"}
+    consultado_props["es_consultado"] = True
+    if consultado_geom:
+        features.append({
+            "type": "Feature",
+            "geometry": consultado_geom,
+            "properties": consultado_props,
+        })
+    for item in cercanos:
+        geometry = item.get("geometry")
+        props = {k: v for k, v in item.items() if k != "geometry"}
+        props["es_consultado"] = False
+        if geometry:
+            features.append({
+                "type": "Feature",
+                "geometry": geometry,
+                "properties": props,
+            })
+    total_misma = sum(1 for c in cercanos if c.get("misma_calle"))
+    consultado_resp = {k: v for k, v in consultado.items() if k != "geometry"}
+    cercanos_resp = [{k: v for k, v in c.items() if k != "geometry"} for c in cercanos]
+    return {
+        "clave_catastral": clave_norm,
+        "limite_misma_calle": limite_misma_calle,
+        "limite_otras_calles": limite_otras_calles,
+        "total_misma_calle": total_misma,
+        "total_otras_calles": len(cercanos) - total_misma,
+        "total": len(cercanos),
+        "consultado": consultado_resp,
+        "cercanos": cercanos_resp,
+        "type": "FeatureCollection",
+        "features": features,
+        "origen": origen,
+    }
+
+
+def _predios_cercanos_geonode(lon: float, lat: float, radio: float) -> list[dict]:
+    if get_geonode_conn is None:
+        return []
+    conn = None
+    cur = None
+    try:
+        conn = get_geonode_conn()
+        cur = conn.cursor()
+        geom_col, clave_cols = _resolver_columnas_predios_geo(cur, get_geonode_conn)
+        if not geom_col or not clave_cols:
+            return []
+        geom_sql = _identificador_sql(geom_col)
+        clave_sql = _expr_clave_predio_geo_sql("g", clave_cols)
+        srid = _srid_predios_geo_tabla(cur, geom_sql)
+        cur.execute(
+            f"""
+            WITH punto AS (
+                SELECT ST_Transform(ST_SetSRID(ST_Point(%s, %s), 4326), {srid}) AS geom
+            )
+            SELECT
+                {clave_sql} AS clave_catastral,
+                ROUND(
+                    ST_Distance(ST_PointOnSurface(g.{geom_sql}), pt.geom)::numeric,
+                    1
+                )::float AS distancia_m,
+                ST_AsGeoJSON(ST_Transform(g.{geom_sql}, 4326))::json AS geometry
+            FROM {PREDIOS_GEO_TABLE_SQL} g, punto pt
+            WHERE g.{geom_sql} IS NOT NULL
+              AND {clave_sql} <> ''
+              AND ST_DWithin(g.{geom_sql}, pt.geom, %s)
+            ORDER BY ST_Distance(g.{geom_sql}, pt.geom)
+            LIMIT 100;
+            """,
+            (lon, lat, radio),
+        )
+        rows = [dict(r) for r in cur.fetchall() if r.get("clave_catastral")]
+    except Exception:
+        return []
+    finally:
+        try:
+            if cur:
+                cur.close()
+        except Exception:
+            pass
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
+
+    if not rows:
+        return []
+
+    conn_pad = get_conn()
+    cur_pad = conn_pad.cursor()
+    try:
+        padron_map = _padron_filas_por_claves(cur_pad, [r["clave_catastral"] for r in rows])
+    finally:
+        cur_pad.close()
+        conn_pad.close()
+
+    enriquecidos = []
+    for row in rows:
+        cl = str(row.get("clave_catastral") or "").strip().upper()
+        pad = padron_map.get(cl) or {}
+        enriquecidos.append({
+            "clave_catastral": cl,
+            "colonia": str(pad.get("colonia") or "").strip(),
+            "cp": str(pad.get("cp") or "").strip(),
+            "numof": str(pad.get("numof") or "").strip(),
+            "calle": str(pad.get("calle") or "").strip(),
+            "numint": str(pad.get("numint") or "").strip(),
+            "letra": str(pad.get("letra") or "").strip(),
+            "distancia_m": row.get("distancia_m"),
+            "geometry": row.get("geometry"),
+        })
+    return enriquecidos
+
+
 def _numeros_oficiales_cercanos_payload(clave: str, limite_misma_calle: int, limite_otras_calles: int):
+    """Colindantes por lote consecutivo + enfrente por cartografía (radio 30 m)."""
     clave_norm = clave.upper().strip()
     if not clave_norm:
         raise HTTPException(status_code=400, detail="Clave catastral requerida")
 
+    limite_misma_calle = min(max(limite_misma_calle, 1), 80)
+    limite_otras_calles = min(max(limite_otras_calles, 0), 50)
+
     try:
-        limite_misma_calle = min(max(limite_misma_calle, 1), 80)
-        limite_otras_calles = min(max(limite_otras_calles, 0), 50)
         conn = get_conn()
         cur = conn.cursor()
+        try:
+            ref_row = _padron_fila_consultada(cur, clave_norm)
+        finally:
+            cur.close()
+            conn.close()
 
-        cur.execute("""
-            WITH ref AS (
-                SELECT
-                    UPPER(TRIM(p.clave_catastral)) AS clave_catastral,
-                    g.geom,
-                    ST_PointOnSurface(g.geom) AS centro,
-                    UPPER(TRIM(COALESCE(p.calle, ''))) AS calle_norm,
-                    TRIM(COALESCE(p.numof, '')) AS numof,
-                    TRIM(COALESCE(p.numint, '')) AS numint,
-                    TRIM(COALESCE(p.letra, '')) AS letra,
-                    ''::text AS cp,
-                    TRIM(COALESCE(p.calle, '')) AS calle,
-                    TRIM(COALESCE(p.colonia, '')) AS colonia,
-                    ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json AS geometry
-                FROM catalogos.padron_2026 p
-                INNER JOIN catastro.predios g
-                    ON UPPER(TRIM(g.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
-                WHERE UPPER(TRIM(p.clave_catastral)) = %s
-                  AND g.geom IS NOT NULL
-                LIMIT 1
-            ),
-            candidatos AS (
-                SELECT
-                    UPPER(TRIM(p.clave_catastral)) AS clave_catastral,
-                    TRIM(COALESCE(p.numof, '')) AS numof,
-                    TRIM(COALESCE(p.numint, '')) AS numint,
-                    TRIM(COALESCE(p.letra, '')) AS letra,
-                    ''::text AS cp,
-                    TRIM(COALESCE(p.calle, '')) AS calle,
-                    TRIM(COALESCE(p.colonia, '')) AS colonia,
-                    ROUND(ST_Distance(ST_PointOnSurface(g.geom), ref.centro)::numeric, 1)::float AS distancia_m,
-                    (
-                        ref.calle_norm <> ''
-                        AND UPPER(TRIM(COALESCE(p.calle, ''))) = ref.calle_norm
-                    ) AS misma_calle,
-                    ST_AsGeoJSON(ST_Transform(g.geom, 4326))::json AS geometry
-                FROM catalogos.padron_2026 p
-                INNER JOIN catastro.predios g
-                    ON UPPER(TRIM(g.clave_catastral)) = UPPER(TRIM(p.clave_catastral))
-                CROSS JOIN ref
-                WHERE g.geom IS NOT NULL
-                  AND UPPER(TRIM(p.clave_catastral)) <> ref.clave_catastral
-                  AND NULLIF(TRIM(COALESCE(p.numof, '')), '') IS NOT NULL
-            ),
-            misma_calle AS (
-                SELECT *
-                FROM candidatos
-                WHERE misma_calle
-                ORDER BY distancia_m
-                LIMIT %s
-            ),
-            otras_calles AS (
-                SELECT c.*
-                FROM candidatos c
-                WHERE NOT c.misma_calle
-                  AND NOT EXISTS (
-                      SELECT 1 FROM misma_calle m
-                      WHERE m.clave_catastral = c.clave_catastral
-                  )
-                ORDER BY c.distancia_m
-                LIMIT %s
-            ),
-            cercanos AS (
-                SELECT * FROM misma_calle
-                UNION ALL
-                SELECT * FROM otras_calles
-            )
-            SELECT
-                'consultado'::text AS tipo,
-                ref.clave_catastral,
-                ref.numof,
-                ref.numint,
-                ref.letra,
-                ref.cp,
-                ref.calle,
-                ref.colonia,
-                0::float AS distancia_m,
-                TRUE AS misma_calle,
-                ref.geometry
-            FROM ref
-            UNION ALL
-            SELECT
-                'cercano'::text AS tipo,
-                c.clave_catastral,
-                c.numof,
-                c.numint,
-                c.letra,
-                c.cp,
-                c.calle,
-                c.colonia,
-                c.distancia_m,
-                c.misma_calle,
-                c.geometry
-            FROM cercanos c;
-        """, (clave_norm, limite_misma_calle, limite_otras_calles))
+        if not ref_row:
+            raise HTTPException(status_code=404, detail="Predio no encontrado en padron")
 
-        rows = cur.fetchall()
-        cur.close()
-        conn.close()
+        ref_campos = _padron_campos_numof(ref_row)
+        ref_geom = _buscar_geometria_predio_por_clave(clave_norm)
 
-        if not rows:
-            raise HTTPException(status_code=404, detail="Predio no encontrado")
-
-        consultado = None
-        cercanos = []
-        features = []
-
-        for row in rows:
-            item = {
-                "clave_catastral": row.get("clave_catastral"),
-                "numof": row.get("numof") or "",
-                "numint": row.get("numint") or "",
-                "letra": row.get("letra") or "",
-                "cp": row.get("cp") or "",
-                "calle": row.get("calle") or "",
-                "colonia": row.get("colonia") or "",
-                "distancia_m": float(row.get("distancia_m") or 0),
-                "misma_calle": bool(row.get("misma_calle")),
-                "geometry": row.get("geometry"),
-            }
-            geometry = item.pop("geometry")
-            props = dict(item)
-            props["es_consultado"] = row.get("tipo") == "consultado"
-            if row.get("tipo") == "consultado":
-                consultado = item
-            else:
-                cercanos.append(item)
-            if geometry:
-                features.append({
-                    "type": "Feature",
-                    "geometry": geometry,
-                    "properties": props,
-                })
-
-        if consultado is None:
-            raise HTTPException(status_code=404, detail="Predio sin geometría cartográfica")
-
-        total_misma = sum(1 for c in cercanos if c.get("misma_calle"))
-        total_otras = len(cercanos) - total_misma
-
-        return {
+        consultado = {
             "clave_catastral": clave_norm,
-            "limite_misma_calle": limite_misma_calle,
-            "limite_otras_calles": limite_otras_calles,
-            "total_misma_calle": total_misma,
-            "total_otras_calles": total_otras,
-            "total": len(cercanos),
-            "consultado": consultado,
-            "cercanos": cercanos,
-            "type": "FeatureCollection",
-            "features": features,
+            **ref_campos,
+            "distancia_m": 0.0,
+            "misma_calle": True,
+            "es_colindante": False,
+            "es_enfrente": False,
+            "geometry": ref_geom,
         }
+
+        colindantes = _candidatos_vecinos_lote_secuencial(clave_norm, ref_campos, ref_geom)
+        claves_colindantes = {c["clave_catastral"] for c in colindantes}
+        max_enfrente = max(3, min(12, limite_misma_calle - len(colindantes)))
+        enfrente = _candidatos_enfrente_radio_geonode(
+            clave_norm,
+            ref_campos,
+            ref_geom,
+            claves_colindantes,
+            radio_m=30.0,
+            limite=max_enfrente,
+        )
+        cercanos = _combinar_cercanos_numof(
+            colindantes,
+            enfrente,
+            limite_misma_calle,
+            limite_otras_calles,
+        )
+
+        return _construir_respuesta_numeros_oficiales(
+            clave_norm,
+            consultado,
+            cercanos,
+            limite_misma_calle,
+            limite_otras_calles,
+            origen="lote_secuencial+enfrente",
+        )
 
     except HTTPException:
         raise
@@ -3745,6 +4335,39 @@ class ImportFoliosPayload(BaseModel):
     filas: List[ImportFolioFila]
 
 
+class AsignarFolioPayload(BaseModel):
+    clave_catastral: str
+    folio_real: str
+
+
+def _asegurar_metadata_folio_real_padron(cur, conn) -> None:
+    try:
+        cur.execute(
+            """
+            ALTER TABLE catalogos.padron_2026
+            ADD COLUMN IF NOT EXISTS folio_real_fuente text,
+            ADD COLUMN IF NOT EXISTS folio_real_fecha_actualizacion timestamp;
+            """
+        )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+
+
+def _asignar_folio_real_un_predio(cur, clave: str, folio: str, fuente: str = "MANUAL") -> bool:
+    cur.execute(
+        """
+        UPDATE catalogos.padron_2026
+        SET folio_real = %s,
+            folio_real_fuente = %s,
+            folio_real_fecha_actualizacion = now()
+        WHERE UPPER(TRIM(clave_catastral)) = %s;
+        """,
+        (folio, fuente, clave),
+    )
+    return cur.rowcount > 0
+
+
 def _normalizar_clave_folio(clave: str) -> str:
     return re.sub(r"\s+", "", str(clave or "").strip().upper())
 
@@ -3896,6 +4519,51 @@ def importar_folios_padron(
             ),
         )
         return {"ok": True, **resumen}
+    except Exception as e:
+        conn.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cur.close()
+        conn.close()
+
+
+@router.post("/padron/mantenimiento/folios/asignar")
+def asignar_folio_padron(
+    payload: AsignarFolioPayload,
+    usuario_actual: dict = Depends(requerir_roles("admin", "supervisor", "catastro")),
+):
+    """Asigna folio real a un predio del padrón (búsqueda manual / RPPC)."""
+    clave = _normalizar_clave_folio(payload.clave_catastral)
+    folio = _parsear_folio_real(payload.folio_real)
+    if not clave:
+        raise HTTPException(status_code=400, detail="Clave catastral requerida")
+    if not folio:
+        raise HTTPException(status_code=400, detail="Folio real inválido (use solo dígitos)")
+
+    conn = get_conn()
+    cur = conn.cursor()
+    usuario = usuario_actual.get("usuario") or "sistema"
+    try:
+        asegurar_columna_folio_real_padron(cur, conn)
+        _asegurar_metadata_folio_real_padron(cur, conn)
+        if not _asignar_folio_real_un_predio(cur, clave, folio, fuente="MANUAL"):
+            raise HTTPException(status_code=404, detail=f"Clave {clave} no encontrada en padrón 2026")
+        conn.commit()
+        registrar_auditoria(
+            usuario,
+            "ASIGNAR_FOLIO_PADRON",
+            clave,
+            f"folio_real={folio}",
+        )
+        return {
+            "ok": True,
+            "clave_catastral": clave,
+            "folio_real": folio,
+            "fuente": "MANUAL",
+        }
+    except HTTPException:
+        conn.rollback()
+        raise
     except Exception as e:
         conn.rollback()
         raise HTTPException(status_code=500, detail=str(e))

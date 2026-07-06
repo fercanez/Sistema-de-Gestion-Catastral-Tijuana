@@ -18,8 +18,20 @@ function obtenerUsuarioSesion() {
   }
 }
 
+const ROLES_SESION_ALIAS = {
+  administrador: "admin",
+  administrator: "admin",
+  "admin tijuana": "admin",
+  "administrador tijuana": "admin"
+};
+
+function normalizarRolSesion(rol) {
+  const base = String(rol || "consulta").trim().toLowerCase();
+  return ROLES_SESION_ALIAS[base] || base;
+}
+
 function obtenerRolSesion() {
-  return (obtenerUsuarioSesion()?.rol || "consulta").trim().toLowerCase();
+  return normalizarRolSesion(obtenerUsuarioSesion()?.rol || "consulta");
 }
 
 function obtenerPermisosSesion() {
@@ -28,7 +40,7 @@ function obtenerPermisosSesion() {
 }
 
 function _fallbackPermisoPorRol(codigo) {
-  const rol = String(obtenerRolSesion()).trim().toLowerCase();
+  const rol = obtenerRolSesion();
   const mapa = {
     editar_catastro: ["admin", "supervisor", "catastro"],
     editar_titularidad: ["admin", "supervisor", "catastro"],
@@ -115,7 +127,7 @@ function guardarSesionInstitucional(data) {
   localStorage.setItem(USER_KEY_CATASTRO, JSON.stringify({
     usuario: data.usuario,
     nombre: data.nombre,
-    rol: data.rol,
+    rol: normalizarRolSesion(data.rol),
     permisos: data.permisos || [],
     modulos: data.modulos || [],
     expira_minutos: data.expira_minutos,
@@ -411,7 +423,7 @@ async function validarSesionInstitucional(opciones) {
     const usuario = {
       usuario: data.usuario,
       nombre: data.nombre,
-      rol: data.rol,
+      rol: normalizarRolSesion(data.rol),
       permisos: data.permisos || [],
       modulos: data.modulos || [],
       inactividad_minutos: data.inactividad_minutos || SESION_INACTIVIDAD_MIN_DEFAULT
@@ -444,7 +456,7 @@ async function cerrarSesionInstitucional() {
 }
 
 function aplicarPermisosVisuales(rol) {
-  const rolNorm = String(rol || "").trim().toLowerCase();
+  const rolNorm = normalizarRolSesion(rol || obtenerRolSesion());
   const esAdmin = rolNorm === "admin";
   const puedeHerramientas = ["admin", "cartografia", "catastro", "supervisor"].includes(rolNorm);
   const puedeEditarCatastroRol = typeof puedeEditarCatastro === "function" && puedeEditarCatastro();
@@ -633,12 +645,81 @@ function extraerMensajeApi(data, fallback = "Error en el servidor.") {
   return String(d);
 }
 function authHeaders() {
-  const token = (typeof obtenerTokenInstitucional === 'function') ? obtenerTokenInstitucional() : (localStorage.getItem(TOKEN_KEY_CATASTRO) || '');
-  return {
-    'Content-Type': 'application/json',
-    'Authorization': `Bearer ${token}`
-  };
+  const token = (typeof obtenerTokenInstitucional === "function")
+    ? obtenerTokenInstitucional()
+    : (localStorage.getItem(TOKEN_KEY_CATASTRO) || "");
+  const headers = { "Content-Type": "application/json" };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
 }
+
+function authHeadersSoloToken() {
+  const token = obtenerTokenInstitucional();
+  const headers = {};
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return headers;
+}
+
+function authJsonHeaders() {
+  return authHeaders();
+}
+
+function mensajeErrorHttpApi(response, data, fallback) {
+  if (response?.status === 401) {
+    return "Sesión expirada. Use «Cerrar sesión» e inicie de nuevo.";
+  }
+  if (response?.status === 403) {
+    return "No tiene permisos para esta operación.";
+  }
+  return typeof extraerMensajeApi === "function"
+    ? extraerMensajeApi(data, fallback)
+    : (data?.detail || fallback);
+}
+
+async function fetchAutenticadoJson(url, options) {
+  options = options || {};
+  const token = obtenerTokenInstitucional();
+  if (!token) {
+    const err = new Error("Sesión no iniciada. Vuelva a iniciar sesión.");
+    err.status = 401;
+    throw err;
+  }
+
+  const baseHeaders = options.json === false
+    ? authHeadersSoloToken()
+    : authJsonHeaders();
+  const headers = Object.assign({}, baseHeaders, options.headers || {});
+  const fetchOpts = Object.assign({}, options, { headers, cache: "no-store" });
+  delete fetchOpts.json;
+
+  let response = await fetch(url, fetchOpts);
+
+  if (response.status === 401 && typeof validarSesionInstitucional === "function") {
+    const sesionOk = await validarSesionInstitucional({ silencioso: true }).catch(function() {
+      return false;
+    });
+    if (sesionOk) {
+      const headersRetry = Object.assign(
+        {},
+        options.json === false ? authHeadersSoloToken() : authJsonHeaders(),
+        options.headers || {}
+      );
+      response = await fetch(url, Object.assign({}, options, { headers: headersRetry, cache: "no-store" }));
+    }
+  }
+
+  if (!response.ok) {
+    let data = {};
+    try { data = await response.json(); } catch (e) { /* ignore */ }
+    const err = new Error(mensajeErrorHttpApi(response, data, `Error ${response.status}`));
+    err.status = response.status;
+    throw err;
+  }
+
+  if (response.status === 204) return null;
+  return response.json();
+}
+
 window.authHeaders = authHeaders;
 function escapeHtml(valor) {
   if (valor === null || valor === undefined) return "";
@@ -651,8 +732,6 @@ function escapeHtml(valor) {
 }
 window.escapeHtml = escapeHtml;
 
-function authJsonHeaders() {
-  // authHeaders() ya incluye Content-Type: application/json + Authorization.
-  return authHeaders();
-}
 window.authJsonHeaders = authJsonHeaders;
+window.fetchAutenticadoJson = fetchAutenticadoJson;
+window.normalizarRolSesion = normalizarRolSesion;
