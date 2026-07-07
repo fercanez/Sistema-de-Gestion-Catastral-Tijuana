@@ -6,8 +6,12 @@ const POPUP_ZONA_GEONODE_WMS = typeof POPUP_NUMOF_GEONODE_WMS !== "undefined"
 const POPUP_ZONA_CATASTRO_WMS = typeof POPUP_NUMOF_CATASTRO_WMS !== "undefined"
   ? POPUP_NUMOF_CATASTRO_WMS
   : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms";
-const POPUP_ZONA_WMS_LAYER = "geonode:zonahom2026_tij";
-const POPUP_ZONA_WMS_LAYERS = ["geonode:zonahom2026_tij", "zonahom2026_tij"];
+const POPUP_ZONA_WMS_LAYER = "geonode:zonashomo2026_tij";
+const POPUP_ZONA_WMS_LAYERS = ["geonode:zonashomo2026_tij", "zonashomo2026_tij"];
+const POPUP_ZONA_WFS_URL = (typeof POPUP_ZONA_GEONODE_WMS !== "undefined"
+  ? POPUP_ZONA_GEONODE_WMS
+  : "https://fcnarqnodo.hopto.org/geoserver/geonode/wms").replace("/wms", "/wfs");
+const POPUP_ZONA_NATIVE_SRID = "EPSG:32611";
 
 let popupZonaMap = null;
 let popupZonaCapas = null;
@@ -343,12 +347,24 @@ function popupZonaNormalizarAtributos(props) {
   Object.keys(props).forEach(function(k) {
     claves[String(k).toLowerCase()] = k;
   });
+  function tomarExacto() {
+    const nombres = Array.prototype.slice.call(arguments);
+    for (let i = 0; i < nombres.length; i++) {
+      const k = claves[String(nombres[i]).toLowerCase()];
+      if (!k) continue;
+      const val = props[k];
+      if (val != null && String(val).trim() !== "" && String(val).toUpperCase() !== "NULL") {
+        return String(val).trim();
+      }
+    }
+    return "";
+  }
   function tomar() {
     const candidatos = Array.prototype.slice.call(arguments);
     for (let i = 0; i < candidatos.length; i++) {
       const cand = String(candidatos[i]).toLowerCase();
       for (const kl in claves) {
-        if (kl.indexOf(cand) >= 0) {
+        if (kl === cand || kl.indexOf(cand) >= 0) {
           const val = props[claves[kl]];
           if (val != null && String(val).trim() !== "" && String(val).toUpperCase() !== "NULL") {
             return String(val).trim();
@@ -359,16 +375,143 @@ function popupZonaNormalizarAtributos(props) {
     return "";
   }
   return {
-    codigo: tomar("zonah", "codigo", "clave", "homogenea", "secsub"),
-    descripcion: tomar("descripcion", "nombre", "desc", "colonia"),
-    zona: tomar("zona"),
-    sector: tomar("sector"),
-    subsector: tomar("subsector"),
-    homoclave: tomar("homoclave", "fraccion"),
-    seccion: tomar("seccion"),
-    valor_m2: tomar("valor_m2", "valor", "valorm2"),
+    codigo: tomarExacto("zh", "secsub", "subsector", "codigo_zona_homogenea", "zonah")
+      || tomar("zonashomo", "zonahom", "secsub"),
+    descripcion: tomarExacto("referencia", "descripcion_col_fracc")
+      || tomar("descripcion", "nombre", "desc", "colonia"),
+    zona: tomarExacto("zona") || tomar("zona", "nom_zona"),
+    sector: tomarExacto("sector") || tomar("sector", "nom_sector"),
+    subsector: tomarExacto("subsector") || tomar("subsector", "nom_subsector"),
+    homoclave: tomarExacto("homoclave", "homoclave_col_fracc") || tomar("homoclave", "fraccion"),
+    seccion: tomarExacto("seccion", "sec") || tomar("seccion"),
+    valor_m2: tomarExacto("valor_2026", "valor_m2") || tomar("valor", "valorm2"),
     observaciones: tomar("observ", "nota", "coment")
   };
+}
+
+function popupZonaLeerZh(props) {
+  if (!props) return "";
+  const directo = props.zh ?? props.ZH ?? props.Zh;
+  if (directo != null && String(directo).trim() !== "") {
+    return String(directo).trim().toUpperCase();
+  }
+  return "";
+}
+
+function popupZonaAreaFeature(props) {
+  const area = Number(props?.shape_area ?? props?.SHAPE_AREA ?? 0);
+  return Number.isFinite(area) ? area : 0;
+}
+
+function popupZonaSeleccionarFeatureGfi(features, lon, lat) {
+  if (!features || !features.length) return null;
+  const porPunto = popupZonaSeleccionarFeaturePorPunto(features, lon, lat);
+  if (porPunto) return porPunto;
+  if (features.length === 1) return features[0];
+
+  let mejor = null;
+  let mejorArea = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < features.length; i++) {
+    const props = features[i].properties || {};
+    const zh = popupZonaLeerZh(props);
+    if (!zh) continue;
+    const area = popupZonaAreaFeature(props);
+    if (area > 0 && area < mejorArea) {
+      mejor = features[i];
+      mejorArea = area;
+    }
+  }
+  return mejor || features[0];
+}
+
+function popupZonaSeleccionarFeaturePorPunto(features, lon, lat) {
+  if (!features || !features.length || lon == null || lat == null || typeof ol === "undefined") {
+    return null;
+  }
+  const click = [Number(lon), Number(lat)];
+  const format = new ol.format.GeoJSON({
+    dataProjection: "EPSG:4326",
+    featureProjection: "EPSG:4326"
+  });
+  const candidatos = [];
+  for (let i = 0; i < features.length; i++) {
+    const feat = features[i];
+    const props = feat.properties || {};
+    const zh = popupZonaLeerZh(props);
+    if (!zh || !feat.geometry) continue;
+    try {
+      const olFeat = format.readFeature(feat);
+      const geom = olFeat.getGeometry();
+      if (!geom || !geom.intersectsCoordinate(click)) continue;
+      candidatos.push({
+        feat: feat,
+        area: popupZonaAreaFeature(props) || Number.POSITIVE_INFINITY,
+        zhLen: zh.length
+      });
+    } catch (e) {}
+  }
+  if (!candidatos.length) return null;
+  candidatos.sort(function(a, b) {
+    if (a.area !== b.area) return a.area - b.area;
+    return b.zhLen - a.zhLen;
+  });
+  return candidatos[0].feat;
+}
+
+async function popupZonaWfsPorPunto(lon, lat, layers) {
+  if (lon == null || lat == null || typeof ol === "undefined") return null;
+  let xy;
+  try {
+    xy = ol.proj.transform([Number(lon), Number(lat)], "EPSG:4326", POPUP_ZONA_NATIVE_SRID);
+  } catch (e) {
+    return null;
+  }
+  const x = Number(xy[0]);
+  const y = Number(xy[1]);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    const typeName = layer.indexOf(":") >= 0 ? layer : ("geonode:" + layer);
+    const cql = "DWITHIN(geom,POINT(" + x + " " + y + "),30,meters)";
+    const params = new URLSearchParams({
+      service: "WFS",
+      version: "1.1.0",
+      request: "GetFeature",
+      typeName: typeName,
+      outputFormat: "application/json",
+      srsName: POPUP_ZONA_NATIVE_SRID,
+      CQL_FILTER: cql,
+      maxFeatures: "15"
+    });
+    try {
+      const r = await fetch(POPUP_ZONA_WFS_URL + "?" + params.toString(), { cache: "no-store" });
+      if (!r.ok) continue;
+      const data = await r.json();
+      const features = data.features || [];
+      if (!features.length) continue;
+      const feat = popupZonaSeleccionarFeaturePorPunto(features, lon, lat)
+        || popupZonaSeleccionarFeatureGfi(features, lon, lat);
+      if (!feat) continue;
+      const props = feat.properties || {};
+      return {
+        origen: "wfs",
+        layer: layer,
+        properties: props,
+        geometry: feat.geometry || null,
+        atributos: popupZonaNormalizarAtributos(props)
+      };
+    } catch (e) {
+      console.warn("Zona homogénea WFS:", layer, e);
+    }
+  }
+  return null;
+}
+
+async function popupZonaConsultarEnPunto(lon, lat, layers) {
+  let hit = await popupZonaWfsPorPunto(lon, lat, layers);
+  if (hit) return hit;
+  return popupZonaWmsGetFeatureInfo(lon, lat, layers);
 }
 
 async function popupZonaWmsGetFeatureInfo(lon, lat, layers) {
@@ -393,7 +536,7 @@ async function popupZonaWmsGetFeatureInfo(lon, lat, layers) {
       Y: "50",
       SRS: "EPSG:4326",
       INFO_FORMAT: "application/json",
-      FEATURE_COUNT: "5"
+      FEATURE_COUNT: "10"
     });
     try {
       const r = await fetch(POPUP_ZONA_GEONODE_WMS + "?" + params.toString(), { cache: "no-store" });
@@ -401,12 +544,13 @@ async function popupZonaWmsGetFeatureInfo(lon, lat, layers) {
       const data = await r.json();
       const features = data.features || [];
       if (!features.length) continue;
-      const props = features[0].properties || {};
+      const feat = popupZonaSeleccionarFeatureGfi(features, lon, lat);
+      const props = feat.properties || {};
       return {
         origen: "wms",
         layer: layer,
         properties: props,
-        geometry: features[0].geometry || null,
+        geometry: feat.geometry || null,
         atributos: popupZonaNormalizarAtributos(props)
       };
     } catch (e) {
@@ -424,7 +568,7 @@ function popupZonaCodigosCoinciden(a, b) {
   const ca = popupZonaNormalizarCodigo(a);
   const cb = popupZonaNormalizarCodigo(b);
   if (!ca || !cb) return false;
-  return ca === cb || ca.indexOf(cb) >= 0 || cb.indexOf(ca) >= 0;
+  return ca === cb;
 }
 
 function popupZonaEsEtiquetaLegacy(texto) {
@@ -451,7 +595,8 @@ function popupZonaDescripcionZona(attrs, cat) {
   const descCat = cat?.descripcion_col_fracc || "";
   if (descCat) return descCat;
   const desc = attrs?.descripcion || "";
-  return popupZonaEsEtiquetaLegacy(desc) ? "" : desc;
+  if (desc && !popupZonaEsEtiquetaLegacy(desc)) return desc;
+  return "";
 }
 
 function popupZonaValorCatalogo2026(cat) {
@@ -461,13 +606,121 @@ function popupZonaValorCatalogo2026(cat) {
   return ev?.valor_m2 != null ? ev.valor_m2 : null;
 }
 
+function popupZonaCodigoEfectivo(data, p) {
+  return String(
+    data?.zonah
+    || p?.zonah
+    || p?.zona_homogenea
+    || data?.catalogo?.clave_zonah
+    || data?.catalogo?.codigo_zona_homogenea
+    || ""
+  ).trim().toUpperCase();
+}
+
+function popupZonaCodigoCarto(data) {
+  const attrs = data?.zona_carto?.atributos || {};
+  const props = data?.zona_carto?.properties || {};
+  return popupZonaLeerZh(props)
+    || attrs.codigo
+    || String(data?.zonah_carto || "").trim().toUpperCase();
+}
+
+function popupZonaCalcularValorPredio2026(data, p) {
+  const directo = data?.valor2026 ?? p?.valor2026;
+  if (directo != null && directo !== "" && !Number.isNaN(Number(directo)) && Number(directo) > 0) {
+    return Number(directo);
+  }
+  const estimado = data?.valor2026_estimado;
+  if (estimado != null && !Number.isNaN(Number(estimado)) && Number(estimado) > 0) {
+    return Number(estimado);
+  }
+  const sup = Number(p?.sup_documental || p?.sup_fisica || data?.sup_documental || data?.sup_fisica || 0);
+  if (sup <= 0) return null;
+  let vUnit = data?.valor_m2_2026;
+  if (vUnit == null) vUnit = popupZonaValorCatalogo2026(data?.catalogo);
+  if (vUnit == null) {
+    const props = data?.zona_padron?.properties || data?.zona_carto?.properties || {};
+    vUnit = popupZonaParseValor2026(
+      props.valor_2026 ?? data?.zona_padron?.atributos?.valor_m2 ?? data?.zona_carto?.atributos?.valor_m2
+    );
+  }
+  if (vUnit == null || Number.isNaN(Number(vUnit))) return null;
+  return Math.round(Number(vUnit) * sup * 100) / 100;
+}
+
+function popupZonaEtiquetaValorPredio2026(data, p) {
+  const valor = popupZonaCalcularValorPredio2026(data, p);
+  const texto = popupZonaFormatMoneda(valor);
+  const padronNum = Number(data?.valor2026_padron ?? p?.valor2026 ?? 0);
+  const esEstimado = (!Number.isFinite(padronNum) || padronNum <= 0) && valor != null;
+  return esEstimado ? texto + " (estimado)" : texto;
+}
+
+function popupZonaCatalogoDesdeCapa(data) {
+  const anios = typeof obtenerAniosAnalisisZonas === "function"
+    ? obtenerAniosAnalisisZonas()
+    : [2024, 2025, 2026];
+  const zonas = [data?.zona_padron, data?.zona_carto].filter(Boolean);
+  if (!zonas.length) return null;
+
+  const valores = {};
+  zonas.forEach(function(zona) {
+    const props = zona.properties || {};
+    const attrs = zona.atributos || {};
+    anios.forEach(function(an) {
+      if (valores[an] != null) return;
+      const v = popupZonaParseValor2026(props["valor_" + an] ?? attrs["valor_" + an]);
+      if (v != null) valores[an] = v;
+    });
+    if (valores[2026] == null) {
+      const v26 = popupZonaParseValor2026(props.valor_2026 ?? attrs.valor_m2);
+      if (v26 != null) valores[2026] = v26;
+    }
+  });
+  if (!Object.keys(valores).length) return null;
+
+  const base = data.zona_padron || data.zona_carto;
+  const attrs = base?.atributos || {};
+  const cod = popupZonaCodigoEfectivo(data, null);
+  const evolucion = anios.map(function(an) {
+    return { anio: an, valor_m2: valores[an] ?? null, presente: valores[an] != null };
+  });
+  const cat = {
+    clave_zonah: cod,
+    codigo_zona_homogenea: cod,
+    zona: attrs.zona,
+    sector: attrs.sector,
+    subsector: attrs.subsector,
+    descripcion_col_fracc: attrs.descripcion,
+    evolucion: evolucion,
+    tipo_zona: "CARTOGRAFIA"
+  };
+  anios.forEach(function(an) {
+    cat["valor_" + an] = valores[an] ?? null;
+  });
+  if (typeof recalcularVariacionZona === "function") {
+    return recalcularVariacionZona(cat);
+  }
+  return cat;
+}
+
 async function popupZonaAsegurarCatalogo(data) {
   if (data?.catalogo) return data.catalogo;
-  const candidatos = [
-    data?.zonah,
-    data?.zona_carto?.atributos?.codigo,
-    data?.catalogo?.codigo_zona_homogenea
-  ];
+  const zonahPadron = String(data?.zonah || "").trim().toUpperCase();
+  const candidatos = zonahPadron
+    ? [
+        zonahPadron,
+        data?.catalogo?.clave_zonah,
+        data?.catalogo?.codigo_zona_homogenea,
+        popupZonaLeerZh(data?.zona_padron?.properties)
+      ]
+    : [
+        data?.zonah,
+        popupZonaLeerZh(data?.zona_padron?.properties),
+        popupZonaLeerZh(data?.zona_carto?.properties),
+        data?.zona_carto?.atributos?.codigo,
+        data?.zonah_carto
+      ];
   for (let i = 0; i < candidatos.length; i++) {
     const cod = String(candidatos[i] || "").trim();
     if (!cod) continue;
@@ -477,42 +730,49 @@ async function popupZonaAsegurarCatalogo(data) {
       return cat;
     }
   }
+  const desdeCapa = popupZonaCatalogoDesdeCapa(data);
+  if (desdeCapa) {
+    data.catalogo = desdeCapa;
+    return desdeCapa;
+  }
   return null;
 }
 
 function popupZonaExtraerCodigoDesdeProps(props, attrs) {
-  const directo = attrs?.codigo || props?.codigo_zona_homogenea || props?.zonah || props?.ZONAH;
+  const zh = popupZonaLeerZh(props);
+  if (zh) return zh;
+  const directo = props?.codigo_zona_homogenea || props?.zonah || props?.ZONAH;
   if (directo) return String(directo).trim().toUpperCase();
-  if (!props) return popupZonaDatos?.zonah || "";
-  for (const k in props) {
-    const kl = String(k).toLowerCase();
-    if (kl.indexOf("zonah") >= 0 || kl.indexOf("homogenea") >= 0 || kl === "codigo") {
-      const v = String(props[k] ?? "").trim();
-      if (v) return v.toUpperCase();
-    }
+  if (attrs?.codigo) {
+    return String(attrs.codigo).trim().toUpperCase();
   }
-  return popupZonaDatos?.zonah || "";
+  return "";
+}
+
+function popupZonaParseValor2026(valor) {
+  if (valor == null || String(valor).trim() === "") return null;
+  const n = Number(String(valor).replace(/[$,\s]/g, ""));
+  return Number.isNaN(n) ? null : n;
 }
 
 async function popupZonaResolverValor2026(codigo, attrs, props) {
   const cod = popupZonaExtraerCodigoDesdeProps(props, attrs) || codigo;
-  const catLocal = popupZonaDatos?.catalogo;
-  if (catLocal) {
-    const catCod = catLocal.clave_zonah || catLocal.codigo_zona_homogenea || "";
-    if (popupZonaCodigosCoinciden(catCod, cod)) {
-      const vLocal = popupZonaValorCatalogo2026(catLocal);
-      if (vLocal != null) return vLocal;
-    }
-  }
+  const capaVal = popupZonaParseValor2026(props?.valor_2026 ?? attrs?.valor_m2);
+  if (capaVal != null) return capaVal;
+
   if (cod) {
     const remoto = await cargarCatalogoZonaHomogenea(cod);
     const vRemoto = popupZonaValorCatalogo2026(remoto);
     if (vRemoto != null) return vRemoto;
   }
-  const rawVal = attrs?.valor_m2 || props?.valor_2026 || props?.valor2026 || props?.valor_m2;
-  if (rawVal != null && String(rawVal).trim() !== "") {
-    const n = Number(String(rawVal).replace(/[$,]/g, ""));
-    if (!Number.isNaN(n)) return n;
+
+  const catLocal = popupZonaDatos?.catalogo;
+  if (catLocal && cod) {
+    const catCod = catLocal.clave_zonah || catLocal.codigo_zona_homogenea || "";
+    if (popupZonaCodigosCoinciden(catCod, cod)) {
+      const vLocal = popupZonaValorCatalogo2026(catLocal);
+      if (vLocal != null) return vLocal;
+    }
   }
   return null;
 }
@@ -561,7 +821,7 @@ function popupZonaInicializarMapaInteraccion() {
     const lonLat = ol.proj.toLonLat(coord);
     popupZonaMostrarTooltip(coord, '<div class="popup-zona-tooltip-inner"><span class="popup-zona-tooltip-cargando">Consultando zona…</span></div>');
     try {
-      let hit = await popupZonaWmsGetFeatureInfo(lonLat[0], lonLat[1], POPUP_ZONA_WMS_LAYERS);
+      let hit = await popupZonaConsultarEnPunto(lonLat[0], lonLat[1], POPUP_ZONA_WMS_LAYERS);
       if (!hit && popupZonaDatos?.zona_carto) {
         hit = {
           properties: popupZonaDatos.zona_carto.properties || {},
@@ -575,7 +835,7 @@ function popupZonaInicializarMapaInteraccion() {
       const attrs = hit.atributos || popupZonaNormalizarAtributos(hit.properties);
       const props = hit.properties || {};
       const codigo = popupZonaExtraerCodigoDesdeProps(props, attrs);
-      const descripcion = popupZonaDescripcionZona(attrs, popupZonaDatos?.catalogo)
+      const descripcion = popupZonaDescripcionZona(attrs, null)
         || popupZonaLimpiarEtiquetaLegacy(attrs?.zona || attrs?.sector);
       const valor2026 = await popupZonaResolverValor2026(codigo, attrs, props);
       popupZonaMostrarTooltip(coord, popupZonaHtmlTooltip(codigo, descripcion, valor2026));
@@ -609,7 +869,7 @@ async function popupZonaEnriquecerDatos(data, p) {
   const centro = data.centroide || popupZonaCentroideDesdeGeometry(data.geometry);
   if (!data.zona_carto && centro.lon != null && centro.lat != null) {
     try {
-      const hit = await popupZonaWmsGetFeatureInfo(centro.lon, centro.lat, POPUP_ZONA_WMS_LAYERS);
+      const hit = await popupZonaConsultarEnPunto(centro.lon, centro.lat, POPUP_ZONA_WMS_LAYERS);
       if (hit) data.zona_carto = hit;
     } catch (e) {
       console.warn("Zona homogénea: WMS fallback:", e);
@@ -648,7 +908,7 @@ async function cargarZonaHomogeneaFallback(claveNorm, p) {
   const centro = popupZonaCentroideDesdeGeometry(geometry);
   let zonaCarto = null;
   if (centro.lon != null && centro.lat != null) {
-    zonaCarto = await popupZonaWmsGetFeatureInfo(centro.lon, centro.lat, POPUP_ZONA_WMS_LAYERS);
+    zonaCarto = await popupZonaConsultarEnPunto(centro.lon, centro.lat, POPUP_ZONA_WMS_LAYERS);
   }
 
   return {
@@ -752,12 +1012,12 @@ function popupZonaHtmlCampoCodigo(valor) {
 }
 
 function popupZonaResumenTexto(data) {
-  const cod = data?.catalogo?.clave_zonah || data?.catalogo?.codigo_zona_homogenea || data?.zonah || "";
+  const cod = popupZonaCodigoEfectivo(data, popupZonaDatos) || "";
   const attrs = data?.zona_carto?.atributos || {};
   const desc = data?.catalogo?.descripcion_col_fracc || attrs.descripcion || "";
   if (cod && desc) return cod + " · " + desc;
   if (cod) return "Zona homogénea: " + cod;
-  return data?.mensaje || "Consultando capa geonode:zonahom2026_tij…";
+  return data?.mensaje || "Consultando capa geonode:zonashomo2026_tij…";
 }
 
 function popupZonaRenderLeyendaGrafica() {
@@ -807,46 +1067,31 @@ function popupZonaRenderGrafica(catalogo) {
 }
 
 function popupZonaHtmlAtributos(data, p) {
-  const attrs = data?.zona_carto?.atributos || {};
   const cat = data?.catalogo || {};
-  const codZonah = cat.clave_zonah || cat.codigo_zona_homogenea || data?.zonah || p?.zonah || p?.zona_homogenea;
+  const catCarto = data?.catalogo_carto || null;
+  const codZonah = popupZonaCodigoEfectivo(data, p);
+  const codCarto = popupZonaCodigoCarto(data);
   const tasa = data?.porcentaje_tasa != null ? data.porcentaje_tasa : p?.porcentaje_tasa;
   const origen = data?.zona_carto?.origen || "";
   const capa = data?.zona_carto?.tabla || data?.zona_carto?.layer || data?.wms_layer || "—";
+  const attrsCarto = data?.zona_carto?.atributos || {};
+  const coincide = data?.zonah_coincide;
+  const vUnitPadron = popupZonaValorCatalogo2026(cat);
 
   let html = `
     <section class="popup-zona-seccion">
-      <h4>Predio consultado</h4>
+      <h4>Predio consultado (padrón)</h4>
       ${popupZonaHtmlCampo("Clave catastral", data?.clave_catastral)}
       ${popupZonaHtmlCampoCodigo(codZonah)}
       ${popupZonaHtmlCampo("ID tasa", data?.id_tasa || p?.id_tasa)}
       ${popupZonaHtmlCampo("Tasa", tasa != null ? tasa + "%" : "—")}
-      ${popupZonaHtmlCampo("Valor catastral predio 2026", popupZonaFormatMoneda(data?.valor2026 ?? p?.valor2026))}
+      ${popupZonaHtmlCampo("Valor catastral predio 2026", popupZonaEtiquetaValorPredio2026(data, p))}
       ${popupZonaHtmlCampo("Colonia / calle", [data?.colonia || p?.colonia, data?.calle || p?.calle, data?.numof || p?.numof].filter(Boolean).join(" · ") || "—")}
-      ${popupZonaHtmlCampo("Delegación", data?.delegacion || p?.delegacion)}
-    </section>
-    <section class="popup-zona-seccion popup-zona-seccion-carto">
-      <h4>Zona homogénea (cartografía)</h4>`;
-
-  if (data?.zona_carto) {
-    html += popupZonaHtmlCampo("Zona / sector", popupZonaFormatearZonaSector(attrs, cat) || codZonah);
-    html += popupZonaHtmlCampo("Subsector", attrs.subsector || cat.subsector);
-    const vUnit2026 = popupZonaValorCatalogo2026(cat);
-    if (vUnit2026 != null) {
-      html += popupZonaHtmlCampo("Valor unitario suelo 2026", popupZonaFormatMoneda(vUnit2026) + " / m²");
-    }
-    const etiquetaWms = [attrs.zona, attrs.sector].find(function(t) { return popupZonaEsEtiquetaLegacy(t); });
-    if (etiquetaWms) {
-      html += popupZonaHtmlCampo("Etiqueta WMS (cartografía)", popupZonaVal(etiquetaWms));
-    }
-    html += popupZonaHtmlCampo("Fuente", origen === "geonode" ? `GeoNode · ${capa}` : `WMS · ${capa}`);
-  } else {
-    html += `<div class="popup-zona-aviso">${popupZonaEsc(data?.mensaje || "Sin polígono de zona homogénea intersectado para este predio.")}</div>`;
-    html += `<div class="popup-zona-meta">Capa WMS: ${popupZonaEsc(data?.wms_layer || POPUP_ZONA_WMS_LAYER)}</div>`;
-  }
+      ${popupZonaHtmlCampo("Delegación", data?.delegacion || p?.delegacion)}`;
 
   if (cat && (cat.valor_2024 != null || cat.valor_2025 != null || cat.valor_2026 != null || (cat.evolucion || []).length)) {
-    html += `<div class="popup-zona-valores-anio">`;
+    html += `<div class="popup-zona-valores-anio popup-zona-valores-padron">`;
+    html += `<div class="popup-zona-meta">Tabla fiscal · zona padrón ${popupZonaEsc(codZonah || "—")}</div>`;
     const anios = typeof obtenerAniosAnalisisZonas === "function"
       ? obtenerAniosAnalisisZonas()
       : [2024, 2025, 2026];
@@ -856,12 +1101,42 @@ function popupZonaHtmlAtributos(data, p) {
         : ((cat.evolucion || []).find(function(e) { return e.anio === an; })?.valor_m2);
       html += `<div class="popup-zona-valor-line"><span>Valor ${an}</span><b>${val != null ? popupZonaFormatMoneda(val) : "—"}</b></div>`;
     });
+    if (vUnitPadron != null) {
+      html += popupZonaHtmlCampo("Valor unitario suelo 2026", popupZonaFormatMoneda(vUnitPadron) + " / m²");
+    }
     html += `</div>`;
   }
 
   html += `</section>
+    <section class="popup-zona-seccion popup-zona-seccion-carto">
+      <h4>Zona homogénea (cartografía)</h4>`;
+
+  if (data?.zona_carto) {
+    html += popupZonaHtmlCampo("Zona intersectada (WMS/WFS)", codCarto || "—");
+    if (coincide === false && codZonah && codCarto) {
+      html += `<div class="popup-zona-aviso popup-zona-aviso-diff">El padrón asigna zona <b>${popupZonaEsc(codZonah)}</b> y la cartografía intersecta zona <b>${popupZonaEsc(codCarto)}</b>. Se prioriza el padrón para valores y evolución.</div>`;
+    } else if (coincide === true) {
+      html += `<div class="popup-zona-meta">Coincide con la zona del padrón.</div>`;
+    }
+    html += popupZonaHtmlCampo("Zona / sector", popupZonaFormatearZonaSector(attrsCarto, catCarto || cat) || codCarto);
+    html += popupZonaHtmlCampo("Subsector", attrsCarto.subsector || (catCarto || cat).subsector);
+    const vUnitCarto = popupZonaValorCatalogo2026(catCarto);
+    if (vUnitCarto != null && coincide === false) {
+      html += popupZonaHtmlCampo("Valor unitario cartografía 2026", popupZonaFormatMoneda(vUnitCarto) + " / m²");
+    }
+    const etiquetaWms = [attrsCarto.zona, attrsCarto.sector].find(function(t) { return popupZonaEsEtiquetaLegacy(t); });
+    if (etiquetaWms) {
+      html += popupZonaHtmlCampo("Etiqueta WMS (cartografía)", popupZonaVal(etiquetaWms));
+    }
+    html += popupZonaHtmlCampo("Fuente", origen === "geonode" ? `GeoNode · ${capa}` : `WMS · ${capa}`);
+  } else {
+    html += `<div class="popup-zona-aviso">${popupZonaEsc(data?.mensaje || "Sin polígono de zona homogénea intersectado para este predio.")}</div>`;
+    html += `<div class="popup-zona-meta">Capa WMS: ${popupZonaEsc(data?.wms_layer || POPUP_ZONA_WMS_LAYER)}</div>`;
+  }
+
+  html += `</section>
     <section class="popup-zona-seccion popup-zona-seccion-grafica">
-      <h4>Evolución del valor unitario</h4>
+      <h4>Evolución del valor unitario · zona padrón ${popupZonaEsc(codZonah || "")}</h4>
       <div class="popup-zona-grafica-wrap">
         <div class="popup-zona-grafica-leyenda" id="popupZonaGraficaLeyenda"></div>
         <canvas id="popupZonaCanvas" class="popup-zona-canvas" width="400" height="200"></canvas>
@@ -925,13 +1200,13 @@ function popupZonaActualizarMapa(data) {
   });
   popupZonaCapas.predioVector.getSource().addFeatures(predioFeats);
 
-  const zonaGeom = data?.zona_carto?.geometry;
+  const zonaGeom = data?.zona_padron?.geometry || data?.zona_carto?.geometry;
   if (zonaGeom) {
     try {
       const zonaFeats = format.readFeatures({
         type: "Feature",
         geometry: zonaGeom,
-        properties: data.zona_carto?.atributos || {}
+        properties: (data.zona_padron || data.zona_carto)?.atributos || {}
       });
       popupZonaCapas.zonaVector.getSource().addFeatures(zonaFeats);
     } catch (e) {
@@ -1000,7 +1275,7 @@ async function pintarPopupTabZonaHomogenea(p) {
         <div class="popup-zona-mapa-head">
           <div class="popup-zona-mapa-head-text">
             <strong>Plano de ubicación en zona homogénea</strong>
-          <span id="popupZonaResumenMapa">Cargando capa geonode:zonahom2026_tij…</span>
+          <span id="popupZonaResumenMapa">Cargando capa geonode:zonashomo2026_tij…</span>
           </div>
           <div class="popup-zona-mapa-head-actions">
             <button type="button" class="popup-btn-imprimir-ficha popup-btn-zona-ficha" id="popupZonaBtnImprimir" disabled onclick="popupZonaImprimirPlano()">Cargando mapa…</button>

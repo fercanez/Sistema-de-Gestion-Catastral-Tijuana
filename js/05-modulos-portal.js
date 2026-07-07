@@ -1199,6 +1199,35 @@ async function cargarAdeudosTijuanaRemotos(claveNorm) {
   }
 }
 
+async function popupEnriquecerValor2026Datos(p, clave, seq) {
+  const padronNum = Number(p?.valor2026);
+  if (Number.isFinite(padronNum) && padronNum > 0) return;
+  if (!clave || !(p?.zonah || p?.zona_homogenea)) return;
+
+  let zh = null;
+  if (typeof popupZonaDatos !== "undefined" && popupZonaDatos?.clave_catastral === clave) {
+    zh = popupZonaDatos;
+  } else if (typeof cargarZonaHomogenea === "function") {
+    try {
+      zh = await cargarZonaHomogenea(clave, p);
+    } catch (e) {}
+  }
+
+  if (seq != null && seq !== popupDatosGeneralesSeq) return;
+  if (!zh) return;
+
+  const valorMostrar = zh.valor2026 ?? zh.valor2026_estimado;
+  if (valorMostrar == null || !(Number(valorMostrar) > 0)) return;
+
+  const padronVal = Number(zh.valor2026_padron ?? p?.valor2026);
+  const esEstimado = !Number.isFinite(padronVal) || padronVal <= 0;
+  const texto = (typeof formatoMoneda === "function" ? formatoMoneda(valorMostrar) : valorMostrar)
+    + (esEstimado ? " (estimado)" : "");
+
+  const el = document.getElementById("popupValor2026Dato");
+  if (el) el.textContent = texto;
+}
+
 async function pintarPopupTabDatosGenerales(p) {
   const panel = document.getElementById("popupTabDatosGenerales");
   if (!panel) return;
@@ -1229,7 +1258,7 @@ async function pintarPopupTabDatosGenerales(p) {
           ${popupCampo("Número oficial", p?.numof)}
           ${popupCampo("Superficie documental", txtSupDoc)}
           ${popupCampo("Superficie física", txtSupFis)}
-          ${popupCampo("Valor 2026", valor)}
+          ${popupCampoHtml("Valor 2026", `<span id="popupValor2026Dato">${popupEsc(valor)}</span>`)}
           ${popupCampo("Adeudo total", adeudo)}
           ${popupCampoHtml("Adeudo Tijuana", `<span id="popupAdeudoTijuanaRemoto" class="popup-adeudo-tijuana-remoto">Consultando...</span>`)}
           ${popupCampo("Uso de suelo predial", p?.descripcion_uso)}
@@ -1263,6 +1292,7 @@ async function pintarPopupTabDatosGenerales(p) {
 
   pintarPopupTitularidadSeccion(null, p);
   actualizarPopupPredioHeader(p);
+  popupEnriquecerValor2026Datos(p, clave, seq);
 
   const [titularidad] = await Promise.all([
     cargarTitularidadPredioPopup(clave, p),

@@ -1952,12 +1952,313 @@ def colonia_fraccionamiento_predio(
 
 
 ZONA_HOMOGENEA_WMS_URL = CARTA_URBANA_2040_WMS_URL
-ZONA_HOMOGENEA_WMS_LAYER = "geonode:zonahom2026_tij"
+ZONA_HOMOGENEA_WMS_LAYER = "geonode:zonashomo2026_tij"
 ZONA_HOMOGENEA_WMS_LAYERS = [
-    "geonode:zonahom2026_tij",
-    "zonahom2026_tij",
+    "geonode:zonashomo2026_tij",
+    "zonashomo2026_tij",
 ]
-ZONA_HOMOGENEA_TABLAS = ["zonahom2026_tij"]
+ZONA_HOMOGENEA_TABLAS = ["zonashomo2026_tij"]
+
+
+def _leer_zh_zona_homogenea(props: Optional[dict]) -> str:
+    if not props:
+        return ""
+    for clave in ("zh", "ZH", "Zh"):
+        val = props.get(clave)
+        if val is not None and str(val).strip() not in ("", "NULL", "null"):
+            return str(val).strip().upper()
+    return ""
+
+
+def _area_feature_zona_homogenea(props: Optional[dict]) -> float:
+    if not props:
+        return 0.0
+    for clave in ("shape_area", "SHAPE_AREA", "shape_area"):
+        val = props.get(clave)
+        if val is not None:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                continue
+    return 0.0
+
+
+def _elegir_feature_zona_homogenea(features: List[dict]) -> Optional[dict]:
+    if not features:
+        return None
+    if len(features) == 1:
+        return features[0]
+    mejor = None
+    mejor_area = float("inf")
+    mejor_zh_len = -1
+    for feat in features:
+        props = feat.get("properties") or {}
+        zh = _leer_zh_zona_homogenea(props)
+        if not zh:
+            continue
+        area = _area_feature_zona_homogenea(props)
+        zh_len = len(zh)
+        if area <= 0:
+            area = float("inf")
+        if area < mejor_area or (area == mejor_area and zh_len > mejor_zh_len):
+            mejor = feat
+            mejor_area = area
+            mejor_zh_len = zh_len
+    return mejor or features[0]
+
+
+def _consultar_zona_homogenea_por_punto(
+    cur, lon: float, lat: float, tablas: List[str]
+) -> Optional[dict]:
+    for tabla in tablas:
+        if not re.fullmatch(r"[a-z0-9_]+", tabla or "", re.I):
+            continue
+        try:
+            cur.execute(
+                f"""
+                SELECT
+                    t.*,
+                    ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry
+                FROM public.{tabla} t
+                WHERE t.geom IS NOT NULL
+                  AND ST_Intersects(
+                        t.geom,
+                        ST_Transform(
+                            ST_SetSRID(ST_MakePoint(%s, %s), 4326),
+                            ST_SRID(t.geom)
+                        )
+                  )
+                ORDER BY ST_Area(t.geom) ASC
+                LIMIT 1;
+                """,
+                (lon, lat),
+            )
+            row = cur.fetchone()
+            if row:
+                return _fila_zona_homogenea_a_carto(dict(row), tabla, "geonode")
+        except Exception:
+            continue
+    return None
+
+
+def _consultar_zona_homogenea_carto_por_predio(
+    cur, ewkt_predio: str, tablas: List[str]
+) -> Optional[dict]:
+    """Zona homogénea intersectada en cartografía (comparación; sin priorizar padrón)."""
+    for tabla in tablas:
+        if not re.fullmatch(r"[a-z0-9_]+", tabla or "", re.I):
+            continue
+        try:
+            cur.execute(
+                f"""
+                SELECT
+                    t.*,
+                    ST_Area(
+                        ST_Intersection(
+                            t.geom,
+                            ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                        )
+                    ) AS area_cruce,
+                    ST_AsGeoJSON(ST_Transform(t.geom, 4326))::json AS geometry
+                FROM public.{tabla} t
+                WHERE t.geom IS NOT NULL
+                  AND ST_Intersects(
+                        t.geom,
+                        ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
+                  )
+                ORDER BY area_cruce ASC NULLS LAST, ST_Area(t.geom) ASC
+                LIMIT 1;
+                """,
+                (ewkt_predio, ewkt_predio),
+            )
+            row = cur.fetchone()
+            if row:
+                return _fila_zona_homogenea_a_carto(dict(row), tabla, "geonode")
+        except Exception:
+            continue
+    return None
+
+
+def _zonas_homogeneas_coinciden(cod_a: str, cod_b: str) -> Optional[bool]:
+    a = _normalizar_codigo_zona_homogenea(cod_a)
+    b = _normalizar_codigo_zona_homogenea(cod_b)
+    if not a or not b:
+        return None
+    return a == b
+
+
+def _parse_valor_capa_zona(val) -> Optional[float]:
+    if val is None or str(val).strip() in ("", "NULL", "null"):
+        return None
+    try:
+        return float(str(val).replace("$", "").replace(",", "").strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _extraer_valores_anio_desde_capa_zona(
+    zona_info: Optional[dict], anios: list
+) -> dict:
+    if not zona_info:
+        return {}
+    props = zona_info.get("properties") or {}
+    attrs = zona_info.get("atributos") or {}
+    valores = {}
+    for an in anios:
+        for fuente in (props, attrs):
+            for key in (f"valor_{an}", f"valor{an}"):
+                parsed = _parse_valor_capa_zona(fuente.get(key))
+                if parsed is not None:
+                    valores[an] = parsed
+                    break
+            if an in valores:
+                break
+    for fuente in (props, attrs):
+        for key, val in fuente.items():
+            m = re.match(r"^valor[_]?(\d{4})$", str(key or ""), re.I)
+            if not m:
+                continue
+            an = int(m.group(1))
+            if an not in anios or an in valores:
+                continue
+            parsed = _parse_valor_capa_zona(val)
+            if parsed is not None:
+                valores[an] = parsed
+    if 2026 not in valores:
+        for fuente in (props, attrs):
+            parsed = _parse_valor_capa_zona(
+                fuente.get("valor_2026") or fuente.get("valor_m2")
+            )
+            if parsed is not None:
+                valores[2026] = parsed
+                break
+    return valores
+
+
+def _catalogo_evolucion_desde_capa(
+    codigo: str,
+    zona_padron: Optional[dict],
+    zona_carto: Optional[dict],
+    anios: list,
+) -> Optional[dict]:
+    """Catálogo sintético desde atributos cartográficos cuando falta en tablas fiscales."""
+    zonas = [z for z in (zona_padron, zona_carto) if z]
+    if not zonas:
+        return None
+    valores = {}
+    for zona in zonas:
+        parciales = _extraer_valores_anio_desde_capa_zona(zona, anios)
+        for an, val in parciales.items():
+            if an not in valores:
+                valores[an] = val
+    if not valores:
+        return None
+
+    base = zona_padron or zona_carto
+    attrs = (base or {}).get("atributos") or {}
+    props = (base or {}).get("properties") or {}
+    cod_norm = _normalizar_codigo_zona_homogenea(codigo) or attrs.get("codigo") or _leer_zh_zona_homogenea(props)
+    row = {
+        "clave_zonah": cod_norm,
+        "codigo_zona_homogenea": cod_norm,
+        "zona": attrs.get("zona") or props.get("zona"),
+        "sector": attrs.get("sector") or props.get("sector"),
+        "subsector": attrs.get("subsector") or props.get("subsector"),
+        "homoclave_col_fracc": attrs.get("homoclave") or props.get("homoclave"),
+        "seccion": attrs.get("seccion") or props.get("seccion"),
+        "descripcion_col_fracc": attrs.get("descripcion")
+        or props.get("referencia")
+        or props.get("descripcion"),
+        "es_adicional": False,
+        "tipo_zona": "CARTOGRAFIA",
+    }
+    for an, val in valores.items():
+        row[f"valor_{an}"] = val
+    return _construir_item_evolucion(row, anios)
+
+
+def _valor_m2_zona_homogenea_2026(
+    catalogo: Optional[dict], zona_carto: Optional[dict]
+) -> Optional[float]:
+    if catalogo:
+        for clave in ("valor_2026", "valor_m2"):
+            val = catalogo.get(clave)
+            if val is not None and str(val).strip() not in ("", "NULL", "null"):
+                try:
+                    return float(str(val).replace("$", "").replace(",", "").strip())
+                except (TypeError, ValueError):
+                    continue
+        for item in catalogo.get("evolucion") or []:
+            if item.get("anio") == 2026 and item.get("valor_m2") is not None:
+                try:
+                    return float(item["valor_m2"])
+                except (TypeError, ValueError):
+                    pass
+    if zona_carto:
+        props = zona_carto.get("properties") or {}
+        val = props.get("valor_2026")
+        if val is not None and str(val).strip() not in ("", "NULL", "null"):
+            try:
+                return float(str(val).replace("$", "").replace(",", "").strip())
+            except (TypeError, ValueError):
+                pass
+    return None
+
+
+def _estimar_valor_catastral_2026(
+    sup_documental: Optional[float], sup_fisica: Optional[float], valor_m2: Optional[float]
+) -> Optional[float]:
+    try:
+        sup = float(sup_documental or sup_fisica or 0)
+        vu = float(valor_m2 or 0)
+        if sup > 0 and vu > 0:
+            return round(sup * vu, 2)
+    except (TypeError, ValueError):
+        pass
+    return None
+
+
+def _consultar_zona_homogenea_wms(lon: float, lat: float, layers: List[str]) -> Optional[dict]:
+    delta = 0.00045
+    bbox = f"{lon - delta},{lat - delta},{lon + delta},{lat + delta}"
+    for layer in layers:
+        params = {
+            "SERVICE": "WMS",
+            "VERSION": "1.1.1",
+            "REQUEST": "GetFeatureInfo",
+            "LAYERS": layer,
+            "QUERY_LAYERS": layer,
+            "STYLES": "",
+            "BBOX": bbox,
+            "WIDTH": "101",
+            "HEIGHT": "101",
+            "X": "50",
+            "Y": "50",
+            "SRS": "EPSG:4326",
+            "INFO_FORMAT": "application/json",
+            "FEATURE_COUNT": "10",
+        }
+        url = ZONA_HOMOGENEA_WMS_URL + "?" + urllib.parse.urlencode(params)
+        try:
+            with urllib.request.urlopen(url, timeout=18) as resp:
+                data = json.loads(resp.read().decode("utf-8", errors="replace"))
+            features = data.get("features") or []
+            if not features:
+                continue
+            feat = _elegir_feature_zona_homogenea(features)
+            if not feat:
+                continue
+            props = feat.get("properties") or {}
+            return {
+                "origen": "wms",
+                "layer": layer,
+                "properties": props,
+                "geometry": feat.get("geometry"),
+                "atributos": _normalizar_atributos_zona_homogenea(props),
+            }
+        except Exception:
+            continue
+    return None
 
 
 def _normalizar_atributos_zona_homogenea(props: Optional[dict]) -> dict:
@@ -1965,30 +2266,37 @@ def _normalizar_atributos_zona_homogenea(props: Optional[dict]) -> dict:
         return {}
     claves = {str(k).lower(): k for k in props.keys()}
 
+    def tomar_exacto(*nombres: str) -> str:
+        for nombre in nombres:
+            orig = claves.get(str(nombre).lower())
+            if not orig:
+                continue
+            val = props.get(orig)
+            if val is not None and str(val).strip() not in ("", "NULL", "null"):
+                return str(val).strip()
+        return ""
+
     def tomar(*candidatos: str) -> str:
         for cand in candidatos:
             cand_l = cand.lower()
             for kl, orig in claves.items():
-                if cand_l in kl:
+                if kl == cand_l or cand_l in kl:
                     val = props.get(orig)
                     if val is not None and str(val).strip() not in ("", "NULL", "null"):
                         return str(val).strip()
         return ""
 
     return {
-        "codigo": tomar(
-            "zonah", "codigo_zona", "codigo", "clave", "homogenea",
-            "codigo_zona_homogenea", "secsub"
-        ),
-        "descripcion": tomar(
-            "descripcion", "nombre", "desc", "colonia", "descripcion_col_fracc"
-        ),
-        "zona": tomar("zona", "nom_zona"),
-        "sector": tomar("sector", "nom_sector"),
-        "subsector": tomar("subsector", "nom_subsector"),
-        "homoclave": tomar("homoclave", "homoclave_col_fracc", "fraccion"),
-        "seccion": tomar("seccion", "sec"),
-        "valor_m2": tomar("valor_m2", "valorm2", "valor", "valorley"),
+        "codigo": tomar_exacto("zh", "secsub", "subsector", "codigo_zona_homogenea", "zonah")
+        or tomar("zonashomo", "zonahom", "secsub"),
+        "descripcion": tomar_exacto("referencia", "descripcion_col_fracc")
+        or tomar("descripcion", "nombre", "desc", "colonia"),
+        "zona": tomar_exacto("zona") or tomar("zona", "nom_zona"),
+        "sector": tomar_exacto("sector") or tomar("sector", "nom_sector"),
+        "subsector": tomar_exacto("subsector") or tomar("subsector", "nom_subsector"),
+        "homoclave": tomar_exacto("homoclave", "homoclave_col_fracc") or tomar("homoclave", "fraccion"),
+        "seccion": tomar_exacto("seccion", "sec") or tomar("seccion"),
+        "valor_m2": tomar_exacto("valor_2026", "valor_m2") or tomar("valor", "valorm2", "valorley"),
         "anio": tomar("anio", "year", "ejercicio"),
         "observaciones": tomar("observ", "nota", "coment", "leyenda"),
     }
@@ -2015,7 +2323,8 @@ def _consultar_zona_homogenea_geonode(cur, ewkt_predio: str, tablas: List[str]) 
                         t.geom,
                         ST_Transform(ST_GeomFromEWKT(%s), ST_SRID(t.geom))
                     )
-                ) DESC NULLS LAST
+                ) ASC NULLS LAST,
+                ST_Area(t.geom) ASC
                 LIMIT 1;
                 """,
                 (ewkt_predio, ewkt_predio),
@@ -2040,6 +2349,9 @@ def _consultar_zona_homogenea_geonode(cur, ewkt_predio: str, tablas: List[str]) 
 
 ZONA_HOMOGENEA_WFS_URL = ZONA_HOMOGENEA_WMS_URL.replace("/wms", "/wfs")
 ZONA_HOMOGENEA_CODIGO_COLS = [
+    "zh",
+    "zonashomo2026_tij",
+    "zonashomo2026",
     "zonahom2026",
     "zonahom",
     "zona_hom",
@@ -2150,7 +2462,7 @@ def _consultar_zona_homogenea_wfs_por_codigo(codigo: str) -> Optional[dict]:
     cod_norm = _normalizar_codigo_zona_homogenea(codigo)
     if not cod_norm:
         return None
-    type_names = ["geonode:zonahom2026_tij", "zonahom2026_tij"]
+    type_names = ["geonode:zonashomo2026_tij", "zonashomo2026_tij"]
     for type_name in type_names:
         for col in ZONA_HOMOGENEA_CODIGO_COLS:
             cql = f"{col}='{cod_norm}'"
@@ -2279,9 +2591,9 @@ def _evolucion_zona_por_codigo(cur, codigo: str) -> Optional[dict]:
             GROUP BY clave_zonah
         )
         SELECT * FROM agg
-        WHERE clave_zonah = %s
-           OR codigo_zona_homogenea = %s
-           OR codigo_referencia = %s
+        WHERE UPPER(REGEXP_REPLACE(COALESCE(clave_zonah, ''), '[^A-Z0-9]', '', 'g')) = %s
+           OR UPPER(REGEXP_REPLACE(COALESCE(codigo_zona_homogenea, ''), '[^A-Z0-9]', '', 'g')) = %s
+           OR UPPER(REGEXP_REPLACE(COALESCE(codigo_referencia, ''), '[^A-Z0-9]', '', 'g')) = %s
         LIMIT 1;
     """
     params = list(union_params) + [cod_norm, cod_norm, cod_norm]
@@ -2339,6 +2651,8 @@ def _zona_homogenea_payload(clave: str) -> dict:
             TRIM(COALESCE(p.id_tasa::text, '')) AS id_tasa,
             p.porcentaje_tasa,
             p.valor2026,
+            p.sup_documental,
+            p.sup_fisica,
             ST_AsEWKT(ST_Transform(g.geom, 32611)) AS ewkt_32611,
             ST_X(ST_Transform(ST_PointOnSurface(g.geom), 4326))::float AS lon,
             ST_Y(ST_Transform(ST_PointOnSurface(g.geom), 4326))::float AS lat,
@@ -2361,36 +2675,79 @@ def _zona_homogenea_payload(clave: str) -> dict:
     lat = row.get("lat")
     ewkt = row.get("ewkt_32611")
     zonah = row.get("zonah") or ""
+    zonah_norm = _normalizar_codigo_zona_homogenea(zonah)
     zona_carto = None
+    zona_padron = None
 
-    if get_geonode_conn is not None and ewkt:
+    if get_geonode_conn is not None:
         try:
             gconn = get_geonode_conn()
             gcur = gconn.cursor()
-            zona_carto = _consultar_zona_homogenea_geonode(
-                gcur, ewkt, ZONA_HOMOGENEA_TABLAS
-            )
+            if zonah_norm:
+                zona_padron = _consultar_zona_homogenea_por_codigo_geonode(
+                    gcur, zonah_norm
+                )
+            if ewkt:
+                zona_carto = _consultar_zona_homogenea_carto_por_predio(
+                    gcur, ewkt, ZONA_HOMOGENEA_TABLAS
+                )
+            if zona_carto is None and lon is not None and lat is not None:
+                zona_carto = _consultar_zona_homogenea_por_punto(
+                    gcur, float(lon), float(lat), ZONA_HOMOGENEA_TABLAS
+                )
             gcur.close()
             gconn.close()
         except Exception:
-            zona_carto = None
+            zona_carto = zona_carto
+            zona_padron = zona_padron
+
+    if zona_padron is None and zonah_norm:
+        zona_padron = _consultar_zona_homogenea_wfs_por_codigo(zonah_norm)
 
     if zona_carto is None and lon is not None and lat is not None:
-        zona_carto = _consultar_carta_urbana_wms(
+        zona_carto = _consultar_zona_homogenea_wms(
             float(lon), float(lat), ZONA_HOMOGENEA_WMS_LAYERS
         )
         if zona_carto:
             props = zona_carto.get("properties") or {}
             zona_carto["atributos"] = _normalizar_atributos_zona_homogenea(props)
 
-    catalogo = _evolucion_zona_por_codigo(cur, zonah)
-    if not catalogo and zona_carto:
-        attrs = (zona_carto.get("atributos") or {})
-        cod_carto = attrs.get("codigo") or ""
-        if cod_carto:
-            catalogo = _evolucion_zona_por_codigo(cur, cod_carto)
+    cod_carto = ""
+    if zona_carto:
+        props = zona_carto.get("properties") or {}
+        cod_carto = _leer_zh_zona_homogenea(props) or (zona_carto.get("atributos") or {}).get("codigo", "")
 
     anios = _obtener_anios_zh_catalogo(cur)
+    catalogo = _evolucion_zona_por_codigo(cur, zonah) if zonah_norm else None
+    if not catalogo:
+        catalogo = _catalogo_evolucion_desde_capa(
+            zonah, zona_padron, zona_carto, anios
+        )
+    catalogo_carto = None
+    if cod_carto and not _zonas_homogeneas_coinciden(cod_carto, zonah_norm):
+        catalogo_carto = _evolucion_zona_por_codigo(cur, cod_carto)
+        if not catalogo_carto:
+            catalogo_carto = _catalogo_evolucion_desde_capa(
+                cod_carto, None, zona_carto, anios
+            )
+    if not catalogo and catalogo_carto and not zonah_norm:
+        catalogo = catalogo_carto
+
+    valor_m2_2026 = _valor_m2_zona_homogenea_2026(catalogo, zona_padron or zona_carto)
+    valor_padron = row.get("valor2026")
+    valor_estimado = None
+    try:
+        valor_padron_num = float(valor_padron) if valor_padron is not None else 0.0
+    except (TypeError, ValueError):
+        valor_padron_num = 0.0
+    if valor_padron_num <= 0:
+        valor_estimado = _estimar_valor_catastral_2026(
+            row.get("sup_documental"),
+            row.get("sup_fisica"),
+            valor_m2_2026,
+        )
+    valor2026_resp = valor_padron if valor_padron_num > 0 else valor_estimado
+
     cur.close()
     conn.close()
 
@@ -2399,7 +2756,7 @@ def _zona_homogenea_payload(clave: str) -> dict:
     if not zona_carto:
         mensaje = (
             "No se intersectó el predio con la capa de zonas homogéneas. "
-            "Verifique geometría del predio o la simbología geonode:zonahom2026_tij."
+            "Verifique geometría del predio o la simbología geonode:zonashomo2026_tij."
         )
 
     return {
@@ -2410,13 +2767,22 @@ def _zona_homogenea_payload(clave: str) -> dict:
         "calle": row.get("calle") or "",
         "numof": row.get("numof") or "",
         "zonah": zonah,
+        "zonah_carto": cod_carto,
+        "zonah_coincide": _zonas_homogeneas_coinciden(zonah, cod_carto),
         "id_tasa": row.get("id_tasa") or "",
         "porcentaje_tasa": row.get("porcentaje_tasa"),
-        "valor2026": row.get("valor2026"),
+        "valor2026": valor2026_resp,
+        "valor2026_padron": valor_padron,
+        "valor2026_estimado": valor_estimado,
+        "sup_documental": row.get("sup_documental"),
+        "sup_fisica": row.get("sup_fisica"),
+        "valor_m2_2026": valor_m2_2026,
         "centroide": {"lon": lon, "lat": lat},
         "geometry": row.get("geometry"),
         "zona_carto": zona_carto,
+        "zona_padron": zona_padron,
         "catalogo": catalogo,
+        "catalogo_carto": catalogo_carto,
         "anios": anios,
         "wms_url": ZONA_HOMOGENEA_WMS_URL,
         "wms_layer": wms_layer,
@@ -3544,9 +3910,15 @@ def evolucion_zonas_homogeneas(
             filtros.append("COALESCE(subsector, '') ILIKE %s")
             params.append(subsector.strip())
         if codigo.strip():
-            cod = f"%{codigo.strip()}%"
-            filtros.append("(clave_zonah ILIKE %s OR codigo_zona_homogenea ILIKE %s)")
-            params.extend([cod, cod])
+            cod_norm = _normalizar_codigo_zona_homogenea(codigo)
+            if cod_norm:
+                filtros.append("""
+                    (
+                        UPPER(REGEXP_REPLACE(COALESCE(clave_zonah, ''), '[^A-Z0-9]', '', 'g')) = %s
+                        OR UPPER(REGEXP_REPLACE(COALESCE(codigo_zona_homogenea, ''), '[^A-Z0-9]', '', 'g')) = %s
+                    )
+                """)
+                params.extend([cod_norm, cod_norm])
         if q.strip():
             qq = f"%{q.strip()}%"
             filtros.append("""
@@ -3614,6 +3986,31 @@ def evolucion_zonas_homogeneas(
                 break
         if not registro_final and resultados:
             registro_final = resultados[0]
+
+        if not resultados and codigo.strip():
+            cod_norm = _normalizar_codigo_zona_homogenea(codigo)
+            zona_capa = None
+            if cod_norm and get_geonode_conn is not None:
+                try:
+                    gconn = get_geonode_conn()
+                    gcur = gconn.cursor()
+                    zona_capa = _consultar_zona_homogenea_por_codigo_geonode(
+                        gcur, cod_norm
+                    )
+                    gcur.close()
+                    gconn.close()
+                except Exception:
+                    zona_capa = zona_capa
+            if zona_capa is None and cod_norm:
+                zona_capa = _consultar_zona_homogenea_wfs_por_codigo(cod_norm)
+            cat_capa = _catalogo_evolucion_desde_capa(
+                cod_norm, zona_capa, zona_capa, anios
+            )
+            if cat_capa:
+                resultados = [cat_capa]
+                total = 1
+                idx_resp = 0
+                registro_final = cat_capa
 
         cur.close()
         conn.close()

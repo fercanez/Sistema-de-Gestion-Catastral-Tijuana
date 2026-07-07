@@ -4083,6 +4083,14 @@ body.popup-cu-lightbox-abierto {
   line-height: 1.4;
 }
 
+.popup-zona-aviso-diff {
+  margin: 8px 0;
+}
+
+.popup-zona-valores-padron {
+  margin-top: 8px;
+}
+
 .popup-zona-meta {
   margin-top: 6px;
   font-size: 0.7rem;

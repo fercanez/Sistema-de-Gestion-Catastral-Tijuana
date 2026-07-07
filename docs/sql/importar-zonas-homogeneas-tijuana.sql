@@ -1,0 +1,15 @@
+-- Importar catálogo fiscal zonas homogéneas Tijuana (2024-2026)
+-- Incluye códigos numéricos (1001-6225) y alfanuméricos (3AB, 6GY, 4CW, etc.)
+--
+-- Archivo SQL generado:
+--   catalogos/zonas_homogeneas_tijuana/cat_zonas_homogeneas_tijuana_import.sql
+--
+-- Ejemplo en servidor:
+--   psql -U catastro -d catastro_tijuana \
+--     -f /opt/catastro_tijuana_api/catalogos/zonas_homogeneas_tijuana/cat_zonas_homogeneas_tijuana_import.sql
+--
+-- Regenerar desde PDFs (Windows):
+--   py -3 scripts/extraer_zonas_tijuana_pdf.py
+--
+-- Nota 2023: "tabla de valores 2023.pdf" en el repo es de MEXICALI, no Tijuana.
+-- Cuando exista el PDF oficial de Tijuana 2023, agregarlo al script y re-extraer.

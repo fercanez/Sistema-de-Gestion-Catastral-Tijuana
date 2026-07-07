@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <StyledLayerDescriptor xmlns="http://www.opengis.net/sld" xsi:schemaLocation="http://www.opengis.net/sld http://schemas.opengis.net/sld/1.1.0/StyledLayerDescriptor.xsd" xmlns:ogc="http://www.opengis.net/ogc" xmlns:se="http://www.opengis.net/se" version="1.1.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xlink="http://www.w3.org/1999/xlink">
   <NamedLayer>
-    <se:Name>zonahom2026_tij</se:Name>
+    <se:Name>zonashomo2026_tij</se:Name>
     <UserStyle>
-      <se:Name>zonahom2026_tij</se:Name>
+      <se:Name>zonashomo2026_tij</se:Name>
       <se:FeatureTypeStyle>
         <se:Rule>
           <se:Name>0 - 850</se:Name>

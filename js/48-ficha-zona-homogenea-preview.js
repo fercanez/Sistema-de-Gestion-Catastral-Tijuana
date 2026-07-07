@@ -48,10 +48,11 @@ function serializarFeaturesZonaFicha(zonaData) {
       properties: { clave_catastral: zonaData.clave_catastral, es_consultado: true }
     });
   }
-  if (zonaData?.zona_carto?.geometry) {
+  const zonaGeom = zonaData?.zona_padron?.geometry || zonaData?.zona_carto?.geometry;
+  if (zonaGeom) {
     features.push({
       type: "Feature",
-      geometry: zonaData.zona_carto.geometry,
+      geometry: zonaGeom,
       properties: { es_zona: true }
     });
   }
@@ -581,7 +582,12 @@ function construirHtmlFichaZonaVentana(datos, zonaData, opciones) {
   const attrs = fichaZonaAtributos(zonaData);
   const cat = zonaData?.catalogo || {};
   const clave = fichaZonaEsc(datos?.clave || zonaData?.clave_catastral || "—");
-  const codZonah = fichaZonaEsc(cat.clave_zonah || cat.codigo_zona_homogenea || zonaData?.zonah || "—");
+  const codZonah = fichaZonaEsc(
+    zonaData?.zonah
+    || cat.clave_zonah
+    || cat.codigo_zona_homogenea
+    || "—"
+  );
   const descripcion = fichaZonaEsc(cat.descripcion_col_fracc || attrs.descripcion || "—");
   const delegacion = fichaZonaEsc(zonaData?.delegacion || datos?.p?.delegacion || "TIJUANA");
   const numof = String(datos?.numof || zonaData?.numof || datos?.p?.numof || "").trim();
